@@ -82,7 +82,7 @@ both are thin and can be co-deployed in early stages.
 - **PostgreSQL** — single shared database; hosts application tables (RLS) and River job tables.
 - **Redis** — cross-pod rate-limit counters (per-tenant + global sliding window), hot caches.
 - **Object storage** — S3-compatible bucket for media uploads, keyed by `tenant_id` prefix.
-- **Yandex Postbox** — SES-compatible API for sending; SNS-style notifications for bounces/complaints.
+- **Yandex Postbox** — SES-compatible API for sending; notifications for bounces/complaints sent thought YDB topic.
 - **Stripe** — subscription billing, metered overage, invoices.
 
 ---
