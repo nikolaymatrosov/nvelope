@@ -5,10 +5,10 @@ import (
 	"context"
 	"os"
 
-	"github.com/nvelope/nvelope/internal/config"
-	"github.com/nvelope/nvelope/internal/db"
-	"github.com/nvelope/nvelope/internal/logging"
-	"github.com/nvelope/nvelope/internal/service"
+	"github.com/nikolaymatrosov/nvelope/internal/config"
+	"github.com/nikolaymatrosov/nvelope/internal/db"
+	"github.com/nikolaymatrosov/nvelope/internal/logging"
+	"github.com/nikolaymatrosov/nvelope/internal/service"
 )
 
 const serviceName = "scheduler"

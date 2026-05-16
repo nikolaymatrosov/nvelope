@@ -1,4 +1,4 @@
-module github.com/nvelope/nvelope
+module github.com/nikolaymatrosov/nvelope
 
 go 1.26.0
 

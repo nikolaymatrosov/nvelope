@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nvelope/nvelope/internal/dbtest"
+	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 )
 
 // tokenFromAcceptURL extracts the invitation token from an accept_url.

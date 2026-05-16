@@ -254,30 +254,39 @@ own migrations.
 
 ## 10. Repository Structure (target)
 
+Each bounded context is split into a calibrated three layers — `domain` (pure
+rules, validating constructors, consumer-owned repository interfaces, typed
+errors), `app` (command/ and query/ handlers), and `adapters` (pgx
+repositories) — with one shared transport layer (`api`) and a single
+composition root (`service.NewApplication`). The full per-aggregate
+`ports/app/domain/adapters` split is intentionally not used: nvelope is one
+HTTP service, so a per-context `ports/` directory would be ceremony without
+payoff. The inward dependency rule is enforced in CI with `go-cleanarch`.
+
 ```
 nvelope/
   cmd/{api,worker,scheduler}/main.go
   internal/
-    tenant/        tenant resolution, RLS tx helpers
-    auth/          platform + tenant auth, RBAC, API keys, 2FA, OIDC
-    billing/       plans, subscriptions, dunning, invoices, payment gateway, quota
-    metering/      usage events + rollups
-    subscribers/   CRUD, segmentation, import/export
-    lists/         lists, double opt-in
-    campaigns/     campaigns, scheduling, batching
-    templates/     template rendering
-    sending/       Postbox SES messenger, SigV4, rate limiting
-    domains/       sending-domain provisioning + verification
-    bounce/        webhook ingest, suppression list
-    media/         object-storage uploads
-    jobs/          River job definitions + workers
-    tracking/      open/click tracking
-    public/        subscription/optin/archive handlers
-    db/            migrations, queries, RLS policies
+    platform/      shared building blocks: apperr (typed errors), decorator (CQRS)
+    auth/          platform identity — bounded context
+      domain/        User, Session, credential value objects, repository interfaces
+      app/           command/ (SignUp, LogIn, LogOut) + query/ handlers
+      adapters/      pgx repositories, bcrypt password hasher
+    tenant/        tenancy & RLS — bounded context
+      domain/        Tenant, Membership, Invitation, TenantSettings, interfaces
+      app/           command/ + query/ handlers
+      adapters/      pgx repositories, the RLS-bound transaction helper
+    api/           the single HTTP transport layer (router, middleware, errmap)
+    service/       composition root: NewApplication wires every layer
+    config/ db/ health/ logging/ token/ dbtest/   shared infrastructure
+  test/            cross-tenant isolation + migration suites
   frontend/        React + TypeScript SPA
   deploy/          Dockerfiles, K8s manifests / Helm chart
   docs/            architecture.md, user-stories.md, implementation-plan.md
 ```
+
+Future contexts (billing, subscribers, lists, campaigns, …) follow the same
+`domain` / `app` / `adapters` shape under `internal/<ctx>/`.
 
 ---
 

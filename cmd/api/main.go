@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/nvelope/nvelope/internal/api"
-	"github.com/nvelope/nvelope/internal/config"
-	"github.com/nvelope/nvelope/internal/db"
-	"github.com/nvelope/nvelope/internal/health"
-	"github.com/nvelope/nvelope/internal/logging"
-	"github.com/nvelope/nvelope/internal/service"
+	"github.com/nikolaymatrosov/nvelope/internal/api"
+	"github.com/nikolaymatrosov/nvelope/internal/config"
+	"github.com/nikolaymatrosov/nvelope/internal/db"
+	"github.com/nikolaymatrosov/nvelope/internal/health"
+	"github.com/nikolaymatrosov/nvelope/internal/logging"
+	"github.com/nikolaymatrosov/nvelope/internal/service"
 )
 
 const serviceName = "api"
@@ -35,9 +35,11 @@ func main() {
 
 	healthHandler := health.NewHandler(serviceName, service.Version)
 
+	app := service.NewApplication(pool, cfg, logger)
+
 	srv := &http.Server{
 		Addr:    cfg.HTTPAddr,
-		Handler: api.New(pool, cfg, logger, healthHandler).Handler(),
+		Handler: api.New(app.Auth, app.Tenant, cfg, logger, healthHandler).Handler(),
 	}
 
 	runner := service.RunnerFunc(func(ctx context.Context) error {

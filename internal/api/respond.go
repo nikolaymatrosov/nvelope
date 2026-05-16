@@ -36,3 +36,13 @@ func decodeJSON(r *http.Request, v any) error {
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
 }
+
+// userPayload builds the JSON object for a platform user.
+func userPayload(id, email, name string) map[string]string {
+	return map[string]string{"id": id, "email": email, "name": name}
+}
+
+// tenantPayload builds the JSON object for a workspace.
+func tenantPayload(id, slug, name, status string) map[string]string {
+	return map[string]string{"id": id, "slug": slug, "name": name, "status": status}
+}

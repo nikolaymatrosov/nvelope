@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nvelope/nvelope/internal/db"
+	"github.com/nikolaymatrosov/nvelope/internal/db"
 )
 
 // RandString returns a short random lowercase-hex string, useful for unique

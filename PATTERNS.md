@@ -3,22 +3,31 @@
 Patterns extracted from this project (Three Dots Labs "Wild Workouts" — a DDD +
 CQRS + Clean Architecture reference app) that transfer well to other Go projects.
 
-## 1. Clean Architecture layering (per bounded context)
+## 1. Clean Architecture layering — calibrated to project size
 
-Each module is split into fixed layers, with
-dependencies pointing inward only:
+Dependencies point inward only. nvelope adopts a *calibrated* layout: each
+bounded context gets a three-layer split, and the contexts share one transport
+layer rather than each owning a `ports/` directory.
 
 ```
-ports/      → HTTP/gRPC entrypoints (translate transport ↔ app)
-app/        → use cases: command/ and query/ handlers
-domain/     → pure business logic, no framework imports
-adapters/   → DB, external gRPC clients (implement domain interfaces)
-service/    → composition root: wires everything, returns Application
-main.go     → just calls service.NewApplication + starts server
+internal/
+  <ctx>/domain/     → pure business logic, no framework imports
+  <ctx>/app/        → use cases: command/ and query/ handlers
+  <ctx>/adapters/   → DB repositories (implement domain interfaces)
+  api/              → the single HTTP transport layer for every context
+  service/          → composition root: wires everything, returns Application
+cmd/api/main.go     → opens the pool, calls service.NewApplication, starts server
 ```
 
-The dependency rule is enforced with `go-cleanarch` in CI. The domain package
-imports nothing infrastructural — only stdlib and a shared errors package.
+The full per-aggregate `ports/app/domain/adapters` split is deliberately *not*
+adopted — nvelope is one HTTP service with a small team, so a per-context
+`ports/` directory would be ceremony without payoff. The dependency rule is
+enforced in CI with `go-cleanarch` (run per bounded context, since its
+single-module layer model cannot represent a shared transport layer) plus
+import-list assertions that the domain packages stay free of transport/driver
+imports and that `api/` imports no driver or adapter code. The domain package
+imports nothing infrastructural — only stdlib and the shared `platform/apperr`
+errors package.
 
 ## 2. CQRS with generic decorators
 

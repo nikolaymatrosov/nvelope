@@ -5,10 +5,11 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 
-	"github.com/nvelope/nvelope/internal/auth"
-	"github.com/nvelope/nvelope/internal/tenant"
+	authcommand "github.com/nikolaymatrosov/nvelope/internal/auth/app/command"
+	authdomain "github.com/nikolaymatrosov/nvelope/internal/auth/domain"
+	tenantcommand "github.com/nikolaymatrosov/nvelope/internal/tenant/app/command"
+	tenantquery "github.com/nikolaymatrosov/nvelope/internal/tenant/app/query"
 )
 
 type credentialsRequest struct {
@@ -23,14 +24,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	user, sessionToken, err := auth.Signup(
-		r.Context(), s.pool, s.cfg.SessionTTL, req.Email, req.Password, req.Name)
+	result, err := s.auth.Commands.SignUp.Handle(r.Context(), authcommand.SignUp{
+		Email: req.Email, Password: req.Password, Name: req.Name,
+	})
 	if err != nil {
 		s.fail(w, "signup", err)
 		return
 	}
-	auth.SetSessionCookie(w, sessionToken, s.cfg.SessionTTL)
-	writeJSON(w, http.StatusCreated, map[string]any{"user": user})
+	s.setSessionCookie(w, result.Token)
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"user": userPayload(result.UserID, result.UserEmail, result.UserName),
+	})
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -39,39 +43,48 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	user, sessionToken, err := auth.Login(
-		r.Context(), s.pool, s.cfg.SessionTTL, req.Email, req.Password)
+	result, err := s.auth.Commands.LogIn.Handle(r.Context(), authcommand.LogIn{
+		Email: req.Email, Password: req.Password,
+	})
 	if err != nil {
 		s.fail(w, "login", err)
 		return
 	}
-	auth.SetSessionCookie(w, sessionToken, s.cfg.SessionTTL)
-	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+	s.setSessionCookie(w, result.Token)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user": userPayload(result.UserID, result.UserEmail, result.UserName),
+	})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(auth.SessionCookie); err == nil && c.Value != "" {
-		if err := auth.Logout(r.Context(), s.pool, c.Value); err != nil {
-			s.serverError(w, "logout", err)
-			return
-		}
+	var raw string
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		raw = c.Value
 	}
-	auth.ClearSessionCookie(w)
+	if err := s.auth.Commands.LogOut.Handle(r.Context(), authcommand.LogOut{RawToken: raw}); err != nil {
+		s.fail(w, "logout", err)
+		return
+	}
+	s.clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	user, _ := auth.UserFromContext(r.Context())
-	memberships, err := tenant.ListMembershipsForUser(r.Context(), s.pool, user.ID)
+	user, _ := userFromContext(r.Context())
+	memberships, err := s.tenant.Queries.ListWorkspaces.Handle(r.Context(),
+		tenantquery.ListWorkspaces{UserID: user.ID})
 	if err != nil {
-		s.serverError(w, "me", err)
+		s.fail(w, "me", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": user, "tenants": memberships})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":    userPayload(user.ID, user.Email, user.Name),
+		"tenants": memberships,
+	})
 }
 
 func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
-	user, _ := auth.UserFromContext(r.Context())
+	user, _ := userFromContext(r.Context())
 	var req struct {
 		Name string `json:"name"`
 		Slug string `json:"slug"`
@@ -80,90 +93,64 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	t, err := tenant.CreateTenant(r.Context(), s.pool, user.ID, req.Name, req.Slug)
+	result, err := s.tenant.Commands.CreateWorkspace.Handle(r.Context(), tenantcommand.CreateWorkspace{
+		OwnerID: user.ID, Name: req.Name, Slug: req.Slug,
+	})
 	if err != nil {
 		s.fail(w, "create tenant", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"tenant": t})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"tenant": tenantPayload(result.TenantID, result.Slug, result.Name, result.Status),
+	})
 }
 
 func (s *Server) handleListTenants(w http.ResponseWriter, r *http.Request) {
-	user, _ := auth.UserFromContext(r.Context())
-	memberships, err := tenant.ListMembershipsForUser(r.Context(), s.pool, user.ID)
+	user, _ := userFromContext(r.Context())
+	memberships, err := s.tenant.Queries.ListWorkspaces.Handle(r.Context(),
+		tenantquery.ListWorkspaces{UserID: user.ID})
 	if err != nil {
-		s.serverError(w, "list tenants", err)
+		s.fail(w, "list tenants", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tenants": memberships})
 }
 
 func (s *Server) handleGetInvitation(w http.ResponseWriter, r *http.Request) {
-	inv, err := tenant.GetPendingInvitationByToken(r.Context(), s.pool, chi.URLParam(r, "token"))
+	lookup, err := s.tenant.Queries.LookUpInvitation.Handle(r.Context(),
+		tenantquery.LookUpInvitation{Token: chi.URLParam(r, "token")})
 	if err != nil {
 		s.fail(w, "get invitation", err)
 		return
 	}
-	t, err := tenant.GetTenantByID(r.Context(), s.pool, inv.TenantID)
-	if err != nil {
-		s.serverError(w, "get invitation tenant", err)
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"tenant": map[string]string{"slug": t.Slug, "name": t.Name},
-		"email":  inv.Email,
+		"tenant": map[string]string{"slug": lookup.TenantSlug, "name": lookup.TenantName},
+		"email":  lookup.Email,
 	})
 }
 
 func (s *Server) handleAcceptInvitation(w http.ResponseWriter, r *http.Request) {
-	inv, err := tenant.GetPendingInvitationByToken(r.Context(), s.pool, chi.URLParam(r, "token"))
-	if err != nil {
-		s.fail(w, "accept invitation", err)
-		return
-	}
+	cmd := tenantcommand.AcceptInvitation{Token: chi.URLParam(r, "token")}
 
-	currentUser, hasSession := auth.CurrentUser(r, s.pool)
-	var body struct {
-		Password string `json:"password"`
-		Name     string `json:"name"`
-	}
-	if !hasSession {
+	currentUser, hasSession := s.authenticate(r)
+	if hasSession {
+		cmd.CurrentUserID = currentUser.ID
+	} else {
+		var body struct {
+			Password string `json:"password"`
+			Name     string `json:"name"`
+		}
 		if err := decodeJSON(r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_body",
 				"request body must supply a password and name to accept this invitation")
 			return
 		}
+		cmd.Password = body.Password
+		cmd.Name = body.Name
 	}
 
-	var (
-		user         auth.User
-		sessionToken string
-	)
-	err = pgx.BeginFunc(r.Context(), s.pool, func(tx pgx.Tx) error {
-		if hasSession {
-			user = currentUser
-		} else {
-			u, cerr := auth.CreateAccount(r.Context(), tx, inv.Email, body.Password, body.Name)
-			if cerr != nil {
-				return cerr
-			}
-			user = u
-			t, terr := auth.IssueSession(r.Context(), tx, user.ID, s.cfg.SessionTTL)
-			if terr != nil {
-				return terr
-			}
-			sessionToken = t
-		}
-		accepted, merr := tenant.MarkInvitationAccepted(r.Context(), tx, inv.ID, user.ID)
-		if merr != nil {
-			return merr
-		}
-		if !accepted {
-			return tenant.ErrInvitationNotFound
-		}
-		return tenant.AddMembership(r.Context(), tx, user.ID, inv.TenantID, "admin")
-	})
-	if errors.Is(err, auth.ErrEmailTaken) {
+	result, err := s.tenant.Commands.AcceptInvitation.Handle(r.Context(), cmd)
+	if errors.Is(err, authdomain.ErrEmailTaken) {
 		// More helpful than the generic message: the invitee already has an
 		// account and should sign in before accepting.
 		writeError(w, http.StatusConflict, "email_taken",
@@ -175,13 +162,13 @@ func (s *Server) handleAcceptInvitation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	t, err := tenant.GetTenantByID(r.Context(), s.pool, inv.TenantID)
-	if err != nil {
-		s.serverError(w, "accept invitation tenant", err)
-		return
+	user := userPayload(currentUser.ID, currentUser.Email, currentUser.Name)
+	if result.NewUser != nil {
+		s.setSessionCookie(w, result.NewUser.SessionToken)
+		user = userPayload(result.NewUser.ID, result.NewUser.Email, result.NewUser.Name)
 	}
-	if sessionToken != "" {
-		auth.SetSessionCookie(w, sessionToken, s.cfg.SessionTTL)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": user, "tenant": t})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user":   user,
+		"tenant": tenantPayload(result.TenantID, result.TenantSlug, result.TenantName, result.TenantStatus),
+	})
 }

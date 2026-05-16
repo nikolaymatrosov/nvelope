@@ -13,8 +13,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nvelope/nvelope/internal/config"
-	"github.com/nvelope/nvelope/internal/dbtest"
+	"github.com/nikolaymatrosov/nvelope/internal/config"
+	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
+	"github.com/nikolaymatrosov/nvelope/internal/service"
 )
 
 // testServer runs the full API over TLS against a real database, with a
@@ -35,7 +36,8 @@ func newTestServer(t *testing.T) *testServer {
 		BaseURL:    "https://app.test",
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := New(pool, cfg, logger, http.NotFoundHandler()).Handler()
+	app := service.NewApplication(pool, cfg, logger)
+	handler := New(app.Auth, app.Tenant, cfg, logger, http.NotFoundHandler()).Handler()
 
 	hs := httptest.NewTLSServer(handler)
 	t.Cleanup(hs.Close)

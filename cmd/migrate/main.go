@@ -16,8 +16,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
-	"github.com/nvelope/nvelope/internal/config"
-	"github.com/nvelope/nvelope/internal/db"
+	"github.com/nikolaymatrosov/nvelope/internal/config"
+	"github.com/nikolaymatrosov/nvelope/internal/db"
 )
 
 const migrationsDir = "internal/db/migrations"

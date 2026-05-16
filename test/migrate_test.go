@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nvelope/nvelope/internal/db"
-	"github.com/nvelope/nvelope/internal/dbtest"
+	"github.com/nikolaymatrosov/nvelope/internal/db"
+	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 )
 
 func TestMigrationsRoundTrip(t *testing.T) {

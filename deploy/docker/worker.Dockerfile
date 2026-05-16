@@ -6,7 +6,7 @@ RUN go mod download
 COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-X github.com/nvelope/nvelope/internal/service.Version=${VERSION}" \
+    -ldflags "-X github.com/nikolaymatrosov/nvelope/internal/service.Version=${VERSION}" \
     -o /out/worker ./cmd/worker
 
 # Runtime stage: minimal, non-root.
