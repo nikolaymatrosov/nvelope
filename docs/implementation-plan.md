@@ -83,13 +83,18 @@ dashboard render. *(Completes Epic F.)*
 
 ## Phase 5 — Billing & Metering
 
-- **5.1** `plans`, `tenant_subscriptions`, Stripe integration and webhook handling.
-- **5.2** `usage_events`, the `usage.rollup` job, and `usage_counters`.
-- **5.3** Quota enforcement at campaign start and transactional send; tenant suspension on
-  payment failure.
+- **5.1** `plans`, `tenant_subscriptions`, `invoices`, `invoice_line_items`,
+  `payment_attempts`; the `PaymentGateway` interface with a deterministic `MockGateway`.
+- **5.2** In-house subscription engine: lifecycle state machine, `billing.sweep` /
+  `billing.charge` jobs, invoice generation, and dunning (retries → suspension).
+- **5.3** `usage_events`, the `usage.rollup` job, and `usage_counters`.
+- **5.4** Quota enforcement at campaign start and transactional send (`block` vs `meter`
+  overage modes); tenant suspension on payment failure.
 
-**Exit criteria:** a tenant can subscribe to a plan, usage is metered, quotas are enforced, and
-payment failure suspends sending. *(Satisfies Epic B.)*
+**Exit criteria:** a tenant can subscribe to a plan, recurring renewals charge through the
+mock gateway, usage is metered, quotas are enforced, and payment failure runs dunning then
+suspends sending. *(Satisfies Epic B.)* Real Russian payment-provider integration is a
+later phase.
 
 ---
 
@@ -124,8 +129,9 @@ production-ready. *(Completes Epic E and Epic A.)*
 - **Sending:** end-to-end test sends a campaign through Postbox in a staging account; confirm
   DKIM-signed delivery, open/click tracking, and bounce/complaint attribution.
 - **Domains:** add a real test domain; verify DKIM/SPF/DMARC detection and status transitions.
-- **Billing:** Stripe test-mode subscription; simulate usage; confirm quota enforcement and
-  suspension on a failed-payment webhook.
+- **Billing:** subscribe a tenant and drive renewals through the `MockGateway`; simulate
+  usage; confirm quota enforcement, overage line items, and the dunning → suspension path on
+  a declined charge.
 - **Jobs:** kill a worker pod mid-campaign; confirm River retries and the campaign resumes
   without duplicate sends.
 - **Load:** simulate concurrent campaigns across multiple tenants; confirm per-tenant fairness

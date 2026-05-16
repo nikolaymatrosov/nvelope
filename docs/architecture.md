@@ -23,7 +23,7 @@ operation.
 | Tenant routing | Single domain, path-based (`/t/{slug}/...`) |
 | Mail provider | Yandex Postbox via SES-compatible HTTP API (SigV4) |
 | Sending domains | Per-tenant verified domains (DKIM/SPF/DMARC) provisioned in Postbox |
-| Billing | In scope — plans, usage metering, Stripe |
+| Billing | In scope — plans, usage metering, in-house subscription engine + pluggable payment gateway |
 | Jobs | Dedicated queue (River, Postgres-backed) |
 | Deployment | Containers on Kubernetes |
 | Feature target | Full listmonk feature parity + multi-tenancy (delivered in phases) |
@@ -57,22 +57,23 @@ database, fronted by a React SPA, sending mail through Yandex Postbox.
         └──────────────┘ │ cache  │ │  media        │
                           └────────┘ └───────────────┘
                      │
-        ┌────────────▼────────────┐   ┌─────────────┐
-        │ Yandex Postbox (SES API)│   │ Stripe      │
-        │ + bounce/complaint hooks│   │ (billing)   │
-        └─────────────────────────┘   └─────────────┘
+        ┌────────────▼────────────┐   ┌──────────────────────┐
+        │ Yandex Postbox (SES API)│   │ Payment gateway       │
+        │ + bounce/complaint hooks│   │ (pluggable; mock dev) │
+        └─────────────────────────┘   └──────────────────────┘
 ```
 
 ### Services (three Go deployables, all stateless)
 
 1. **API service** — REST API for the admin SPA and platform area; public subscription /
-   opt-in / archive / RSS pages; bounce & complaint webhook receivers; Stripe webhook receiver.
-   Resolves the tenant on every request and opens an RLS-scoped DB transaction.
+   opt-in / archive / RSS pages; bounce & complaint webhook receivers. Resolves the tenant
+   on every request and opens an RLS-scoped DB transaction.
 2. **Worker service** — River job consumers: campaign batch sending, subscriber import,
    double-opt-in mail, domain-verification polling, usage rollups, stats refresh,
    webhook payload processing.
 3. **Scheduler service** — promotes scheduled campaigns to running, enqueues periodic jobs
-   (usage rollups, materialized-view refresh, unconfirmed-subscription cleanup, domain re-check).
+   (usage rollups, materialized-view refresh, unconfirmed-subscription cleanup, domain re-check,
+   `billing.sweep` for due subscription renewals and dunning retries).
 
 Worker and Scheduler are separate so sending capacity scales independently of cron-style work;
 both are thin and can be co-deployed in early stages.
@@ -83,7 +84,9 @@ both are thin and can be co-deployed in early stages.
 - **Redis** — cross-pod rate-limit counters (per-tenant + global sliding window), hot caches.
 - **Object storage** — S3-compatible bucket for media uploads, keyed by `tenant_id` prefix.
 - **Yandex Postbox** — SES-compatible API for sending; notifications for bounces/complaints sent thought YDB topic.
-- **Stripe** — subscription billing, metered overage, invoices.
+- **Payment gateway** — external acquirer reached through a pluggable `PaymentGateway`
+  interface (tokenize card, charge token, refund); a deterministic mock is used in dev.
+  Subscription lifecycle, dunning, overage, and invoices are owned in-house, not by the gateway.
 
 ---
 
@@ -115,8 +118,11 @@ both are thin and can be co-deployed in early stages.
 | Table | Purpose / key columns |
 |---|---|
 | `tenants` | id (uuid), slug (unique), name, status (active/suspended/deleted), plan_id, created_at |
-| `plans` | id, name, price, limits JSONB (max_subscribers, emails_per_month, max_domains, max_users) |
-| `tenant_subscriptions` | tenant_id, plan_id, stripe_subscription_id, status, current_period_start/end |
+| `plans` | id, name, price_amount (minor units, RUB), billing_interval, limits JSONB (max_subscribers, emails_per_month, max_domains, max_users), overage_mode (block/meter), overage_rates JSONB, active |
+| `tenant_subscriptions` | tenant_id, plan_id, status (trialing/active/past_due/suspended/canceled), current_period_start/end, card_token, card_last4/brand, dunning_attempt, next_retry_at, cancel_at_period_end |
+| `invoices` | id, tenant_id, subscription_id, number, status (draft/paid/failed/void), period_start/end, currency, total_amount, issued_at, paid_at |
+| `invoice_line_items` | id, invoice_id, kind (plan/overage), description, quantity, unit_amount, amount |
+| `payment_attempts` | id, invoice_id, gateway, gateway_payment_id, status (pending/succeeded/failed), amount, error_code, created_at |
 | `usage_events` | tenant_id, type (email_sent/import/...), quantity, campaign_id, occurred_at |
 | `usage_counters` | tenant_id, period, emails_sent, subscribers_count, … (rollup target) |
 | `platform_users` | id, email, password_hash, name — owners/admins for signup & billing |
@@ -179,7 +185,8 @@ own migrations.
 - **Per-tenant fairness:** a campaign send is split into many `campaign.batch` jobs; the worker
   uses River queues/priorities so one large tenant cannot starve others.
 - **Job types:** `campaign.batch`, `campaign.start`, `import.subscribers`, `optin.send`,
-  `domain.verify`, `webhook.process`, `usage.rollup`, `stats.refresh`, `cleanup.unconfirmed`.
+  `domain.verify`, `webhook.process`, `usage.rollup`, `stats.refresh`, `cleanup.unconfirmed`,
+  `billing.charge`.
 - **Failure handling:** `max_send_errors` per campaign → campaign auto-paused, like listmonk.
 
 ---
@@ -187,14 +194,25 @@ own migrations.
 ## 6. Billing & Usage Metering
 
 - **Plans** define quotas: max subscribers, emails/month, sending domains, team members,
-  custom-domain support, feature flags.
+  custom-domain support, feature flags. Each plan also sets an `overage_mode` — `block` or
+  `meter` — and `overage_rates`.
 - Every send / import emits a `usage_event`; `usage.rollup` aggregates into `usage_counters`
   per billing period.
-- **Quota enforcement** at campaign start and transactional send: hard-block over limit,
-  soft-warn near limit (UI banner + email).
-- **Stripe** for subscription lifecycle and metered overage; Stripe webhooks update
-  `tenant_subscriptions`. Tenant suspension on payment failure → `tenants.status = suspended`
-  blocks sending but preserves data.
+- **Quota enforcement** at campaign start and transactional send: `block`-mode plans
+  hard-block over limit; `meter`-mode plans allow over-limit sends and accrue overage.
+  Soft-warn near limit (UI banner + email).
+- **In-house subscription engine.** Subscription lifecycle, dunning, overage, and invoices
+  are owned by nvelope, not an external billing provider. The `PaymentGateway` interface
+  (tokenize / charge / refund) is the only provider-specific seam; a deterministic mock is
+  used in dev, with a Russian acquirer integrated in a later phase.
+- **Renewals.** A periodic `billing.sweep` (Scheduler) finds subscriptions due to renew or
+  due for a dunning retry and enqueues unique `billing.charge` jobs (Worker). `billing.charge`
+  builds an invoice (plan + overage line items), charges the saved card token, and advances
+  the period on success.
+- **Dunning.** A failed renewal charge moves the subscription to `past_due` and schedules
+  retries (days 1/3/5/7). After 4 failed attempts the subscription becomes `suspended` →
+  `tenants.status = suspended`, which blocks sending but preserves data. Adding a working
+  card retries the charge immediately.
 
 ---
 
@@ -242,7 +260,7 @@ nvelope/
   internal/
     tenant/        tenant resolution, RLS tx helpers
     auth/          platform + tenant auth, RBAC, API keys, 2FA, OIDC
-    billing/       plans, Stripe, quota enforcement
+    billing/       plans, subscriptions, dunning, invoices, payment gateway, quota
     metering/      usage events + rollups
     subscribers/   CRUD, segmentation, import/export
     lists/         lists, double opt-in
@@ -272,7 +290,7 @@ nvelope/
 | Sending | SMTP messenger | Postbox SES-compatible API + SigV4 |
 | Sending domains | Global from-address | Per-tenant verified domains in Postbox |
 | Jobs | DB-polling campaign workers | River queue with per-tenant fairness |
-| Billing | None | Plans, usage metering, Stripe |
+| Billing | None | Plans, usage metering, in-house subscription engine + pluggable gateway |
 | Routing | Single instance | Path-based `/t/{slug}/...` |
 | Frontend | Vue 2 | React + TypeScript |
 | Deployment | Single binary / VM | Stateless containers on Kubernetes |

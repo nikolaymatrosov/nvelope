@@ -30,12 +30,12 @@ Format: *As a {role}, I want {capability} so that {value}.*
 
 ## Epic B — Billing & Usage
 
-- As a **tenant owner**, I want to choose a plan and pay via Stripe, so that I can use paid
-  capacity.
+- As a **tenant owner**, I want to choose a plan and pay by card with automatic renewal, so that
+  I can use paid capacity.
 - As a **tenant owner**, I want to see usage (emails sent, subscribers) against my quota, so that
   I can plan ahead.
-- As a **tenant owner**, I want to be warned before hitting limits and blocked from over-sending,
-  so that I avoid surprise overages.
+- As a **tenant owner**, I want to be warned before hitting limits and — depending on my plan —
+  either blocked from over-sending or billed for metered overage, so that I avoid surprises.
 - As a **tenant owner**, I want to view and download invoices, so that I can manage accounting.
 - As the **platform**, I want to suspend sending on payment failure without deleting tenant data,
   so that tenants can recover after paying.
