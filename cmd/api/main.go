@@ -7,8 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/nvelope/nvelope/internal/api"
 	"github.com/nvelope/nvelope/internal/config"
 	"github.com/nvelope/nvelope/internal/db"
 	"github.com/nvelope/nvelope/internal/health"
@@ -36,10 +35,10 @@ func main() {
 
 	healthHandler := health.NewHandler(serviceName, service.Version)
 
-	router := chi.NewRouter()
-	router.Method(http.MethodGet, "/healthz", healthHandler)
-
-	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: router}
+	srv := &http.Server{
+		Addr:    cfg.HTTPAddr,
+		Handler: api.New(pool, cfg, logger, healthHandler).Handler(),
+	}
 
 	runner := service.RunnerFunc(func(ctx context.Context) error {
 		go func() {

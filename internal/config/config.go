@@ -27,14 +27,26 @@ var validLogLevels = map[string]bool{
 // Config holds the settings every service needs to run. The zero value is
 // not usable; obtain a Config from Load.
 type Config struct {
-	// DatabaseURL is the PostgreSQL DSN. Secret — never log this value.
+	// DatabaseURL is the runtime PostgreSQL DSN, connecting as the restricted
+	// nvelope_app role. Secret — never log this value.
 	DatabaseURL string
+	// MigrateDatabaseURL is the privileged PostgreSQL DSN used only by the
+	// migrate CLI (DDL + role management). Falls back to DatabaseURL when
+	// unset. Secret — never log this value.
+	MigrateDatabaseURL string
 	// LogLevel is one of debug, info, warn, error.
 	LogLevel string
 	// HTTPAddr is the listen address for the API service.
 	HTTPAddr string
 	// ShutdownTimeout bounds the graceful-drain window.
 	ShutdownTimeout time.Duration
+	// SessionTTL is the lifetime of a platform login session.
+	SessionTTL time.Duration
+	// InviteTTL is the lifetime of a team invitation.
+	InviteTTL time.Duration
+	// BaseURL is the externally reachable base URL, used to build invitation
+	// acceptance links.
+	BaseURL string
 }
 
 // Load reads configuration from the environment, optionally layered over the
@@ -57,17 +69,30 @@ func Load(envFilePath string) (Config, error) {
 	}
 
 	cfg := Config{
-		DatabaseURL: k.String(envPrefix + "DATABASE_URL"),
-		LogLevel:    k.String(envPrefix + "LOG_LEVEL"),
-		HTTPAddr:    k.String(envPrefix + "HTTP_ADDR"),
+		DatabaseURL:        k.String(envPrefix + "DATABASE_URL"),
+		MigrateDatabaseURL: k.String(envPrefix + "MIGRATE_DATABASE_URL"),
+		LogLevel:           k.String(envPrefix + "LOG_LEVEL"),
+		HTTPAddr:           k.String(envPrefix + "HTTP_ADDR"),
+		BaseURL:            k.String(envPrefix + "BASE_URL"),
 	}
 
-	if raw := k.String(envPrefix + "SHUTDOWN_TIMEOUT"); raw != "" {
-		d, err := time.ParseDuration(raw)
-		if err != nil {
-			return Config{}, fmt.Errorf("NVELOPE_SHUTDOWN_TIMEOUT %q is not a valid duration", raw)
+	for _, d := range []struct {
+		name string
+		dst  *time.Duration
+	}{
+		{"SHUTDOWN_TIMEOUT", &cfg.ShutdownTimeout},
+		{"SESSION_TTL", &cfg.SessionTTL},
+		{"INVITE_TTL", &cfg.InviteTTL},
+	} {
+		raw := k.String(envPrefix + d.name)
+		if raw == "" {
+			continue
 		}
-		cfg.ShutdownTimeout = d
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("NVELOPE_%s %q is not a valid duration", d.name, raw)
+		}
+		*d.dst = parsed
 	}
 
 	cfg.applyDefaults()
@@ -88,6 +113,18 @@ func (c *Config) applyDefaults() {
 	if c.ShutdownTimeout == 0 {
 		c.ShutdownTimeout = 10 * time.Second
 	}
+	if c.MigrateDatabaseURL == "" {
+		c.MigrateDatabaseURL = c.DatabaseURL
+	}
+	if c.SessionTTL == 0 {
+		c.SessionTTL = 168 * time.Hour
+	}
+	if c.InviteTTL == 0 {
+		c.InviteTTL = 168 * time.Hour
+	}
+	if c.BaseURL == "" {
+		c.BaseURL = "http://localhost:8080"
+	}
 }
 
 // Validate reports whether the configuration is usable. The returned error,
@@ -102,6 +139,12 @@ func (c Config) Validate() error {
 	}
 	if c.ShutdownTimeout <= 0 {
 		errs = append(errs, errors.New("NVELOPE_SHUTDOWN_TIMEOUT must be a positive duration"))
+	}
+	if c.SessionTTL <= 0 {
+		errs = append(errs, errors.New("NVELOPE_SESSION_TTL must be a positive duration"))
+	}
+	if c.InviteTTL <= 0 {
+		errs = append(errs, errors.New("NVELOPE_INVITE_TTL must be a positive duration"))
 	}
 	return errors.Join(errs...)
 }

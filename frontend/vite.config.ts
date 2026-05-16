@@ -7,6 +7,14 @@ import tailwindcss from "@tailwindcss/vite"
 import { nitro } from "nitro/vite"
 
 const config = defineConfig({
+  // Proxy API calls to the Go API service during development so the browser
+  // talks to it same-origin and the session cookie just works.
+  server: {
+    proxy: {
+      "/api": { target: "http://localhost:8080", changeOrigin: true },
+      "^/t/[^/]+/api": { target: "http://localhost:8080", changeOrigin: true },
+    },
+  },
   plugins: [
     devtools(),
     nitro(),

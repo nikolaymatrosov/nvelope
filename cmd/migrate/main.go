@@ -1,6 +1,7 @@
 // Command migrate applies and reverts nvelope's versioned database
 // migrations. It wraps golang-migrate with the migrations embedded at build
-// time and reads NVELOPE_DATABASE_URL for the target database.
+// time and connects via NVELOPE_MIGRATE_DATABASE_URL (the privileged role),
+// falling back to NVELOPE_DATABASE_URL when that is unset.
 package main
 
 import (
@@ -66,7 +67,7 @@ func newMigrator() (*migrate.Migrate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading embedded migrations: %w", err)
 	}
-	m, err := migrate.NewWithSourceInstance("iofs", src, cfg.DatabaseURL)
+	m, err := migrate.NewWithSourceInstance("iofs", src, cfg.MigrateDatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to database: %w", err)
 	}
