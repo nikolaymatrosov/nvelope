@@ -1,0 +1,29 @@
+# Base Worker deployment. Minimal starting point; not production-hardened.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nvelope-worker
+  labels:
+    app: nvelope
+    component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nvelope
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: nvelope
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: nvelope-worker:dev
+          env:
+            - name: NVELOPE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nvelope-secrets
+                  key: database-url

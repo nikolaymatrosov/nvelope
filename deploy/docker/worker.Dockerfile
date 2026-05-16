@@ -1,0 +1,16 @@
+# Build stage.
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build \
+    -ldflags "-X github.com/nvelope/nvelope/internal/service.Version=${VERSION}" \
+    -o /out/worker ./cmd/worker
+
+# Runtime stage: minimal, non-root.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/worker /worker
+USER nonroot:nonroot
+ENTRYPOINT ["/worker"]

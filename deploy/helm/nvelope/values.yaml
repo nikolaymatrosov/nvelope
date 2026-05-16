@@ -1,0 +1,22 @@
+# Default values for the nvelope chart. This is a Phase 0 skeleton: enough to
+# schedule the three services, not production-hardened.
+
+image:
+  # Optional registry prefix, e.g. "registry.example.com". Empty for local images.
+  registry: ""
+  tag: dev
+  pullPolicy: IfNotPresent
+
+# Secret holding the PostgreSQL DSN. The secret itself is provisioned out of band.
+databaseSecret:
+  name: nvelope-secrets
+  key: database-url
+
+services:
+  api:
+    replicas: 1
+    port: 8080
+  worker:
+    replicas: 1
+  scheduler:
+    replicas: 1

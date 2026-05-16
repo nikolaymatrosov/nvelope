@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-worker
+  labels:
+    app: nvelope
+    component: worker
+spec:
+  replicas: {{ .Values.services.worker.replicas }}
+  selector:
+    matchLabels:
+      app: nvelope
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: nvelope
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ with .Values.image.registry }}{{ . }}/{{ end }}nvelope-worker:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: NVELOPE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.databaseSecret.name }}
+                  key: {{ .Values.databaseSecret.key }}

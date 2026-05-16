@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-scheduler
+  labels:
+    app: nvelope
+    component: scheduler
+spec:
+  replicas: {{ .Values.services.scheduler.replicas }}
+  selector:
+    matchLabels:
+      app: nvelope
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: nvelope
+        component: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: "{{ with .Values.image.registry }}{{ . }}/{{ end }}nvelope-scheduler:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: NVELOPE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.databaseSecret.name }}
+                  key: {{ .Values.databaseSecret.key }}

@@ -1,0 +1,29 @@
+# Base Scheduler deployment. Minimal starting point; not production-hardened.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nvelope-scheduler
+  labels:
+    app: nvelope
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nvelope
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: nvelope
+        component: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: nvelope-scheduler:dev
+          env:
+            - name: NVELOPE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nvelope-secrets
+                  key: database-url
