@@ -1,0 +1,11 @@
+.git
+.github
+bin/
+frontend/node_modules
+frontend/dist
+frontend/.output
+specs/
+docs/
+*.log
+.env
+.DS_Store

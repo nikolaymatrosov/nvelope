@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: nvelope
+      POSTGRES_PASSWORD: nvelope
+      POSTGRES_DB: nvelope
+    ports:
+      - "5432:5432"
+    volumes:
+      - nvelope-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nvelope -d nvelope"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nvelope-pg:
