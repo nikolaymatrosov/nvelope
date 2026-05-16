@@ -1,31 +1,29 @@
 <!--
 Sync Impact Report
 ==================
-Version change: (template, unversioned) → 1.0.0
-Bump rationale: First concrete ratification of the constitution from the
-  placeholder template. Initial adoption of a complete principle set.
+Version change: 1.0.0 → 1.1.0
+Bump rationale: MINOR — adds one new core principle (VI. Layered Architecture &
+  Domain Integrity) and materially expands the Architectural Constraints section
+  with code-organization rules derived from PATTERNS.md. No principle removed or
+  redefined; existing guidance is unchanged.
 
-Modified principles:
-  [PRINCIPLE_1_NAME] → I. Tenant Isolation by Default
-  [PRINCIPLE_2_NAME] → II. Test-Backed Delivery (NON-NEGOTIABLE)
-  [PRINCIPLE_3_NAME] → III. Incremental, Shippable Phases
-  [PRINCIPLE_4_NAME] → IV. Security & Consent by Design
-  [PRINCIPLE_5_NAME] → V. Operable & Observable Services
+Modified principles: none renamed or redefined.
 
 Added sections:
-  Architectural Constraints (was [SECTION_2_NAME])
-  Development Workflow & Quality Gates (was [SECTION_3_NAME])
+  Principle VI. Layered Architecture & Domain Integrity
+  Architectural Constraints — three new bullets (code organization, shared
+    infrastructure, command/query separation & decorators)
 
 Removed sections: none
 
 Templates requiring updates:
-  ✅ .specify/templates/plan-template.md — "Constitution Check" gate is
-     resolved dynamically against this file; no hardcoded principle
-     references, no edit required.
-  ✅ .specify/templates/spec-template.md — generic placeholders only;
-     consistent with constitution, no edit required.
-  ✅ .specify/templates/tasks-template.md — generic placeholders only;
-     consistent with constitution, no edit required.
+  ✅ .specify/templates/plan-template.md — "Constitution Check" gate is resolved
+     dynamically against this file ("Gates determined based on constitution
+     file"); no hardcoded principle references, no edit required.
+  ✅ .specify/templates/spec-template.md — no constitution/principle references;
+     no edit required.
+  ✅ .specify/templates/tasks-template.md — no constitution/principle references;
+     no edit required.
 
 Follow-up TODOs: none
 -->
@@ -91,6 +89,35 @@ never drops or duplicates work.
 Rationale: a multi-tenant SaaS must scale and recover without operator heroics;
 observability and durable work are what make incidents diagnosable and survivable.
 
+### VI. Layered Architecture & Domain Integrity
+
+Code MUST be organized so that dependencies point inward only: business logic MUST
+NOT import transport, persistence, or external-client packages. The following rules
+are non-negotiable regardless of how many physical layers a context uses:
+
+- **Domain logic stays pure.** Business rules and invariants live on domain
+  entities, not in anaemic structs manipulated by services. Entities MUST be
+  constructible only through validating constructors so an invalid state is
+  unrepresentable; loading persisted data uses a separate, explicitly labelled
+  hydration path that is documented as "persistence only, not a constructor".
+- **Contracts are owned by the consumer.** Repository and external-service
+  interfaces MUST be declared by the package that depends on them (the domain or
+  use-case layer); infrastructure adapters implement those interfaces. The domain
+  defines what it needs; infrastructure conforms.
+- **Errors are typed and mapped once.** Errors that cross a domain boundary MUST
+  carry a machine-readable kind (e.g. a slug plus an error category). Translation
+  from that typed error to a transport status code MUST happen in exactly one
+  place; domain and use-case code MUST NOT know about HTTP, gRPC, or status codes,
+  and transport code MUST NOT branch on error strings.
+- **Composition is explicit.** Dependencies are wired through plain constructors at
+  a single composition root; no runtime DI framework and no hidden global state.
+  Tests substitute doubles through that same wiring path.
+
+Rationale: an inward dependency rule plus consumer-owned contracts keeps the
+codebase testable and changeable as it grows; entities that cannot be built invalid
+remove a whole class of bugs; concentrating transport mapping and wiring prevents
+infrastructure concerns from leaking into business logic.
+
 ## Architectural Constraints
 
 - **Multi-tenancy model**: a single shared datastore with a clear separation
@@ -107,13 +134,29 @@ observability and durable work are what make incidents diagnosable and survivabl
 - **Reference, not copy**: a proven reference implementation may inform the domain
   model and algorithms, but it MUST be adapted to the multi-tenant context rather
   than copied wholesale.
+- **Layer scope is proportional to need**: the dependency rule of Principle VI is
+  always enforced, but the number of physical layers is not. A small bounded
+  context MAY collapse layers (e.g. keep store, service, and handler files in one
+  package). A full ports/app/domain/adapters split and contract-first code
+  generation are adopted only when multiple services or teams make the ceremony
+  worthwhile (YAGNI); they MUST NOT be introduced speculatively.
+- **Shared infrastructure lives once**: cross-cutting concerns — server bootstrap
+  and middleware, authentication, structured logging, metrics, and shared clients —
+  MUST be implemented once in shared packages and reused, never copied per service.
+  Per-service entrypoints stay thin.
+- **Separate read and write paths**: commands that mutate state and queries that
+  read it SHOULD be modelled as distinct handler types and MUST NOT be conflated in
+  a single object. Cross-cutting handler behavior (logging, metrics, tracing)
+  SHOULD be applied through generic decorators/wrappers so every use case gets
+  observability uniformly rather than via hand-written, drift-prone boilerplate.
 
 ## Development Workflow & Quality Gates
 
 - Every delivery phase has explicit, written exit criteria; a phase is not complete
   until those criteria are met.
 - Code review MUST verify compliance with the Core Principles. Tenant isolation,
-  security, and test coverage are review gates, not afterthoughts.
+  security, test coverage, and the inward dependency rule are review gates, not
+  afterthoughts.
 - Implementation plans MUST pass a Constitution Check before work begins. Any
   deviation MUST be recorded with its justification and the simpler alternative that
   was rejected.
@@ -137,7 +180,7 @@ observability and durable work are what make incidents diagnosable and survivabl
   complexity or unaddressed principle violations block merge.
 - Runtime, contributor-facing development guidance lives in the repository docs
   (`docs/architecture.md`, `docs/implementation-plan.md`, `docs/user-stories.md`,
-  and `CLAUDE.md`). These MUST stay consistent with this constitution; on conflict,
-  the constitution governs and the docs are corrected.
+  `PATTERNS.md`, and `CLAUDE.md`). These MUST stay consistent with this
+  constitution; on conflict, the constitution governs and the docs are corrected.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-16 | **Last Amended**: 2026-05-16
+**Version**: 1.1.0 | **Ratified**: 2026-05-16 | **Last Amended**: 2026-05-16
