@@ -21,6 +21,7 @@ func TestCategoryConstructors(t *testing.T) {
 		{"conflict", apperr.NewConflict("email_taken", "taken"), apperr.Conflict},
 		{"not found", apperr.NewNotFound("tenant_not_found", "gone"), apperr.NotFound},
 		{"authorization", apperr.NewAuthorization("unauthenticated", "nope"), apperr.Authorization},
+		{"forbidden", apperr.NewForbidden("forbidden-lists-manage", "nope"), apperr.Forbidden},
 		{"unknown", apperr.NewUnknown("internal_error", "oops"), apperr.Unknown},
 	}
 	for _, tc := range cases {
@@ -29,6 +30,12 @@ func TestCategoryConstructors(t *testing.T) {
 			require.Equal(t, tc.category, tc.err.Category())
 		})
 	}
+}
+
+func TestCategoryString(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "forbidden", apperr.Forbidden.String())
+	require.Equal(t, "authorization", apperr.Authorization.String())
 }
 
 func TestSlugAndMessageRoundTrip(t *testing.T) {

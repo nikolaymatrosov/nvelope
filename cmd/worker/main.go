@@ -1,13 +1,18 @@
-// Command worker runs the nvelope worker service.
+// Command worker runs the nvelope worker service: it consumes the River job
+// queue, processing bulk subscriber import and export jobs.
 package main
 
 import (
 	"context"
 	"os"
 
+	"github.com/riverqueue/river"
+
+	audienceadapters "github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	"github.com/nikolaymatrosov/nvelope/internal/db"
 	"github.com/nikolaymatrosov/nvelope/internal/logging"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/service"
 )
 
@@ -29,11 +34,28 @@ func main() {
 	}
 	defer pool.Close()
 
+	// Build the audience adapters the import/export workers depend on.
+	jobRepo := audienceadapters.NewJobs(pool)
+	subscribers := audienceadapters.NewSubscribers(pool)
+	memberships := audienceadapters.NewMemberships(pool)
+
+	workers := river.NewWorkers()
+	river.AddWorker(workers, audienceadapters.NewImportWorker(jobRepo, subscribers, memberships))
+	river.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
+
+	client, err := jobs.NewWorkerClient(pool, cfg.WorkerQueue, cfg.WorkerTenantConcurrency, workers)
+	if err != nil {
+		logger.Error("building river worker client", "error", err)
+		os.Exit(1)
+	}
+
 	runner := service.RunnerFunc(func(ctx context.Context) error {
-		// TODO(phase-3): register River job workers and consume the queue.
-		logger.Info("worker idle; job-queue consumption arrives in a later phase")
+		if err := client.Start(ctx); err != nil {
+			return err
+		}
+		logger.Info("worker consuming the import/export queue", "queue", cfg.WorkerQueue)
 		<-ctx.Done()
-		return nil
+		return client.Stop(context.Background())
 	})
 
 	if err := service.Run(serviceName, logger, cfg.ShutdownTimeout, runner); err != nil {

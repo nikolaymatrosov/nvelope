@@ -21,6 +21,9 @@ const (
 	NotFound
 	// Authorization is a missing or invalid credential — mapped to a 401.
 	Authorization
+	// Forbidden is an authenticated caller lacking a required permission —
+	// mapped to a 403.
+	Forbidden
 )
 
 func (c Category) String() string {
@@ -33,6 +36,8 @@ func (c Category) String() string {
 		return "not-found"
 	case Authorization:
 		return "authorization"
+	case Forbidden:
+		return "forbidden"
 	default:
 		return "unknown"
 	}
@@ -64,6 +69,10 @@ func NewNotFound(slug, message string) *Error { return New(NotFound, slug, messa
 
 // NewAuthorization builds an Authorization-category Error.
 func NewAuthorization(slug, message string) *Error { return New(Authorization, slug, message) }
+
+// NewForbidden builds a Forbidden-category Error — an authenticated caller
+// that lacks a required permission.
+func NewForbidden(slug, message string) *Error { return New(Forbidden, slug, message) }
 
 // NewUnknown builds an Unknown-category Error.
 func NewUnknown(slug, message string) *Error { return New(Unknown, slug, message) }

@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	"github.com/nikolaymatrosov/nvelope/internal/db"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
 const migrationsDir = "internal/db/migrations"
@@ -90,7 +92,36 @@ func runUp() error {
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return err
 	}
+	if err := installRiverSchema(); err != nil {
+		return err
+	}
 	fmt.Println("migrations up to date")
+	return nil
+}
+
+// installRiverSchema applies River's own queue-table migrations after the
+// application migrations, so `migrate up` provisions the whole schema.
+func installRiverSchema() error {
+	cfg, err := config.Load(".env")
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	pool, err := db.Open(ctx, cfg.MigrateDatabaseURL)
+	if err != nil {
+		return fmt.Errorf("connecting for river migration: %w", err)
+	}
+	defer pool.Close()
+	if err := jobs.Migrate(ctx, pool); err != nil {
+		return err
+	}
+	// River's queue tables are owned by the privileged migration role; the
+	// restricted runtime role needs access to enqueue and consume jobs.
+	if _, err := pool.Exec(ctx,
+		`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO nvelope_app;
+		 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nvelope_app;`); err != nil {
+		return fmt.Errorf("granting river tables to nvelope_app: %w", err)
+	}
 	return nil
 }
 

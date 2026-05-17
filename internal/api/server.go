@@ -7,8 +7,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	audienceapp "github.com/nikolaymatrosov/nvelope/internal/audience/app"
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
+	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
 )
 
@@ -16,19 +18,24 @@ import (
 // the route table. It holds no database handle — every request flows through
 // the command and query handlers.
 type Server struct {
-	auth   authapp.Application
-	tenant tenantapp.Application
-	cfg    config.Config
-	logger *slog.Logger
-	health http.Handler
+	auth     authapp.Application
+	tenant   tenantapp.Application
+	audience audienceapp.Application
+	iam      iamapp.Application
+	cfg      config.Config
+	logger   *slog.Logger
+	health   http.Handler
 }
 
-// New returns a Server. The auth and tenant applications are built by the
-// composition root; the health handler is supplied by the caller so it can
-// also toggle readiness during startup and graceful shutdown.
-func New(auth authapp.Application, tenant tenantapp.Application, cfg config.Config,
-	logger *slog.Logger, health http.Handler) *Server {
-	return &Server{auth: auth, tenant: tenant, cfg: cfg, logger: logger, health: health}
+// New returns a Server. The auth, tenant, audience, and iam applications are
+// built by the composition root; the health handler is supplied by the caller
+// so it can also toggle readiness during startup and graceful shutdown.
+func New(auth authapp.Application, tenant tenantapp.Application, audience audienceapp.Application,
+	iam iamapp.Application, cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
+	return &Server{
+		auth: auth, tenant: tenant, audience: audience, iam: iam,
+		cfg: cfg, logger: logger, health: health,
+	}
 }
 
 // Handler builds the chi router with every route mounted.
@@ -66,6 +73,48 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/invitations", s.handleCreateInvitation)
 		r.Get("/invitations", s.handleListInvitations)
 		r.Delete("/invitations/{id}", s.handleRevokeInvitation)
+
+		// Workspace session — opens/closes the tenant-plane session; no
+		// Principal is required since these establish one.
+		r.Post("/session", s.handleOpenSession)
+		r.Delete("/session", s.handleCloseSession)
+
+		// Guarded routes — the authz middleware resolves the request's
+		// Principal; handlers then enforce permissions.
+		r.Group(func(r chi.Router) {
+			r.Use(s.authz)
+
+			// Audience — lists and subscribers (US1).
+			r.Post("/lists", s.handleCreateList)
+			r.Get("/lists", s.handleListLists)
+			r.Get("/lists/{id}", s.handleGetList)
+			r.Put("/lists/{id}", s.handleUpdateList)
+			r.Delete("/lists/{id}", s.handleDeleteList)
+
+			r.Post("/subscribers", s.handleCreateSubscriber)
+			r.Get("/subscribers", s.handleSearchSubscribers)
+			r.Get("/subscribers/{id}", s.handleGetSubscriber)
+			r.Put("/subscribers/{id}", s.handleUpdateSubscriber)
+			r.Delete("/subscribers/{id}", s.handleDeleteSubscriber)
+			r.Post("/subscribers/{id}/lists", s.handleAddToList)
+			r.Delete("/subscribers/{id}/lists/{listId}", s.handleRemoveFromList)
+			r.Put("/subscribers/{id}/lists/{listId}", s.handleChangeSubscription)
+
+			// Import & export (US3).
+			r.Post("/import", s.handleStartImport)
+			r.Post("/export", s.handleStartExport)
+			r.Get("/jobs/{id}", s.handleJobStatus)
+			r.Get("/jobs/{id}/download", s.handleDownloadExport)
+
+			// RBAC — role management (US2).
+			r.Post("/roles", s.handleCreateRole)
+			r.Get("/roles", s.handleListRoles)
+			r.Put("/roles/{id}", s.handleUpdateRole)
+			r.Delete("/roles/{id}", s.handleDeleteRole)
+			r.Put("/users/{userId}/role", s.handleAssignRole)
+			r.Put("/users/{userId}/lists/{listId}/role", s.handleAssignListRole)
+			r.Delete("/users/{userId}/lists/{listId}/role", s.handleRemoveListRole)
+		})
 	})
 
 	return r

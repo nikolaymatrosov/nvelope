@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/nikolaymatrosov/nvelope/internal/platform/tenantdb"
 	"github.com/nikolaymatrosov/nvelope/internal/tenant/domain"
 )
 
@@ -30,7 +31,7 @@ func NewSettings(pool *pgxpool.Pool) *Settings {
 // tenant_id filter.
 func (r *Settings) Get(ctx context.Context, tenantID string) (*domain.TenantSettings, error) {
 	var settings *domain.TenantSettings
-	err := withTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		var displayName, timezone string
 		err := tx.QueryRow(ctx,
 			"SELECT display_name, timezone FROM tenant_settings").
@@ -56,7 +57,7 @@ func (r *Settings) Get(ctx context.Context, tenantID string) (*domain.TenantSett
 func (r *Settings) Update(ctx context.Context, tenantID string,
 	fn func(*domain.TenantSettings) (*domain.TenantSettings, error)) error {
 
-	return withTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		var displayName, timezone string
 		err := tx.QueryRow(ctx,
 			"SELECT display_name, timezone FROM tenant_settings FOR UPDATE").

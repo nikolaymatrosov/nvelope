@@ -12,6 +12,10 @@ const testDSN = "postgres://nvelope:s3cr3t@localhost:5432/nvelope?sslmode=disabl
 
 const testMigrateDSN = "postgres://nvelope:s3cr3t@localhost:5432/nvelope?sslmode=disable"
 
+// testTOTPKey is a 32-byte key, hex-encoded — the required form for
+// NVELOPE_TOTP_ENCRYPTION_KEY.
+const testTOTPKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
 func TestLoadValidConfig(t *testing.T) {
 	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
 	t.Setenv("NVELOPE_MIGRATE_DATABASE_URL", testMigrateDSN)
@@ -21,6 +25,7 @@ func TestLoadValidConfig(t *testing.T) {
 	t.Setenv("NVELOPE_SESSION_TTL", "48h")
 	t.Setenv("NVELOPE_INVITE_TTL", "72h")
 	t.Setenv("NVELOPE_BASE_URL", "https://app.example.com")
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
 
 	cfg, err := Load("")
 	require.NoError(t, err)
@@ -36,6 +41,7 @@ func TestLoadValidConfig(t *testing.T) {
 
 func TestLoadAppliesDefaults(t *testing.T) {
 	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
 
 	cfg, err := Load("")
 	require.NoError(t, err)
@@ -45,11 +51,14 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	require.Equal(t, 168*time.Hour, cfg.SessionTTL)
 	require.Equal(t, 168*time.Hour, cfg.InviteTTL)
 	require.Equal(t, "http://localhost:8080", cfg.BaseURL)
+	require.Equal(t, "import_export", cfg.WorkerQueue)
+	require.Equal(t, 2, cfg.WorkerTenantConcurrency)
 }
 
 func TestMigrateDatabaseURLFallsBackToDatabaseURL(t *testing.T) {
 	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
 	t.Setenv("NVELOPE_MIGRATE_DATABASE_URL", "")
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
 
 	cfg, err := Load("")
 	require.NoError(t, err)
@@ -101,6 +110,24 @@ func TestValidationErrorNeverLeaksSecret(t *testing.T) {
 	_, err := Load("")
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "s3cr3t", "config errors must not contain the DSN value")
+}
+
+func TestLoadMissingTOTPKeyFails(t *testing.T) {
+	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", "")
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_TOTP_ENCRYPTION_KEY")
+}
+
+func TestLoadMalformedTOTPKeyFails(t *testing.T) {
+	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", "tooshort")
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_TOTP_ENCRYPTION_KEY")
 }
 
 func TestValidateReportsEveryOffendingVariable(t *testing.T) {

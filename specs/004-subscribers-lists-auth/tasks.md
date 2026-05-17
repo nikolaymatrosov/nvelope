@@ -34,10 +34,10 @@ Multi-service Go monorepo. New code lives under `internal/iam/`,
 
 **Purpose**: Add the new dependencies and tooling Phase 2 needs.
 
-- [ ] T001 Add River dependencies (`github.com/riverqueue/river`, `github.com/riverqueue/river/riverdriver/riverpgxv5`) to `go.mod` and run `go mod tidy`
-- [ ] T002 Add the TOTP dependency (`github.com/pquerna/otp`) to `go.mod` and run `go mod tidy`
-- [ ] T003 [P] Extend `internal/config/config.go` with `TOTP_ENCRYPTION_KEY` (fail-fast if missing) and River worker settings (queue, per-tenant concurrency)
-- [ ] T004 [P] Add `internal/iam` and `internal/audience` to the `go-cleanarch` invocation in the CI workflow so the inward-dependency rule is enforced for the new contexts
+- [X] T001 Add River dependencies (`github.com/riverqueue/river`, `github.com/riverqueue/river/riverdriver/riverpgxv5`) to `go.mod` and run `go mod tidy`
+- [X] T002 Add the TOTP dependency (`github.com/pquerna/otp`) to `go.mod` and run `go mod tidy`
+- [X] T003 [P] Extend `internal/config/config.go` with `TOTP_ENCRYPTION_KEY` (fail-fast if missing) and River worker settings (queue, per-tenant concurrency)
+- [X] T004 [P] Add `internal/iam` and `internal/audience` to the `go-cleanarch` invocation in the CI workflow so the inward-dependency rule is enforced for the new contexts
 
 **Checkpoint**: Dependencies resolve; `go build ./...` succeeds.
 
@@ -49,11 +49,11 @@ Multi-service Go monorepo. New code lives under `internal/iam/`,
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T005 Create `internal/platform/tenantdb/tenantdb.go` — exported `WithTenant(ctx, pool, tenantID, fn)` RLS-bound transaction helper, moved and exported from `internal/tenant/adapters/rls.go`
-- [ ] T006 [P] Add `internal/platform/tenantdb/tenantdb_test.go` — integration test proving the transaction binds `app.tenant_id` and fails closed when unset
-- [ ] T007 Update `internal/tenant/adapters/*.go` to call `tenantdb.WithTenant` and delete `internal/tenant/adapters/rls.go`; confirm the Phase 1 suite still passes
-- [ ] T008 [P] Add the `Forbidden` category (HTTP 403) to `internal/platform/apperr/apperr.go` with a constructor helper, and cover it in `internal/platform/apperr/apperr_test.go`
-- [ ] T009 Map `apperr.Forbidden` → HTTP 403 in `internal/api/errmap.go` and assert it in `internal/api/errmap_test.go`
+- [X] T005 Create `internal/platform/tenantdb/tenantdb.go` — exported `WithTenant(ctx, pool, tenantID, fn)` RLS-bound transaction helper, moved and exported from `internal/tenant/adapters/rls.go`
+- [X] T006 [P] Add `internal/platform/tenantdb/tenantdb_test.go` — integration test proving the transaction binds `app.tenant_id` and fails closed when unset
+- [X] T007 Update `internal/tenant/adapters/*.go` to call `tenantdb.WithTenant` and delete `internal/tenant/adapters/rls.go`; confirm the Phase 1 suite still passes
+- [X] T008 [P] Add the `Forbidden` category (HTTP 403) to `internal/platform/apperr/apperr.go` with a constructor helper, and cover it in `internal/platform/apperr/apperr_test.go`
+- [X] T009 Map `apperr.Forbidden` → HTTP 403 in `internal/api/errmap.go` and assert it in `internal/api/errmap_test.go`
 
 **Checkpoint**: `WithTenant` is shared; the typed-error path supports 403; full existing suite green.
 
@@ -75,44 +75,44 @@ layered on in US2.
 
 ### Schema for User Story 1
 
-- [ ] T010 [US1] Create migration `internal/db/migrations/000006_audience_schema.{up,down}.sql` — `lists`, `subscribers` (with `attributes jsonb` + GIN index), `subscriber_lists`, each with `tenant_id`, `ENABLE`/`FORCE` RLS, the `tenant_isolation` policy, and `nvelope_app` grants
+- [X] T010 [US1] Create migration `internal/db/migrations/000006_audience_schema.{up,down}.sql` — `lists`, `subscribers` (with `attributes jsonb` + GIN index), `subscriber_lists`, each with `tenant_id`, `ENABLE`/`FORCE` RLS, the `tenant_isolation` policy, and `nvelope_app` grants
 
 ### Domain for User Story 1
 
-- [ ] T011 [P] [US1] `List` entity with validating constructor + hydration path in `internal/audience/domain/list.go`
-- [ ] T012 [P] [US1] `Subscriber` entity with state transitions (enabled/disabled/blocklisted) in `internal/audience/domain/subscriber.go`
-- [ ] T013 [P] [US1] Custom-attributes value object in `internal/audience/domain/attributes.go`
-- [ ] T014 [P] [US1] `Membership` entity with subscription-status transitions in `internal/audience/domain/membership.go`
-- [ ] T015 [P] [US1] Typed domain errors in `internal/audience/domain/errors.go`
-- [ ] T016 [US1] Repository interfaces (`ListRepository`, `SubscriberRepository`, `MembershipRepository`) in `internal/audience/domain/repository.go`
-- [ ] T017 [P] [US1] Domain unit tests for list, subscriber (state transitions), attributes, and membership in `internal/audience/domain/*_test.go`
+- [X] T011 [P] [US1] `List` entity with validating constructor + hydration path in `internal/audience/domain/list.go`
+- [X] T012 [P] [US1] `Subscriber` entity with state transitions (enabled/disabled/blocklisted) in `internal/audience/domain/subscriber.go`
+- [X] T013 [P] [US1] Custom-attributes value object in `internal/audience/domain/attributes.go`
+- [X] T014 [P] [US1] `Membership` entity with subscription-status transitions in `internal/audience/domain/membership.go`
+- [X] T015 [P] [US1] Typed domain errors in `internal/audience/domain/errors.go`
+- [X] T016 [US1] Repository interfaces (`ListRepository`, `SubscriberRepository`, `MembershipRepository`) in `internal/audience/domain/repository.go`
+- [X] T017 [P] [US1] Domain unit tests for list, subscriber (state transitions), attributes, and membership in `internal/audience/domain/*_test.go`
 
 ### Adapters for User Story 1
 
-- [ ] T018 [P] [US1] `ListRepository` pgx implementation in `internal/audience/adapters/lists_pg.go`
-- [ ] T019 [P] [US1] `SubscriberRepository` pgx implementation (CRUD, `UpsertByEmail`, `Search`) in `internal/audience/adapters/subscribers_pg.go`
-- [ ] T020 [P] [US1] `MembershipRepository` pgx implementation in `internal/audience/adapters/memberships_pg.go`
-- [ ] T021 [US1] Repository integration tests against a real DB via `internal/dbtest` in `internal/audience/adapters/*_test.go`
+- [X] T018 [P] [US1] `ListRepository` pgx implementation in `internal/audience/adapters/lists_pg.go`
+- [X] T019 [P] [US1] `SubscriberRepository` pgx implementation (CRUD, `UpsertByEmail`, `Search`) in `internal/audience/adapters/subscribers_pg.go`
+- [X] T020 [P] [US1] `MembershipRepository` pgx implementation in `internal/audience/adapters/memberships_pg.go`
+- [X] T021 [US1] Repository integration tests against a real DB via `internal/dbtest` in `internal/audience/adapters/*_test.go`
 
 ### Application for User Story 1
 
-- [ ] T022 [US1] `Application` struct (Commands + Queries) in `internal/audience/app/application.go`
-- [ ] T023 [P] [US1] List command handlers (`CreateList`, `UpdateList`, `DeleteList`) in `internal/audience/app/command/`
-- [ ] T024 [P] [US1] Subscriber command handlers (`CreateSubscriber`, `UpdateSubscriber`, `DeleteSubscriber`) in `internal/audience/app/command/`
-- [ ] T025 [P] [US1] Membership command handlers (`AddToList`, `RemoveFromList`, `ChangeSubscriptionState`) in `internal/audience/app/command/`
-- [ ] T026 [P] [US1] Query handlers (`ListLists`, `GetList`, `SearchSubscribers`, `GetSubscriber`) in `internal/audience/app/query/`
-- [ ] T027 [US1] Application handler unit tests with in-memory repository fakes in `internal/audience/app/**/*_test.go`
+- [X] T022 [US1] `Application` struct (Commands + Queries) in `internal/audience/app/application.go`
+- [X] T023 [P] [US1] List command handlers (`CreateList`, `UpdateList`, `DeleteList`) in `internal/audience/app/command/`
+- [X] T024 [P] [US1] Subscriber command handlers (`CreateSubscriber`, `UpdateSubscriber`, `DeleteSubscriber`) in `internal/audience/app/command/`
+- [X] T025 [P] [US1] Membership command handlers (`AddToList`, `RemoveFromList`, `ChangeSubscriptionState`) in `internal/audience/app/command/`
+- [X] T026 [P] [US1] Query handlers (`ListLists`, `GetList`, `SearchSubscribers`, `GetSubscriber`) in `internal/audience/app/query/`
+- [X] T027 [US1] Application handler unit tests with in-memory repository fakes in `internal/audience/app/**/*_test.go`
 
 ### Transport & wiring for User Story 1
 
-- [ ] T028 [US1] List & subscriber HTTP handlers in `internal/api/audience_handlers.go` per `contracts/http-api.md`
-- [ ] T029 [US1] Mount the audience routes under `/t/{slug}/api` in `internal/api/server.go` and add the `audience` application to the `Server` struct
-- [ ] T030 [US1] Wire the `audience` application (adapters + decorated handlers) into the composition root `internal/service/application.go`
+- [X] T028 [US1] List & subscriber HTTP handlers in `internal/api/audience_handlers.go` per `contracts/http-api.md`
+- [X] T029 [US1] Mount the audience routes under `/t/{slug}/api` in `internal/api/server.go` and add the `audience` application to the `Server` struct
+- [X] T030 [US1] Wire the `audience` application (adapters + decorated handlers) into the composition root `internal/service/application.go`
 
 ### Tests for User Story 1
 
-- [ ] T031 [US1] Endpoint/component tests for list & subscriber CRUD (incl. duplicate-email 409) in `internal/api/audience_handlers_test.go`
-- [ ] T032 [US1] Extend `test/isolation_test.go` to prove cross-tenant denial for `lists`, `subscribers`, `subscriber_lists` as `nvelope_app`
+- [X] T031 [US1] Endpoint/component tests for list & subscriber CRUD (incl. duplicate-email 409) in `internal/api/audience_handlers_test.go`
+- [X] T032 [US1] Extend `test/isolation_test.go` to prove cross-tenant denial for `lists`, `subscribers`, `subscriber_lists` as `nvelope_app`
 
 **Checkpoint**: US1 is fully functional and independently testable — MVP ready.
 
@@ -131,52 +131,52 @@ that list only.
 
 ### Schema for User Story 2
 
-- [ ] T033 [US2] Create migration `internal/db/migrations/000005_tenant_access_schema.{up,down}.sql` — `users`, `sessions`, `roles`, `user_roles`, `user_list_roles`, `api_keys`, `recovery_codes`, `audit_log`, each tenant-plane with RLS and `nvelope_app` grants (the `api_keys`/`recovery_codes` columns are used in US5)
+- [X] T033 [US2] Create migration `internal/db/migrations/000005_tenant_access_schema.{up,down}.sql` — `users`, `sessions`, `roles`, `user_roles`, `user_list_roles`, `api_keys`, `recovery_codes`, `audit_log`, each tenant-plane with RLS and `nvelope_app` grants (the `api_keys`/`recovery_codes` columns are used in US5)
 
 > Migration files apply in numeric order; `000005` is created here but applies before `000006`. The `user_list_roles.list_id` FK to `lists` is added in this migration as deferred and validated, or added in a follow-up `000008` if `lists` is not yet present in the target environment — keep both migrations apply-clean from empty.
 
 ### Domain for User Story 2
 
-- [ ] T034 [P] [US2] `Permission` value object + the catalogue from `contracts/permissions.md` + pure `EffectivePermissions` union function in `internal/iam/domain/permission.go`
-- [ ] T035 [P] [US2] `Role` entity (validating constructor, `Rename`, `SetPermissions`) in `internal/iam/domain/role.go`
-- [ ] T036 [P] [US2] `TenantUser` entity (linked to `platform_user_id`) in `internal/iam/domain/user.go`
-- [ ] T037 [P] [US2] `Session` entity with state machine (`totp-pending`/`active`/`revoked`) in `internal/iam/domain/session.go`
-- [ ] T038 [P] [US2] `Principal` value object (`Can`, `CanOnList`) in `internal/iam/domain/principal.go`
-- [ ] T039 [P] [US2] Typed domain errors in `internal/iam/domain/errors.go`
-- [ ] T040 [US2] Repository interfaces (`UserRepository`, `SessionRepository`, `RoleRepository`) in `internal/iam/domain/repository.go`
-- [ ] T041 [P] [US2] Domain unit tests for permissions (union), role, session transitions, principal in `internal/iam/domain/*_test.go`
+- [X] T034 [P] [US2] `Permission` value object + the catalogue from `contracts/permissions.md` + pure `EffectivePermissions` union function in `internal/iam/domain/permission.go`
+- [X] T035 [P] [US2] `Role` entity (validating constructor, `Rename`, `SetPermissions`) in `internal/iam/domain/role.go`
+- [X] T036 [P] [US2] `TenantUser` entity (linked to `platform_user_id`) in `internal/iam/domain/user.go`
+- [X] T037 [P] [US2] `Session` entity with state machine (`totp-pending`/`active`/`revoked`) in `internal/iam/domain/session.go`
+- [X] T038 [P] [US2] `Principal` value object (`Can`, `CanOnList`) in `internal/iam/domain/principal.go`
+- [X] T039 [P] [US2] Typed domain errors in `internal/iam/domain/errors.go`
+- [X] T040 [US2] Repository interfaces (`UserRepository`, `SessionRepository`, `RoleRepository`) in `internal/iam/domain/repository.go`
+- [X] T041 [P] [US2] Domain unit tests for permissions (union), role, session transitions, principal in `internal/iam/domain/*_test.go`
 
 ### Adapters for User Story 2
 
-- [ ] T042 [P] [US2] `RoleRepository` pgx implementation incl. `AssignTenantRole`, `AssignListRole`, `RemoveListRole`, `EffectiveFor` in `internal/iam/adapters/roles_pg.go`
-- [ ] T043 [P] [US2] `UserRepository` pgx implementation in `internal/iam/adapters/users_pg.go`
-- [ ] T044 [P] [US2] `SessionRepository` pgx implementation in `internal/iam/adapters/sessions_pg.go`
-- [ ] T045 [US2] Repository integration tests against a real DB in `internal/iam/adapters/*_test.go`
+- [X] T042 [P] [US2] `RoleRepository` pgx implementation incl. `AssignTenantRole`, `AssignListRole`, `RemoveListRole`, `EffectiveFor` in `internal/iam/adapters/roles_pg.go`
+- [X] T043 [P] [US2] `UserRepository` pgx implementation in `internal/iam/adapters/users_pg.go`
+- [X] T044 [P] [US2] `SessionRepository` pgx implementation in `internal/iam/adapters/sessions_pg.go`
+- [X] T045 [US2] Repository integration tests against a real DB in `internal/iam/adapters/*_test.go`
 
 ### Application for User Story 2
 
-- [ ] T046 [US2] `Application` struct in `internal/iam/app/application.go`
-- [ ] T047 [P] [US2] Role command handlers (`CreateRole`, `UpdateRole`, `DeleteRole`, `AssignRole`, `AssignListRole`, `RevokeRole`) in `internal/iam/app/command/`
-- [ ] T048 [P] [US2] Workspace-session command handlers (`OpenWorkspaceSession`, `CloseSession`) in `internal/iam/app/command/`
-- [ ] T049 [P] [US2] Query handlers (`AuthenticatePrincipal` resolving session → `Principal`, `Authorize`, `ListRoles`) in `internal/iam/app/query/`
-- [ ] T050 [US2] Application handler unit tests with in-memory fakes in `internal/iam/app/**/*_test.go`
+- [X] T046 [US2] `Application` struct in `internal/iam/app/application.go`
+- [X] T047 [P] [US2] Role command handlers (`CreateRole`, `UpdateRole`, `DeleteRole`, `AssignRole`, `AssignListRole`, `RevokeRole`) in `internal/iam/app/command/`
+- [X] T048 [P] [US2] Workspace-session command handlers (`OpenWorkspaceSession`, `CloseSession`) in `internal/iam/app/command/`
+- [X] T049 [P] [US2] Query handlers (`AuthenticatePrincipal` resolving session → `Principal`, `Authorize`, `ListRoles`) in `internal/iam/app/query/`
+- [X] T050 [US2] Application handler unit tests with in-memory fakes in `internal/iam/app/**/*_test.go`
 
 ### Membership integration
 
-- [ ] T051 [US2] Extend the Phase 1 tenant flows (`internal/tenant/app/command/` create-workspace and accept-invitation) to provision a tenant-plane `users` row and assign a bootstrap **Owner** role on first membership
+- [X] T051 [US2] Extend the Phase 1 tenant flows (`internal/tenant/app/command/` create-workspace and accept-invitation) to provision a tenant-plane `users` row and assign a bootstrap **Owner** role on first membership
 
 ### Transport & enforcement for User Story 2
 
-- [ ] T052 [US2] `authz` middleware in `internal/api/authz_middleware.go` — resolve the tenant-plane session into a `Principal` and attach it to the request context
-- [ ] T053 [US2] Role-management & workspace-session HTTP handlers in `internal/api/iam_handlers.go` per `contracts/http-api.md`
-- [ ] T054 [US2] Mount iam routes + the `authz` middleware in `internal/api/server.go`; wire the iam application into `internal/service/application.go`
-- [ ] T055 [US2] Add permission enforcement (`Principal.Can` / `CanOnList`) to the start of every guarded audience handler/command from US1 and every iam handler, returning `apperr.Forbidden`
-- [ ] T056 [US2] Write `audit_log` records for role creation/update/delete and role assignment/revocation (via an `AuditRepository`/recorder in `internal/iam/adapters/audit_pg.go`)
+- [X] T052 [US2] `authz` middleware in `internal/api/authz_middleware.go` — resolve the tenant-plane session into a `Principal` and attach it to the request context
+- [X] T053 [US2] Role-management & workspace-session HTTP handlers in `internal/api/iam_handlers.go` per `contracts/http-api.md`
+- [X] T054 [US2] Mount iam routes + the `authz` middleware in `internal/api/server.go`; wire the iam application into `internal/service/application.go`
+- [X] T055 [US2] Add permission enforcement (`Principal.Can` / `CanOnList`) to the start of every guarded audience handler/command from US1 and every iam handler, returning `apperr.Forbidden`
+- [X] T056 [US2] Write `audit_log` records for role creation/update/delete and role assignment/revocation (via an `AuditRepository`/recorder in `internal/iam/adapters/audit_pg.go`)
 
 ### Tests for User Story 2
 
-- [ ] T057 [US2] RBAC allow-path and deny-path endpoint tests, incl. tenant-level vs. per-list scoping and permission-change-takes-effect, in `internal/api/iam_handlers_test.go`
-- [ ] T058 [US2] Extend `test/isolation_test.go` for `users`, `sessions`, `roles`, `user_roles`, `user_list_roles`, `audit_log`
+- [X] T057 [US2] RBAC allow-path and deny-path endpoint tests, incl. tenant-level vs. per-list scoping and permission-change-takes-effect, in `internal/api/iam_handlers_test.go`
+- [X] T058 [US2] Extend `test/isolation_test.go` for `users`, `sessions`, `roles`, `user_roles`, `user_list_roles`, `audit_log`
 
 **Checkpoint**: US1 and US2 both work independently; access gates enforced.
 
@@ -194,39 +194,39 @@ created/updated/skipped counts; export a list and confirm the CSV contents.
 
 ### Job infrastructure
 
-- [ ] T059 [US3] Create `internal/platform/jobs/jobs.go` — River client construction, a `JobEnqueuer`, and worker-registration helpers with per-tenant fairness config
-- [ ] T060 [US3] Wire River's migrator into `cmd/migrate/main.go` so `migrate up` also installs the queue tables; confirm clean apply/revert
-- [ ] T061 [US3] Create migration `internal/db/migrations/000007_import_export_jobs.{up,down}.sql` — `import_export_jobs` (status, counts, `params jsonb`, staged `file_bytes bytea`, `failures jsonb`), tenant-plane with RLS and grants
+- [X] T059 [US3] Create `internal/platform/jobs/jobs.go` — River client construction, a `JobEnqueuer`, and worker-registration helpers with per-tenant fairness config
+- [X] T060 [US3] Wire River's migrator into `cmd/migrate/main.go` so `migrate up` also installs the queue tables; confirm clean apply/revert
+- [X] T061 [US3] Create migration `internal/db/migrations/000007_import_export_jobs.{up,down}.sql` — `import_export_jobs` (status, counts, `params jsonb`, staged `file_bytes bytea`, `failures jsonb`), tenant-plane with RLS and grants
 
 ### Domain for User Story 3
 
-- [ ] T062 [P] [US3] `ImportJob` entity (status machine + counts) in `internal/audience/domain/importjob.go`
-- [ ] T063 [P] [US3] `ExportJob` entity in `internal/audience/domain/exportjob.go`
-- [ ] T064 [US3] Add `JobRepository` to `internal/audience/domain/repository.go` and a `JobEnqueuer` interface in `internal/audience/app/`
-- [ ] T065 [P] [US3] Domain unit tests for job state transitions in `internal/audience/domain/*job_test.go`
+- [X] T062 [P] [US3] `ImportJob` entity (status machine + counts) in `internal/audience/domain/importjob.go`
+- [X] T063 [P] [US3] `ExportJob` entity in `internal/audience/domain/exportjob.go`
+- [X] T064 [US3] Add `JobRepository` to `internal/audience/domain/repository.go` and a `JobEnqueuer` interface in `internal/audience/app/`
+- [X] T065 [P] [US3] Domain unit tests for job state transitions in `internal/audience/domain/*job_test.go`
 
 ### Adapters for User Story 3
 
-- [ ] T066 [P] [US3] CSV/ZIP codec (decode upload, encode export, reserved-header mapping) in `internal/audience/adapters/csv_codec.go`
-- [ ] T067 [P] [US3] `JobRepository` pgx implementation incl. staged-file read/write in `internal/audience/adapters/jobs_pg.go`
-- [ ] T068 [US3] Import River worker (stream staged file, upsert by email, skip invalid rows, record counts) in `internal/audience/adapters/import_worker.go`
-- [ ] T069 [US3] Export River worker (build CSV for `all`/`by-list`, stage result) in `internal/audience/adapters/export_worker.go`
-- [ ] T070 [US3] Adapter tests: codec unit tests; job repository + import/export workers integration-tested against a real DB **and a real River queue** in `internal/audience/adapters/*_test.go`
+- [X] T066 [P] [US3] CSV/ZIP codec (decode upload, encode export, reserved-header mapping) in `internal/audience/adapters/csv_codec.go`
+- [X] T067 [P] [US3] `JobRepository` pgx implementation incl. staged-file read/write in `internal/audience/adapters/jobs_pg.go`
+- [X] T068 [US3] Import River worker (stream staged file, upsert by email, skip invalid rows, record counts) in `internal/audience/adapters/import_worker.go`
+- [X] T069 [US3] Export River worker (build CSV for `all`/`by-list`, stage result) in `internal/audience/adapters/export_worker.go`
+- [X] T070 [US3] Adapter tests: codec unit tests; job repository + import/export workers integration-tested against a real DB **and a real River queue** in `internal/audience/adapters/*_test.go`
 
 ### Application for User Story 3
 
-- [ ] T071 [P] [US3] `StartImport` / `StartExport` command handlers (stage file, enqueue job) in `internal/audience/app/command/`
-- [ ] T072 [P] [US3] `GetJobStatus` query handler in `internal/audience/app/query/`
-- [ ] T073 [US3] Application handler unit tests in `internal/audience/app/**/*_test.go`
+- [X] T071 [P] [US3] `StartImport` / `StartExport` command handlers (stage file, enqueue job) in `internal/audience/app/command/`
+- [X] T072 [P] [US3] `GetJobStatus` query handler in `internal/audience/app/query/`
+- [X] T073 [US3] Application handler unit tests in `internal/audience/app/**/*_test.go`
 
 ### Transport & wiring for User Story 3
 
-- [ ] T074 [US3] Import/export/job HTTP handlers (multipart upload, 202 Accepted, status, download) in `internal/api/audience_handlers.go`
-- [ ] T075 [US3] Register the import & export River workers in `cmd/worker/main.go` (replacing the idle scaffold) and wire the River client through `internal/service/application.go`
+- [X] T074 [US3] Import/export/job HTTP handlers (multipart upload, 202 Accepted, status, download) in `internal/api/audience_handlers.go`
+- [X] T075 [US3] Register the import & export River workers in `cmd/worker/main.go` (replacing the idle scaffold) and wire the River client through `internal/service/application.go`
 
 ### Tests for User Story 3
 
-- [ ] T076 [US3] Endpoint/component tests: import a CSV and a ZIP-wrapped CSV with new+existing+invalid rows; export a list; verify counts and downloaded contents — in `internal/api/audience_handlers_test.go`
+- [X] T076 [US3] Endpoint/component tests: import a CSV and a ZIP-wrapped CSV with new+existing+invalid rows; export a list; verify counts and downloaded contents — in `internal/api/audience_handlers_test.go`
 
 **Checkpoint**: US1–US3 work independently; bulk import/export runs on the queue.
 

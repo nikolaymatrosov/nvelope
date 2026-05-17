@@ -18,6 +18,8 @@ func statusForCategory(c apperr.Category) int {
 		return http.StatusNotFound
 	case apperr.Authorization:
 		return http.StatusUnauthorized
+	case apperr.Forbidden:
+		return http.StatusForbidden
 	default:
 		return http.StatusInternalServerError
 	}

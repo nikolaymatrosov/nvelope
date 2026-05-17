@@ -39,7 +39,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPAddr,
-		Handler: api.New(app.Auth, app.Tenant, cfg, logger, healthHandler).Handler(),
+		Handler: api.New(app.Auth, app.Tenant, app.Audience, app.IAM, cfg, logger, healthHandler).Handler(),
 	}
 
 	runner := service.RunnerFunc(func(ctx context.Context) error {

@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -47,6 +48,16 @@ type Config struct {
 	// BaseURL is the externally reachable base URL, used to build invitation
 	// acceptance links.
 	BaseURL string
+	// TOTPEncryptionKey is the symmetric key used to encrypt TOTP shared
+	// secrets at rest. It must be a 32-byte key, hex-encoded (64 hex chars).
+	// Required — Load fails fast when it is missing or malformed. Secret —
+	// never log this value.
+	TOTPEncryptionKey string
+	// WorkerQueue is the River queue name the import/export workers consume.
+	WorkerQueue string
+	// WorkerTenantConcurrency bounds how many jobs a single tenant may run
+	// concurrently, so one tenant's large import cannot starve another's.
+	WorkerTenantConcurrency int
 }
 
 // Load reads configuration from the environment, optionally layered over the
@@ -69,11 +80,14 @@ func Load(envFilePath string) (Config, error) {
 	}
 
 	cfg := Config{
-		DatabaseURL:        k.String(envPrefix + "DATABASE_URL"),
-		MigrateDatabaseURL: k.String(envPrefix + "MIGRATE_DATABASE_URL"),
-		LogLevel:           k.String(envPrefix + "LOG_LEVEL"),
-		HTTPAddr:           k.String(envPrefix + "HTTP_ADDR"),
-		BaseURL:            k.String(envPrefix + "BASE_URL"),
+		DatabaseURL:             k.String(envPrefix + "DATABASE_URL"),
+		MigrateDatabaseURL:      k.String(envPrefix + "MIGRATE_DATABASE_URL"),
+		LogLevel:                k.String(envPrefix + "LOG_LEVEL"),
+		HTTPAddr:                k.String(envPrefix + "HTTP_ADDR"),
+		BaseURL:                 k.String(envPrefix + "BASE_URL"),
+		TOTPEncryptionKey:       k.String(envPrefix + "TOTP_ENCRYPTION_KEY"),
+		WorkerQueue:             k.String(envPrefix + "WORKER_QUEUE"),
+		WorkerTenantConcurrency: k.Int(envPrefix + "WORKER_TENANT_CONCURRENCY"),
 	}
 
 	for _, d := range []struct {
@@ -125,6 +139,12 @@ func (c *Config) applyDefaults() {
 	if c.BaseURL == "" {
 		c.BaseURL = "http://localhost:8080"
 	}
+	if c.WorkerQueue == "" {
+		c.WorkerQueue = "import_export"
+	}
+	if c.WorkerTenantConcurrency == 0 {
+		c.WorkerTenantConcurrency = 2
+	}
 }
 
 // Validate reports whether the configuration is usable. The returned error,
@@ -145,6 +165,14 @@ func (c Config) Validate() error {
 	}
 	if c.InviteTTL <= 0 {
 		errs = append(errs, errors.New("NVELOPE_INVITE_TTL must be a positive duration"))
+	}
+	if c.TOTPEncryptionKey == "" {
+		errs = append(errs, errors.New("NVELOPE_TOTP_ENCRYPTION_KEY is required"))
+	} else if decoded, err := hex.DecodeString(c.TOTPEncryptionKey); err != nil || len(decoded) != 32 {
+		errs = append(errs, errors.New("NVELOPE_TOTP_ENCRYPTION_KEY must be a 32-byte key, hex-encoded (64 hex characters)"))
+	}
+	if c.WorkerTenantConcurrency <= 0 {
+		errs = append(errs, errors.New("NVELOPE_WORKER_TENANT_CONCURRENCY must be a positive integer"))
 	}
 	return errors.Join(errs...)
 }
