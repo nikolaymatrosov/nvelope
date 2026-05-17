@@ -88,7 +88,7 @@ func (r *Jobs) AddExport(ctx context.Context, tenantID string, j *domain.ExportJ
 // importRow is the scanned shape of an import job row.
 type jobRow struct {
 	id, kind, requestedBy, status, fileName string
-	params, failures                       []byte
+	params, failures                        []byte
 	created, updated, failed, rowCount      int
 	createdAt                               time.Time
 	startedAt, finishedAt                   *time.Time

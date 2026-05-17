@@ -115,4 +115,4 @@ func (f *fakeSessions) RevokeByTokenHash(_ context.Context, tokenHash string) er
 type stubHasher struct{}
 
 func (stubHasher) Hash(plaintext string) (string, error) { return "hash:" + plaintext, nil }
-func (stubHasher) Verify(hash, plaintext string) bool     { return hash == "hash:"+plaintext }
+func (stubHasher) Verify(hash, plaintext string) bool    { return hash == "hash:"+plaintext }

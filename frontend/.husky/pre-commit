@@ -1,0 +1,11 @@
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+if echo "$staged" | grep -q '\.go$'; then
+	echo "[pre-commit] backend lint (golangci-lint)..."
+	golangci-lint run || exit 1
+fi
+
+if echo "$staged" | grep -qE '^frontend/.*\.(ts|tsx|js|jsx)$'; then
+	echo "[pre-commit] frontend lint (eslint)..."
+	(cd frontend && pnpm lint) || exit 1
+fi

@@ -12,10 +12,6 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 )
 
-// reservedHeaders are the CSV column names that map to subscriber fields
-// rather than to custom attributes.
-var reservedHeaders = map[string]bool{"email": true, "name": true, "state": true}
-
 // ImportRow is one decoded CSV row destined for a subscriber upsert.
 type ImportRow struct {
 	LineNum    int

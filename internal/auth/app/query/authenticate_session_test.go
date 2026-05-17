@@ -17,7 +17,7 @@ type fakeSessions struct {
 }
 
 func (f fakeSessions) Issue(context.Context, *domain.Session, string) error { return nil }
-func (f fakeSessions) RevokeByTokenHash(context.Context, string) error       { return nil }
+func (f fakeSessions) RevokeByTokenHash(context.Context, string) error      { return nil }
 func (f fakeSessions) ResolveByTokenHash(_ context.Context, h string) (*domain.Session, error) {
 	if s, ok := f.byHash[h]; ok {
 		return s, nil

@@ -55,8 +55,8 @@ func (s *Server) handleStartExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Selection string             `json:"selection"`
-		ListID    string             `json:"list_id"`
+		Selection string               `json:"selection"`
+		ListID    string               `json:"list_id"`
 		Segment   *audiencedomain.Node `json:"segment"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
