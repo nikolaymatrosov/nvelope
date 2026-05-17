@@ -6,24 +6,8 @@ on:
 
 jobs:
   backend:
-    name: Backend (build · test · lint · migrate)
+    name: Backend (build · test · lint)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: nvelope
-          POSTGRES_PASSWORD: nvelope
-          POSTGRES_DB: nvelope
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U nvelope -d nvelope"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      NVELOPE_DATABASE_URL: postgres://nvelope:nvelope@localhost:5432/nvelope?sslmode=disable
     steps:
       - uses: actions/checkout@v4
 
@@ -43,9 +27,6 @@ jobs:
           go install github.com/roblaszczak/go-cleanarch@latest
           export PATH="$PATH:$(go env GOPATH)/bin"
           make lint-arch
-
-      - name: Migrate (baseline applies cleanly)
-        run: go run ./cmd/migrate up
 
       - name: Lint
         uses: golangci/golangci-lint-action@v8

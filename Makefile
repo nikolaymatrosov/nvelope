@@ -1,5 +1,5 @@
-.PHONY: build run-api run-worker run-scheduler test lint lint-arch verify tidy \
-        migrate-up migrate-down migrate-version migrate-create
+.PHONY: build run-api run-worker run-scheduler test test-db-clean lint lint-arch \
+        verify tidy migrate-up migrate-down migrate-version migrate-create
 
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -29,6 +29,11 @@ run-scheduler:
 
 test:
 	$(GO) test ./...
+
+# Integration tests reuse a single testcontainers-managed Postgres container
+# that persists between runs for speed. test-db-clean removes it.
+test-db-clean:
+	docker rm -f nvelope-test-pg
 
 lint:
 	golangci-lint run

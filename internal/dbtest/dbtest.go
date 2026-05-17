@@ -1,7 +1,8 @@
 // Package dbtest provides shared helpers for integration tests that need a
-// real PostgreSQL database. Tests calling these helpers are skipped when no
-// database DSN is configured, so a database-less run still passes the unit
-// suite.
+// real PostgreSQL database. By default the helpers start (or reuse) a Postgres
+// container via testcontainers-go, so a Docker daemon must be available.
+// Setting NVELOPE_MIGRATE_DATABASE_URL or NVELOPE_DATABASE_URL points the suite
+// at an external database instead.
 package dbtest
 
 import (
@@ -10,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/url"
-	"os"
 	"testing"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -31,18 +31,15 @@ func RandString() string {
 	return hex.EncodeToString(b)
 }
 
-// AdminDSN returns the privileged PostgreSQL DSN used to run migrations,
-// preferring NVELOPE_MIGRATE_DATABASE_URL and falling back to
-// NVELOPE_DATABASE_URL. The test is skipped when neither is set.
+// AdminDSN returns the privileged PostgreSQL DSN used to run migrations. It
+// resolves to a testcontainers-managed Postgres container, or to the database
+// named by NVELOPE_MIGRATE_DATABASE_URL / NVELOPE_DATABASE_URL when either is
+// set. The test fails when no database can be obtained (for example when Docker
+// is not running).
 func AdminDSN(t *testing.T) string {
 	t.Helper()
-	dsn := os.Getenv("NVELOPE_MIGRATE_DATABASE_URL")
-	if dsn == "" {
-		dsn = os.Getenv("NVELOPE_DATABASE_URL")
-	}
-	if dsn == "" {
-		t.Skip("no database DSN configured; skipping integration test")
-	}
+	dsn, err := adminDSN()
+	require.NoError(t, err)
 	return dsn
 }
 
@@ -57,28 +54,37 @@ func AppDSN(t *testing.T) string {
 	return u.String()
 }
 
-// EnsureMigrated applies every pending migration to the admin database. It is
-// idempotent — safe to call from every integration test.
+// EnsureMigrated applies every pending migration to the shared admin database.
+// Migrations run only once per test binary; subsequent calls are no-ops, so it
+// is safe to call from every integration test.
 func EnsureMigrated(t *testing.T) {
 	t.Helper()
-	ApplyMigrations(t, AdminDSN(t))
+	require.NoError(t, ensureMigratedOnce(AdminDSN(t)))
 }
 
-// ApplyMigrations applies every pending migration to the database at dsn.
+// ApplyMigrations applies every pending migration to the database at dsn. Use
+// it for one-off databases such as those from ScratchDatabaseDSN; for the
+// shared test database prefer EnsureMigrated.
 func ApplyMigrations(t *testing.T, dsn string) {
 	t.Helper()
+	require.NoError(t, applyMigrations(dsn))
+}
+
+// applyMigrations applies every pending migration to the database at dsn.
+func applyMigrations(dsn string) error {
 	src, err := iofs.New(db.MigrationsFS, "migrations")
-	require.NoError(t, err)
-	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
-	require.NoError(t, err)
-	defer func() {
-		srcErr, dbErr := m.Close()
-		require.NoError(t, srcErr)
-		require.NoError(t, dbErr)
-	}()
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		require.NoError(t, err)
+	if err != nil {
+		return err
 	}
+	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
+	}
+	return nil
 }
 
 // AdminPool returns a connection pool for the privileged role, with the schema
