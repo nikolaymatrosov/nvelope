@@ -58,6 +58,48 @@ type Config struct {
 	// WorkerTenantConcurrency bounds how many jobs a single tenant may run
 	// concurrently, so one tenant's large import cannot starve another's.
 	WorkerTenantConcurrency int
+	// WorkerSendQueue is the River queue name the campaign/domain send workers
+	// consume, kept separate from WorkerQueue so a large campaign cannot starve
+	// bulk imports.
+	WorkerSendQueue string
+
+	// RedisURL is the Redis DSN for cross-pod sliding-window rate-limit
+	// counters. Required. Secret — never log this value.
+	RedisURL string
+
+	// PostboxRegion is the region used to sign requests to the Postbox
+	// SES-compatible API.
+	PostboxRegion string
+	// PostboxEndpoint is the base URL of the Postbox SES-compatible API.
+	PostboxEndpoint string
+	// PostboxAccessKeyID is the access key for the Postbox API. Required.
+	// Secret — never log this value.
+	PostboxAccessKeyID string
+	// PostboxSecretAccessKey is the secret key for the Postbox API. Required.
+	// Secret — never log this value.
+	PostboxSecretAccessKey string
+
+	// GlobalSendRateLimit is the platform-wide cap on sends per
+	// GlobalSendRateWindow, protecting the shared Postbox account.
+	GlobalSendRateLimit int
+	// GlobalSendRateWindow is the sliding window for GlobalSendRateLimit.
+	GlobalSendRateWindow time.Duration
+	// DefaultTenantSendRateLimit is the per-tenant send cap applied until
+	// plan-derived limits exist (Phase 5).
+	DefaultTenantSendRateLimit int
+	// DefaultTenantSendRateWindow is the sliding window for the per-tenant cap.
+	DefaultTenantSendRateWindow time.Duration
+
+	// SendingDomainVerifyInterval is how often a pending sending domain is
+	// re-checked.
+	SendingDomainVerifyInterval time.Duration
+	// SendingDomainVerifyWindow bounds how long a domain may stay pending
+	// before it is marked failed.
+	SendingDomainVerifyWindow time.Duration
+
+	// CampaignBatchSize is the number of recipients processed per
+	// campaign.batch job.
+	CampaignBatchSize int
 }
 
 // Load reads configuration from the environment, optionally layered over the
@@ -88,6 +130,19 @@ func Load(envFilePath string) (Config, error) {
 		TOTPEncryptionKey:       k.String(envPrefix + "TOTP_ENCRYPTION_KEY"),
 		WorkerQueue:             k.String(envPrefix + "WORKER_QUEUE"),
 		WorkerTenantConcurrency: k.Int(envPrefix + "WORKER_TENANT_CONCURRENCY"),
+		WorkerSendQueue:         k.String(envPrefix + "WORKER_SEND_QUEUE"),
+
+		RedisURL: k.String(envPrefix + "REDIS_URL"),
+
+		PostboxRegion:          k.String(envPrefix + "POSTBOX_REGION"),
+		PostboxEndpoint:        k.String(envPrefix + "POSTBOX_ENDPOINT"),
+		PostboxAccessKeyID:     k.String(envPrefix + "POSTBOX_ACCESS_KEY_ID"),
+		PostboxSecretAccessKey: k.String(envPrefix + "POSTBOX_SECRET_ACCESS_KEY"),
+
+		GlobalSendRateLimit:        k.Int(envPrefix + "GLOBAL_SEND_RATE_LIMIT"),
+		DefaultTenantSendRateLimit: k.Int(envPrefix + "DEFAULT_TENANT_SEND_RATE_LIMIT"),
+
+		CampaignBatchSize: k.Int(envPrefix + "CAMPAIGN_BATCH_SIZE"),
 	}
 
 	for _, d := range []struct {
@@ -97,6 +152,10 @@ func Load(envFilePath string) (Config, error) {
 		{"SHUTDOWN_TIMEOUT", &cfg.ShutdownTimeout},
 		{"SESSION_TTL", &cfg.SessionTTL},
 		{"INVITE_TTL", &cfg.InviteTTL},
+		{"GLOBAL_SEND_RATE_WINDOW", &cfg.GlobalSendRateWindow},
+		{"DEFAULT_TENANT_SEND_RATE_WINDOW", &cfg.DefaultTenantSendRateWindow},
+		{"SENDING_DOMAIN_VERIFY_INTERVAL", &cfg.SendingDomainVerifyInterval},
+		{"SENDING_DOMAIN_VERIFY_WINDOW", &cfg.SendingDomainVerifyWindow},
 	} {
 		raw := k.String(envPrefix + d.name)
 		if raw == "" {
@@ -145,6 +204,36 @@ func (c *Config) applyDefaults() {
 	if c.WorkerTenantConcurrency == 0 {
 		c.WorkerTenantConcurrency = 2
 	}
+	if c.WorkerSendQueue == "" {
+		c.WorkerSendQueue = "sending"
+	}
+	if c.PostboxRegion == "" {
+		c.PostboxRegion = "ru-central1"
+	}
+	if c.PostboxEndpoint == "" {
+		c.PostboxEndpoint = "https://postbox.cloud.yandex.net"
+	}
+	if c.GlobalSendRateLimit == 0 {
+		c.GlobalSendRateLimit = 500
+	}
+	if c.GlobalSendRateWindow == 0 {
+		c.GlobalSendRateWindow = time.Second
+	}
+	if c.DefaultTenantSendRateLimit == 0 {
+		c.DefaultTenantSendRateLimit = 50
+	}
+	if c.DefaultTenantSendRateWindow == 0 {
+		c.DefaultTenantSendRateWindow = time.Second
+	}
+	if c.SendingDomainVerifyInterval == 0 {
+		c.SendingDomainVerifyInterval = 15 * time.Minute
+	}
+	if c.SendingDomainVerifyWindow == 0 {
+		c.SendingDomainVerifyWindow = 72 * time.Hour
+	}
+	if c.CampaignBatchSize == 0 {
+		c.CampaignBatchSize = 500
+	}
 }
 
 // Validate reports whether the configuration is usable. The returned error,
@@ -173,6 +262,36 @@ func (c Config) Validate() error {
 	}
 	if c.WorkerTenantConcurrency <= 0 {
 		errs = append(errs, errors.New("NVELOPE_WORKER_TENANT_CONCURRENCY must be a positive integer"))
+	}
+	if c.RedisURL == "" {
+		errs = append(errs, errors.New("NVELOPE_REDIS_URL is required"))
+	}
+	if c.PostboxAccessKeyID == "" {
+		errs = append(errs, errors.New("NVELOPE_POSTBOX_ACCESS_KEY_ID is required"))
+	}
+	if c.PostboxSecretAccessKey == "" {
+		errs = append(errs, errors.New("NVELOPE_POSTBOX_SECRET_ACCESS_KEY is required"))
+	}
+	if c.GlobalSendRateLimit <= 0 {
+		errs = append(errs, errors.New("NVELOPE_GLOBAL_SEND_RATE_LIMIT must be a positive integer"))
+	}
+	if c.GlobalSendRateWindow <= 0 {
+		errs = append(errs, errors.New("NVELOPE_GLOBAL_SEND_RATE_WINDOW must be a positive duration"))
+	}
+	if c.DefaultTenantSendRateLimit <= 0 {
+		errs = append(errs, errors.New("NVELOPE_DEFAULT_TENANT_SEND_RATE_LIMIT must be a positive integer"))
+	}
+	if c.DefaultTenantSendRateWindow <= 0 {
+		errs = append(errs, errors.New("NVELOPE_DEFAULT_TENANT_SEND_RATE_WINDOW must be a positive duration"))
+	}
+	if c.SendingDomainVerifyInterval <= 0 {
+		errs = append(errs, errors.New("NVELOPE_SENDING_DOMAIN_VERIFY_INTERVAL must be a positive duration"))
+	}
+	if c.SendingDomainVerifyWindow <= 0 {
+		errs = append(errs, errors.New("NVELOPE_SENDING_DOMAIN_VERIFY_WINDOW must be a positive duration"))
+	}
+	if c.CampaignBatchSize <= 0 {
+		errs = append(errs, errors.New("NVELOPE_CAMPAIGN_BATCH_SIZE must be a positive integer"))
 	}
 	return errors.Join(errs...)
 }

@@ -16,6 +16,15 @@ const testMigrateDSN = "postgres://nvelope:s3cr3t@localhost:5432/nvelope?sslmode
 // NVELOPE_TOTP_ENCRYPTION_KEY.
 const testTOTPKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+// setPhase3Env sets the Phase 3 required variables (Redis + Postbox
+// credentials) so a success-path Load can validate without error.
+func setPhase3Env(t *testing.T) {
+	t.Helper()
+	t.Setenv("NVELOPE_REDIS_URL", "redis://localhost:6379/0")
+	t.Setenv("NVELOPE_POSTBOX_ACCESS_KEY_ID", "test-access-key")
+	t.Setenv("NVELOPE_POSTBOX_SECRET_ACCESS_KEY", "test-secret-key")
+}
+
 func TestLoadValidConfig(t *testing.T) {
 	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
 	t.Setenv("NVELOPE_MIGRATE_DATABASE_URL", testMigrateDSN)
@@ -26,6 +35,7 @@ func TestLoadValidConfig(t *testing.T) {
 	t.Setenv("NVELOPE_INVITE_TTL", "72h")
 	t.Setenv("NVELOPE_BASE_URL", "https://app.example.com")
 	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	setPhase3Env(t)
 
 	cfg, err := Load("")
 	require.NoError(t, err)
@@ -37,11 +47,14 @@ func TestLoadValidConfig(t *testing.T) {
 	require.Equal(t, 48*time.Hour, cfg.SessionTTL)
 	require.Equal(t, 72*time.Hour, cfg.InviteTTL)
 	require.Equal(t, "https://app.example.com", cfg.BaseURL)
+	require.Equal(t, "redis://localhost:6379/0", cfg.RedisURL)
+	require.Equal(t, "test-access-key", cfg.PostboxAccessKeyID)
 }
 
 func TestLoadAppliesDefaults(t *testing.T) {
 	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
 	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	setPhase3Env(t)
 
 	cfg, err := Load("")
 	require.NoError(t, err)
@@ -53,12 +66,23 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	require.Equal(t, "http://localhost:8080", cfg.BaseURL)
 	require.Equal(t, "import_export", cfg.WorkerQueue)
 	require.Equal(t, 2, cfg.WorkerTenantConcurrency)
+	require.Equal(t, "sending", cfg.WorkerSendQueue)
+	require.Equal(t, "ru-central1", cfg.PostboxRegion)
+	require.Equal(t, "https://postbox.cloud.yandex.net", cfg.PostboxEndpoint)
+	require.Equal(t, 500, cfg.GlobalSendRateLimit)
+	require.Equal(t, time.Second, cfg.GlobalSendRateWindow)
+	require.Equal(t, 50, cfg.DefaultTenantSendRateLimit)
+	require.Equal(t, time.Second, cfg.DefaultTenantSendRateWindow)
+	require.Equal(t, 15*time.Minute, cfg.SendingDomainVerifyInterval)
+	require.Equal(t, 72*time.Hour, cfg.SendingDomainVerifyWindow)
+	require.Equal(t, 500, cfg.CampaignBatchSize)
 }
 
 func TestMigrateDatabaseURLFallsBackToDatabaseURL(t *testing.T) {
 	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
 	t.Setenv("NVELOPE_MIGRATE_DATABASE_URL", "")
 	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	setPhase3Env(t)
 
 	cfg, err := Load("")
 	require.NoError(t, err)

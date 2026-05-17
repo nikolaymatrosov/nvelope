@@ -35,6 +35,38 @@ type ExportArgs struct {
 // Kind is the stable River job kind for an export.
 func (ExportArgs) Kind() string { return "audience.export" }
 
+// DomainVerifyArgs is the River job payload for a sending-domain verification
+// poll. It carries only identifiers — the domain row lives in PostgreSQL.
+type DomainVerifyArgs struct {
+	TenantID string `json:"tenant_id"`
+	DomainID string `json:"domain_id"`
+}
+
+// Kind is the stable River job kind for a domain verification poll.
+func (DomainVerifyArgs) Kind() string { return "domain.verify" }
+
+// CampaignStartArgs is the River job payload for the start of a campaign send:
+// it resolves recipients, deduplicates them, and fans out campaign.batch jobs.
+type CampaignStartArgs struct {
+	TenantID   string `json:"tenant_id"`
+	CampaignID string `json:"campaign_id"`
+}
+
+// Kind is the stable River job kind for a campaign start.
+func (CampaignStartArgs) Kind() string { return "campaign.start" }
+
+// CampaignBatchArgs is the River job payload for sending one bounded slice of a
+// campaign's recipients.
+type CampaignBatchArgs struct {
+	TenantID   string `json:"tenant_id"`
+	CampaignID string `json:"campaign_id"`
+	Offset     int    `json:"offset"`
+	Limit      int    `json:"limit"`
+}
+
+// Kind is the stable River job kind for a campaign batch.
+func (CampaignBatchArgs) Kind() string { return "campaign.batch" }
+
 // Migrate installs (or updates) River's own queue tables. It is invoked from
 // cmd/migrate after the application migrations so `migrate up` provisions the
 // whole schema.
@@ -105,6 +137,84 @@ func (e *Enqueuer) EnqueueExport(ctx context.Context, tenantID, jobID string) er
 		&river.InsertOpts{Queue: e.queue})
 	if err != nil {
 		return fmt.Errorf("enqueuing export job: %w", err)
+	}
+	return nil
+}
+
+// NewSendWorkerClient builds a River client that consumes the sending queue —
+// the campaign and domain-verification workers. perTenantConcurrency bounds how
+// many jobs run concurrently so one tenant's large campaign cannot starve
+// another's.
+func NewSendWorkerClient(pool *pgxpool.Pool, queue string, perTenantConcurrency int,
+	workers *river.Workers) (*river.Client[pgx.Tx], error) {
+
+	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
+		Queues: map[string]river.QueueConfig{
+			queue: {MaxWorkers: perTenantConcurrency},
+		},
+		Workers: workers,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building river send worker client: %w", err)
+	}
+	return client, nil
+}
+
+// SendEnqueuer enqueues sending-pipeline jobs — domain verification, campaign
+// start, and campaign batches — onto the dedicated send queue. It is the
+// implementation behind the sending and campaign apps' enqueuer interfaces.
+type SendEnqueuer struct {
+	client *river.Client[pgx.Tx]
+	queue  string
+}
+
+// NewSendEnqueuer builds a SendEnqueuer over a River client.
+func NewSendEnqueuer(client *river.Client[pgx.Tx], queue string) *SendEnqueuer {
+	return &SendEnqueuer{client: client, queue: queue}
+}
+
+// EnqueueVerify enqueues a sending-domain verification poll.
+func (e *SendEnqueuer) EnqueueVerify(ctx context.Context, tenantID, domainID string) error {
+	_, err := e.client.Insert(ctx, DomainVerifyArgs{TenantID: tenantID, DomainID: domainID},
+		&river.InsertOpts{Queue: e.queue})
+	if err != nil {
+		return fmt.Errorf("enqueuing domain verify job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueVerifyUnique enqueues a verification poll only when no job for the
+// same domain is already pending — the recovery sweep the scheduler runs.
+func (e *SendEnqueuer) EnqueueVerifyUnique(ctx context.Context, tenantID, domainID string) error {
+	_, err := e.client.Insert(ctx, DomainVerifyArgs{TenantID: tenantID, DomainID: domainID},
+		&river.InsertOpts{
+			Queue:      e.queue,
+			UniqueOpts: river.UniqueOpts{ByArgs: true},
+		})
+	if err != nil {
+		return fmt.Errorf("enqueuing unique domain verify job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueStart enqueues the start of a campaign send.
+func (e *SendEnqueuer) EnqueueStart(ctx context.Context, tenantID, campaignID string) error {
+	_, err := e.client.Insert(ctx, CampaignStartArgs{TenantID: tenantID, CampaignID: campaignID},
+		&river.InsertOpts{Queue: e.queue})
+	if err != nil {
+		return fmt.Errorf("enqueuing campaign start job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueBatch enqueues one campaign batch covering the recipient slice
+// [offset, offset+limit).
+func (e *SendEnqueuer) EnqueueBatch(ctx context.Context, tenantID, campaignID string, offset, limit int) error {
+	_, err := e.client.Insert(ctx, CampaignBatchArgs{
+		TenantID: tenantID, CampaignID: campaignID, Offset: offset, Limit: limit,
+	}, &river.InsertOpts{Queue: e.queue})
+	if err != nil {
+		return fmt.Errorf("enqueuing campaign batch job: %w", err)
 	}
 	return nil
 }
