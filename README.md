@@ -20,7 +20,7 @@ later phase adds, and [`docs/architecture.md`](docs/architecture.md) for the des
 
 ## Layout
 
-```
+```text
 cmd/{api,worker,scheduler}   the three backend services
 cmd/migrate                  database migration CLI
 internal/                    shared packages (config, logging, service, db, health)

@@ -25,11 +25,19 @@ type Commands struct {
 	RevokeRole           decorator.CommandHandler[command.RevokeRole]
 	OpenWorkspaceSession decorator.ResultCommandHandler[command.OpenWorkspaceSession, command.OpenWorkspaceSessionResult]
 	CloseSession         decorator.CommandHandler[command.CloseSession]
+	IssueAPIKey          decorator.ResultCommandHandler[command.IssueAPIKey, command.IssueAPIKeyResult]
+	RevokeAPIKey         decorator.CommandHandler[command.RevokeAPIKey]
+	EnableTOTP           decorator.ResultCommandHandler[command.EnableTOTP, command.EnableTOTPResult]
+	ConfirmTOTP          decorator.ResultCommandHandler[command.ConfirmTOTP, command.ConfirmTOTPResult]
+	DisableTOTP          decorator.CommandHandler[command.DisableTOTP]
+	VerifyTOTPChallenge  decorator.CommandHandler[command.VerifyTOTPChallenge]
 }
 
 // Queries gathers the iam context's read-only handlers.
 type Queries struct {
 	AuthenticatePrincipal decorator.QueryHandler[query.AuthenticatePrincipal, domain.Principal]
+	AuthenticateAPIKey    decorator.QueryHandler[query.AuthenticateAPIKey, domain.Principal]
 	ListRoles             decorator.QueryHandler[query.ListRoles, []query.RoleView]
+	ListAPIKeys           decorator.QueryHandler[query.ListAPIKeys, []query.APIKeyView]
 	AuditTrail            decorator.QueryHandler[query.AuditTrail, query.AuditTrailResult]
 }

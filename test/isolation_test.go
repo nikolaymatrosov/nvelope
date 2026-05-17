@@ -219,14 +219,26 @@ func TestIAMCrossTenantIsolation(t *testing.T) {
 			 VALUES ($1, $2, $3, $4)`, tenantA, userID, listID, roleID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`INSERT INTO audit_log (tenant_id, actor_id, actor_kind, action)
-			 VALUES ($1, $2, 'session', 'role.create')`, tenantA, userID)
+			 VALUES ($1, $2, 'session', 'role.create')`, tenantA, userID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO api_keys (tenant_id, name, token_hash, created_by)
+			 VALUES ($1, 'A-key', $2, $3)`,
+			tenantA, "key-"+dbtest.RandString(), userID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx,
+			`INSERT INTO recovery_codes (tenant_id, user_id, code_hash)
+			 VALUES ($1, $2, $3)`, tenantA, userID, "code-"+dbtest.RandString())
 		return err
 	}))
 
 	for _, table := range []string{
 		"users", "sessions", "roles", "user_roles", "user_list_roles", "audit_log",
+		"api_keys", "recovery_codes",
 	} {
 		t.Run(table, func(t *testing.T) {
 			require.NoError(t, boundTx(ctx, pool, tenantB, func(ctx context.Context, tx pgx.Tx) error {

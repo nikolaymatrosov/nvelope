@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/hex"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -84,6 +85,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) 
 				tenantquery.NewListWorkspacesHandler(tenants), "ListWorkspaces", logger),
 			ResolveWorkspace: decorator.ApplyQueryDecorators(
 				tenantquery.NewResolveWorkspaceHandler(tenants), "ResolveWorkspace", logger),
+			LocateWorkspace: decorator.ApplyQueryDecorators(
+				tenantquery.NewLocateWorkspaceHandler(tenants), "LocateWorkspace", logger),
 			WorkspaceMembers: decorator.ApplyQueryDecorators(
 				tenantquery.NewWorkspaceMembersHandler(tenants), "WorkspaceMembers", logger),
 			GetSettings: decorator.ApplyQueryDecorators(
@@ -108,6 +111,17 @@ func buildIAM(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) iamapp
 	sessions := iamadapters.NewSessions(pool)
 	roles := iamadapters.NewRoles(pool)
 	audit := iamadapters.NewAudit(pool)
+	apiKeys := iamadapters.NewAPIKeys(pool)
+	recoveryCodes := iamadapters.NewRecoveryCodes(pool)
+
+	totpKey, err := hex.DecodeString(cfg.TOTPEncryptionKey)
+	if err != nil {
+		panic("decoding TOTP encryption key: " + err.Error())
+	}
+	totp, err := iamadapters.NewTOTP(totpKey)
+	if err != nil {
+		panic("building TOTP capability: " + err.Error())
+	}
 
 	return iamapp.Application{
 		Commands: iamapp.Commands{
@@ -128,12 +142,29 @@ func buildIAM(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) iamapp
 				"OpenWorkspaceSession", logger),
 			CloseSession: decorator.ApplyCommandDecorators(
 				iamcommand.NewCloseSessionHandler(sessions), "CloseSession", logger),
+			IssueAPIKey: decorator.ApplyResultCommandDecorators(
+				iamcommand.NewIssueAPIKeyHandler(apiKeys, audit), "IssueAPIKey", logger),
+			RevokeAPIKey: decorator.ApplyCommandDecorators(
+				iamcommand.NewRevokeAPIKeyHandler(apiKeys, audit), "RevokeAPIKey", logger),
+			EnableTOTP: decorator.ApplyResultCommandDecorators(
+				iamcommand.NewEnableTOTPHandler(totp), "EnableTOTP", logger),
+			ConfirmTOTP: decorator.ApplyResultCommandDecorators(
+				iamcommand.NewConfirmTOTPHandler(users, recoveryCodes, totp), "ConfirmTOTP", logger),
+			DisableTOTP: decorator.ApplyCommandDecorators(
+				iamcommand.NewDisableTOTPHandler(users, recoveryCodes), "DisableTOTP", logger),
+			VerifyTOTPChallenge: decorator.ApplyCommandDecorators(
+				iamcommand.NewVerifyTOTPChallengeHandler(sessions, users, recoveryCodes, totp),
+				"VerifyTOTPChallenge", logger),
 		},
 		Queries: iamapp.Queries{
 			AuthenticatePrincipal: decorator.ApplyQueryDecorators(
 				iamquery.NewAuthenticatePrincipalHandler(sessions, roles), "AuthenticatePrincipal", logger),
+			AuthenticateAPIKey: decorator.ApplyQueryDecorators(
+				iamquery.NewAuthenticateAPIKeyHandler(apiKeys), "AuthenticateAPIKey", logger),
 			ListRoles: decorator.ApplyQueryDecorators(
 				iamquery.NewListRolesHandler(roles), "ListRoles", logger),
+			ListAPIKeys: decorator.ApplyQueryDecorators(
+				iamquery.NewListAPIKeysHandler(apiKeys), "ListAPIKeys", logger),
 			AuditTrail: decorator.ApplyQueryDecorators(
 				iamquery.NewAuditTrailHandler(audit), "AuditTrail", logger),
 		},
@@ -187,6 +218,8 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 				audiencequery.NewGetListHandler(lists), "GetList", logger),
 			SearchSubscribers: decorator.ApplyQueryDecorators(
 				audiencequery.NewSearchSubscribersHandler(subscribers), "SearchSubscribers", logger),
+			RunSegment: decorator.ApplyQueryDecorators(
+				audiencequery.NewRunSegmentHandler(subscribers), "RunSegment", logger),
 			GetSubscriber: decorator.ApplyQueryDecorators(
 				audiencequery.NewGetSubscriberHandler(subscribers, memberships), "GetSubscriber", logger),
 			GetJobStatus: decorator.ApplyQueryDecorators(

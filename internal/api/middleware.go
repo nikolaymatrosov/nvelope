@@ -22,11 +22,17 @@ const (
 
 // requireUser is middleware that resolves the session cookie to a user and
 // stores it in the request context. Requests with no valid session are
-// rejected with 401 before the handler runs.
+// rejected with 401 before the handler runs. A request bearing an API key is
+// let through without a control-plane user — the key is itself the credential,
+// and the authz middleware resolves it into a Principal.
 func (s *Server) requireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := s.authenticate(r)
 		if !ok {
+			if _, isBearer := bearerToken(r); isBearer {
+				next.ServeHTTP(w, r)
+				return
+			}
 			writeError(w, http.StatusUnauthorized, "unauthenticated", "a valid session is required")
 			return
 		}
@@ -63,13 +69,26 @@ func userFromContext(ctx context.Context) (authquery.AuthenticatedUser, bool) {
 // request context.
 func (s *Server) resolveTenant(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slug := chi.URLParam(r, "slug")
 		user, ok := userFromContext(r.Context())
 		if !ok {
-			writeError(w, http.StatusUnauthorized, "unauthenticated", "a valid session is required")
+			// No control-plane user — an API-key request. Locate the workspace
+			// by slug; the key's Principal establishes the caller's authority.
+			if _, isBearer := bearerToken(r); !isBearer {
+				writeError(w, http.StatusUnauthorized, "unauthenticated", "a valid session is required")
+				return
+			}
+			ws, err := s.tenant.Queries.LocateWorkspace.Handle(r.Context(),
+				tenantquery.LocateWorkspace{Slug: slug})
+			if err != nil {
+				s.fail(w, "resolve tenant", err)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), tenantCtxKey, ws)))
 			return
 		}
 		ws, err := s.tenant.Queries.ResolveWorkspace.Handle(r.Context(),
-			tenantquery.ResolveWorkspace{Slug: chi.URLParam(r, "slug"), UserID: user.ID})
+			tenantquery.ResolveWorkspace{Slug: slug, UserID: user.ID})
 		if err != nil {
 			s.fail(w, "resolve tenant", err)
 			return

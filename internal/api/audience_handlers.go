@@ -175,6 +175,49 @@ func (s *Server) handleSearchSubscribers(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+func (s *Server) handleQuerySubscribers(w http.ResponseWriter, r *http.Request) {
+	s.runSegmentQuery(w, r, false)
+}
+
+func (s *Server) handleCountSubscribers(w http.ResponseWriter, r *http.Request) {
+	s.runSegmentQuery(w, r, true)
+}
+
+// runSegmentQuery decodes a segment query, validates it, and evaluates it —
+// returning either a page of matching subscribers or just the total count.
+func (s *Server) runSegmentQuery(w http.ResponseWriter, r *http.Request, countOnly bool) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermSubscribersGet); !ok {
+		return
+	}
+	var req struct {
+		Segment domain.Node `json:"segment"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	segment, err := domain.NewSegment(req.Segment)
+	if err != nil {
+		s.fail(w, "query subscribers", err)
+		return
+	}
+	page, err := s.audience.Queries.RunSegment.Handle(r.Context(), audiencequery.RunSegment{
+		TenantID: ws.ID, Segment: *segment, Page: pageFromRequest(r), CountOnly: countOnly,
+	})
+	if err != nil {
+		s.fail(w, "query subscribers", err)
+		return
+	}
+	if countOnly {
+		writeJSON(w, http.StatusOK, map[string]any{"total": page.Total})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"subscribers": page.Subscribers, "total": page.Total,
+	})
+}
+
 func (s *Server) handleGetSubscriber(w http.ResponseWriter, r *http.Request) {
 	ws := tenantFromContext(r.Context())
 	if _, ok := s.requirePermission(w, r, iamdomain.PermSubscribersGet); !ok {

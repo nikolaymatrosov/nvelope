@@ -245,27 +245,27 @@ count; drive an export from it.
 
 ### Domain for User Story 4
 
-- [ ] T077 [P] [US4] `Segment` value object — condition tree, validation of known fields/operators (rejects malformed queries) — in `internal/audience/domain/segment.go`
-- [ ] T078 [P] [US4] `Segment` domain unit tests incl. malformed-query rejection in `internal/audience/domain/segment_test.go`
+- [X] T077 [P] [US4] `Segment` value object — condition tree, validation of known fields/operators (rejects malformed queries) — in `internal/audience/domain/segment.go`
+- [X] T078 [P] [US4] `Segment` domain unit tests incl. malformed-query rejection in `internal/audience/domain/segment_test.go`
 
 ### Adapters for User Story 4
 
-- [ ] T079 [US4] Add `RunSegment` and `CountSegment` to `internal/audience/adapters/subscribers_pg.go` — translate a validated `Segment` to a parameterized SQL `WHERE` clause (parameterized JSON operators for attributes)
-- [ ] T080 [US4] Segment-translation integration tests (attribute, membership, combined conditions, empty result) against a real DB in `internal/audience/adapters/subscribers_pg_test.go`
+- [X] T079 [US4] Add `RunSegment` and `CountSegment` to `internal/audience/adapters/subscribers_pg.go` — translate a validated `Segment` to a parameterized SQL `WHERE` clause (parameterized JSON operators for attributes)
+- [X] T080 [US4] Segment-translation integration tests (attribute, membership, combined conditions, empty result) against a real DB in `internal/audience/adapters/subscribers_pg_test.go`
 
 ### Application for User Story 4
 
-- [ ] T081 [P] [US4] `RunSegment` query handler (matching set + count) in `internal/audience/app/query/`
-- [ ] T082 [US4] Extend `StartExport` to accept a `segment` selection in `internal/audience/app/command/` and the export worker in `internal/audience/adapters/export_worker.go`
-- [ ] T083 [US4] Application handler unit tests for `RunSegment` in `internal/audience/app/query/`
+- [X] T081 [P] [US4] `RunSegment` query handler (matching set + count) in `internal/audience/app/query/`
+- [X] T082 [US4] Extend `StartExport` to accept a `segment` selection in `internal/audience/app/command/` and the export worker in `internal/audience/adapters/export_worker.go`
+- [X] T083 [US4] Application handler unit tests for `RunSegment` in `internal/audience/app/query/`
 
 ### Transport for User Story 4
 
-- [ ] T084 [US4] Segment query endpoints (`POST /subscribers/query`, `.../query/count`) in `internal/api/audience_handlers.go`
+- [X] T084 [US4] Segment query endpoints (`POST /subscribers/query`, `.../query/count`) in `internal/api/audience_handlers.go`
 
 ### Tests for User Story 4
 
-- [ ] T085 [US4] Endpoint tests for segment queries and segment-driven export in `internal/api/audience_handlers_test.go`
+- [X] T085 [US4] Endpoint tests for segment queries and segment-driven export in `internal/api/audience_handlers_test.go`
 
 **Checkpoint**: US1–US4 work independently.
 
@@ -284,35 +284,35 @@ requires a current code.
 
 ### Domain for User Story 5
 
-- [ ] T086 [P] [US5] `APIKey` entity (scoped permission subset, revocation) in `internal/iam/domain/apikey.go`
-- [ ] T087 [P] [US5] `TOTP` secret value object + `RecoveryCode` entity in `internal/iam/domain/totp.go`
-- [ ] T088 [US5] Add `APIKeyRepository`, `RecoveryCodeRepository`, and the `TOTP` capability interface to `internal/iam/domain/repository.go` / `internal/iam/app/`
-- [ ] T089 [P] [US5] Domain unit tests for API key scoping/revocation and TOTP/recovery code in `internal/iam/domain/*_test.go`
+- [X] T086 [P] [US5] `APIKey` entity (scoped permission subset, revocation) in `internal/iam/domain/apikey.go`
+- [X] T087 [P] [US5] `TOTP` secret value object + `RecoveryCode` entity in `internal/iam/domain/totp.go`
+- [X] T088 [US5] Add `APIKeyRepository`, `RecoveryCodeRepository`, and the `TOTP` capability interface to `internal/iam/domain/repository.go` / `internal/iam/app/`
+- [X] T089 [P] [US5] Domain unit tests for API key scoping/revocation and TOTP/recovery code in `internal/iam/domain/*_test.go`
 
 ### Adapters for User Story 5
 
-- [ ] T090 [P] [US5] `APIKeyRepository` pgx implementation in `internal/iam/adapters/apikeys_pg.go`
-- [ ] T091 [P] [US5] `RecoveryCodeRepository` pgx implementation in `internal/iam/adapters/recovery_codes_pg.go`
-- [ ] T092 [P] [US5] TOTP adapter over `pquerna/otp` with config-keyed secret encryption/decryption in `internal/iam/adapters/totp.go`
-- [ ] T093 [US5] Adapter integration tests in `internal/iam/adapters/*_test.go`
+- [X] T090 [P] [US5] `APIKeyRepository` pgx implementation in `internal/iam/adapters/apikeys_pg.go`
+- [X] T091 [P] [US5] `RecoveryCodeRepository` pgx implementation in `internal/iam/adapters/recovery_codes_pg.go`
+- [X] T092 [P] [US5] TOTP adapter over `pquerna/otp` with config-keyed secret encryption/decryption in `internal/iam/adapters/totp.go`
+- [X] T093 [US5] Adapter integration tests in `internal/iam/adapters/*_test.go`
 
 ### Application for User Story 5
 
-- [ ] T094 [P] [US5] API key command handlers (`IssueAPIKey`, `RevokeAPIKey`) + `ListAPIKeys` query in `internal/iam/app/`
-- [ ] T095 [P] [US5] TOTP command handlers (`EnableTOTP`, `ConfirmTOTP`, `DisableTOTP`, `VerifyTOTPChallenge`) in `internal/iam/app/command/`
-- [ ] T096 [US5] Extend `OpenWorkspaceSession` to return a `totp-pending` session when the user has TOTP enabled; extend `AuthenticatePrincipal` to also resolve an API-key credential into a `Principal`
-- [ ] T097 [US5] Application handler unit tests in `internal/iam/app/**/*_test.go`
+- [X] T094 [P] [US5] API key command handlers (`IssueAPIKey`, `RevokeAPIKey`) + `ListAPIKeys` query in `internal/iam/app/`
+- [X] T095 [P] [US5] TOTP command handlers (`EnableTOTP`, `ConfirmTOTP`, `DisableTOTP`, `VerifyTOTPChallenge`) in `internal/iam/app/command/`
+- [X] T096 [US5] Extend `OpenWorkspaceSession` to return a `totp-pending` session when the user has TOTP enabled; extend `AuthenticatePrincipal` to also resolve an API-key credential into a `Principal`
+- [X] T097 [US5] Application handler unit tests in `internal/iam/app/**/*_test.go`
 
 ### Transport for User Story 5
 
-- [ ] T098 [US5] API key and TOTP/2FA HTTP handlers in `internal/api/iam_handlers.go` per `contracts/http-api.md`
-- [ ] T099 [US5] Extend `authz_middleware` to accept `Authorization: Bearer <api-key>` and reject `totp-pending` sessions on guarded routes
-- [ ] T100 [US5] Write `audit_log` records for API key issuance and revocation
+- [X] T098 [US5] API key and TOTP/2FA HTTP handlers in `internal/api/iam_handlers.go` per `contracts/http-api.md`
+- [X] T099 [US5] Extend `authz_middleware` to accept `Authorization: Bearer <api-key>` and reject `totp-pending` sessions on guarded routes
+- [X] T100 [US5] Write `audit_log` records for API key issuance and revocation
 
 ### Tests for User Story 5
 
-- [ ] T101 [US5] Endpoint tests: scoped API key allowed/denied/revoked; TOTP enable→challenge→activate, wrong-code refusal, recovery-code use, disable — in `internal/api/iam_handlers_test.go`
-- [ ] T102 [US5] Extend `test/isolation_test.go` for `api_keys` and `recovery_codes`
+- [X] T101 [US5] Endpoint tests: scoped API key allowed/denied/revoked; TOTP enable→challenge→activate, wrong-code refusal, recovery-code use, disable — in `internal/api/iam_handlers_test.go`
+- [X] T102 [US5] Extend `test/isolation_test.go` for `api_keys` and `recovery_codes`
 
 **Checkpoint**: All five user stories independently functional.
 
@@ -322,12 +322,12 @@ requires a current code.
 
 **Purpose**: Phase-exit hardening across all stories.
 
-- [ ] T103 [P] Confirm every new command/query handler is wrapped with the logging decorators in `internal/service/application.go`
-- [ ] T104 [P] Add an `AuditTrail` query + `GET /t/{slug}/api/audit` endpoint gated by `audit:get`
-- [ ] T105 Run `go-cleanarch` for `internal/iam` and `internal/audience`; fix any inward-dependency violations
-- [ ] T106 Run `go test -race ./...` and resolve any data races (River workers, concurrent imports)
-- [ ] T107 Verify a clean migration apply from an empty database (`000005`–`000007` + River) and a clean revert
-- [ ] T108 Execute the `quickstart.md` smoke walk end-to-end against a running API + worker
+- [X] T103 [P] Confirm every new command/query handler is wrapped with the logging decorators in `internal/service/application.go`
+- [X] T104 [P] Add an `AuditTrail` query + `GET /t/{slug}/api/audit` endpoint gated by `audit:get`
+- [X] T105 Run `go-cleanarch` for `internal/iam` and `internal/audience`; fix any inward-dependency violations
+- [X] T106 Run `go test -race ./...` and resolve any data races (River workers, concurrent imports)
+- [X] T107 Verify a clean migration apply from an empty database (`000005`–`000007` + River) and a clean revert
+- [X] T108 Execute the `quickstart.md` smoke walk end-to-end against a running API + worker
 
 ---
 

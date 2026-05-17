@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"net/http"
 	"testing"
 
@@ -160,6 +161,94 @@ func TestSubscriberListMembership(t *testing.T) {
 
 	status, _ = ts.request(http.MethodDelete, base+"/subscribers/"+subID+"/lists/"+listID, nil)
 	require.Equal(t, http.StatusNoContent, status)
+}
+
+func TestSegmentQuery(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	for _, sub := range []map[string]any{
+		{"email": "pro@example.com", "attributes": map[string]any{"plan": "pro"}},
+		{"email": "free@example.com", "attributes": map[string]any{"plan": "free"}},
+	} {
+		status, _ := ts.request(http.MethodPost, base+"/subscribers", sub)
+		require.Equal(t, http.StatusCreated, status)
+	}
+
+	query := map[string]any{
+		"segment": map[string]any{
+			"Attr": map[string]any{"Key": "plan", "Op": "eq", "Value": "pro"},
+		},
+	}
+	status, body := ts.request(http.MethodPost, base+"/subscribers/query", query)
+	require.Equal(t, http.StatusOK, status)
+	require.EqualValues(t, 1, body["total"])
+	subs, _ := body["subscribers"].([]any)
+	require.Len(t, subs, 1)
+	require.Equal(t, "pro@example.com", subs[0].(map[string]any)["Email"])
+
+	status, body = ts.request(http.MethodPost, base+"/subscribers/query/count", query)
+	require.Equal(t, http.StatusOK, status)
+	require.EqualValues(t, 1, body["total"])
+}
+
+func TestSegmentQueryMalformedRejected(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+
+	status, _ := ts.request(http.MethodPost, "/t/"+slug+"/api/subscribers/query", map[string]any{
+		"segment": map[string]any{
+			"Field": map[string]any{"Field": "phone", "Op": "eq", "Value": "x"},
+		},
+	})
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+}
+
+func TestSegmentDrivenExport(t *testing.T) {
+	ts := newTestServer(t)
+	ts.startWorker()
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	for _, sub := range []map[string]any{
+		{"email": "keep@example.com", "attributes": map[string]any{"plan": "pro"}},
+		{"email": "drop@example.com", "attributes": map[string]any{"plan": "free"}},
+	} {
+		status, _ := ts.request(http.MethodPost, base+"/subscribers", sub)
+		require.Equal(t, http.StatusCreated, status)
+	}
+
+	status, body := ts.request(http.MethodPost, base+"/export", map[string]any{
+		"selection": "segment",
+		"segment": map[string]any{
+			"Attr": map[string]any{"Key": "plan", "Op": "eq", "Value": "pro"},
+		},
+	})
+	require.Equal(t, http.StatusAccepted, status)
+	jobID := body["job_id"].(string)
+
+	job := ts.waitForJobStatus(base, jobID)
+	require.Equal(t, "completed", job["Status"])
+	require.EqualValues(t, 1, job["RowCount"])
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+base+"/jobs/"+jobID+"/download", nil)
+	require.NoError(t, err)
+	resp, err := ts.client.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	csv, _ := io.ReadAll(resp.Body)
+	require.Contains(t, string(csv), "keep@example.com")
+	require.NotContains(t, string(csv), "drop@example.com")
 }
 
 func TestAudienceIsolatedAcrossTenants(t *testing.T) {

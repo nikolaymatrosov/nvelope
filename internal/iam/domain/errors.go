@@ -35,6 +35,11 @@ var (
 
 	// ErrAPIKeyNotFound is returned when no API key matches a lookup.
 	ErrAPIKeyNotFound = apperr.NewNotFound("api_key_not_found", "no such API key")
+
+	// ErrTOTPInvalidCode is returned when a TOTP enrolment or challenge code
+	// does not validate against the user's secret.
+	ErrTOTPInvalidCode = apperr.NewIncorrectInput("totp_invalid_code",
+		"that verification code is not valid")
 )
 
 // Forbidden builds a Forbidden-category error naming the missing permission,

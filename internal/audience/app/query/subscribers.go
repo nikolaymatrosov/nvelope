@@ -42,6 +42,49 @@ func (h SearchSubscribersHandler) Handle(ctx context.Context, q SearchSubscriber
 	return page, nil
 }
 
+// RunSegment is the request to evaluate a validated segment query and return
+// the matching subscribers and total count.
+type RunSegment struct {
+	TenantID  string
+	Segment   domain.Segment
+	Page      domain.Page
+	CountOnly bool
+}
+
+// RunSegmentHandler handles the RunSegment query.
+type RunSegmentHandler struct {
+	subscribers domain.SubscriberRepository
+}
+
+// NewRunSegmentHandler builds the handler, failing fast on a nil dependency.
+func NewRunSegmentHandler(subscribers domain.SubscriberRepository) RunSegmentHandler {
+	if subscribers == nil {
+		panic("nil subscriber repository")
+	}
+	return RunSegmentHandler{subscribers: subscribers}
+}
+
+// Handle evaluates the segment. When CountOnly is set it returns just the total
+// count; otherwise it returns a page of matching subscribers with the count.
+func (h RunSegmentHandler) Handle(ctx context.Context, q RunSegment) (SubscriberPage, error) {
+	if q.CountOnly {
+		total, err := h.subscribers.CountSegment(ctx, q.TenantID, q.Segment)
+		if err != nil {
+			return SubscriberPage{}, err
+		}
+		return SubscriberPage{Total: total, Subscribers: []SubscriberView{}}, nil
+	}
+	subs, total, err := h.subscribers.RunSegment(ctx, q.TenantID, q.Segment, q.Page)
+	if err != nil {
+		return SubscriberPage{}, err
+	}
+	page := SubscriberPage{Total: total, Subscribers: make([]SubscriberView, 0, len(subs))}
+	for _, s := range subs {
+		page.Subscribers = append(page.Subscribers, subscriberView(s, nil))
+	}
+	return page, nil
+}
+
 // GetSubscriber is the request for a single subscriber with its memberships.
 type GetSubscriber struct {
 	TenantID     string

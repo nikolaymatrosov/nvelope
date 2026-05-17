@@ -34,6 +34,7 @@ type Queries struct {
 	ListLists         decorator.QueryHandler[query.ListLists, query.ListPage]
 	GetList           decorator.QueryHandler[query.GetList, query.ListView]
 	SearchSubscribers decorator.QueryHandler[query.SearchSubscribers, query.SubscriberPage]
+	RunSegment        decorator.QueryHandler[query.RunSegment, query.SubscriberPage]
 	GetSubscriber     decorator.QueryHandler[query.GetSubscriber, query.SubscriberView]
 	GetJobStatus      decorator.QueryHandler[query.GetJobStatus, query.JobStatusView]
 	ExportFile        decorator.QueryHandler[query.ExportFile, query.ExportFileResult]

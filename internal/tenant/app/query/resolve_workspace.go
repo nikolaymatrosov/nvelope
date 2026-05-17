@@ -56,3 +56,40 @@ func (h ResolveWorkspaceHandler) Handle(ctx context.Context, q ResolveWorkspace)
 		Role:   role.String(),
 	}, nil
 }
+
+// LocateWorkspace is the request to resolve a slug to a workspace without a
+// membership cross-check — used for credentials that are themselves
+// tenant-scoped, such as API keys.
+type LocateWorkspace struct {
+	Slug string
+}
+
+// LocateWorkspaceHandler handles the LocateWorkspace query.
+type LocateWorkspaceHandler struct {
+	tenants domain.TenantRepository
+}
+
+// NewLocateWorkspaceHandler builds the handler, failing fast on a nil
+// dependency.
+func NewLocateWorkspaceHandler(tenants domain.TenantRepository) LocateWorkspaceHandler {
+	if tenants == nil {
+		panic("nil tenants repository")
+	}
+	return LocateWorkspaceHandler{tenants: tenants}
+}
+
+// Handle resolves the slug to a workspace. The returned ResolvedWorkspace
+// carries no membership Role — the caller's authority is established
+// separately (by the API-key Principal).
+func (h LocateWorkspaceHandler) Handle(ctx context.Context, q LocateWorkspace) (ResolvedWorkspace, error) {
+	tenant, err := h.tenants.GetBySlug(ctx, q.Slug)
+	if err != nil {
+		return ResolvedWorkspace{}, err
+	}
+	return ResolvedWorkspace{
+		ID:     tenant.ID(),
+		Slug:   tenant.Slug().String(),
+		Name:   tenant.Name(),
+		Status: string(tenant.Status()),
+	}, nil
+}

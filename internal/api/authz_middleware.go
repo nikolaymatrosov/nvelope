@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	iamquery "github.com/nikolaymatrosov/nvelope/internal/iam/app/query"
 	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
@@ -32,16 +33,34 @@ func (s *Server) authz(next http.Handler) http.Handler {
 	})
 }
 
-// resolvePrincipal resolves the request's credential — the workspace session
-// cookie — into a Principal. US5 extends this to also accept an API-key bearer
-// token.
+// resolvePrincipal resolves the request's credential into a Principal. An
+// `Authorization: Bearer <api-key>` header is tried first; otherwise the
+// workspace session cookie is used. A totp-pending session resolves to no
+// principal (AuthenticatePrincipal returns ErrTOTPRequired), so a guarded route
+// stays closed until the two-factor challenge is met.
 func (s *Server) resolvePrincipal(r *http.Request, tenantID string) (iamdomain.Principal, error) {
+	if key, ok := bearerToken(r); ok {
+		return s.iam.Queries.AuthenticateAPIKey.Handle(r.Context(),
+			iamquery.AuthenticateAPIKey{TenantID: tenantID, RawKey: key})
+	}
 	c, err := r.Cookie(workspaceCookie)
 	if err != nil || c.Value == "" {
 		return iamdomain.Principal{}, iamdomain.ErrUnauthenticated
 	}
 	return s.iam.Queries.AuthenticatePrincipal.Handle(r.Context(),
 		iamquery.AuthenticatePrincipal{TenantID: tenantID, Token: c.Value})
+}
+
+// bearerToken extracts an API key from an `Authorization: Bearer <token>`
+// header, reporting whether one was present.
+func bearerToken(r *http.Request) (string, bool) {
+	h := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if len(h) <= len(prefix) || !strings.EqualFold(h[:len(prefix)], prefix) {
+		return "", false
+	}
+	token := strings.TrimSpace(h[len(prefix):])
+	return token, token != ""
 }
 
 // principalFromContext returns the Principal resolved by the authz middleware.

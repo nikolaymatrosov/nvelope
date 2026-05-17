@@ -78,6 +78,9 @@ func (s *Server) Handler() http.Handler {
 		// Principal is required since these establish one.
 		r.Post("/session", s.handleOpenSession)
 		r.Delete("/session", s.handleCloseSession)
+		// The TOTP challenge lives here too: a totp-pending session resolves
+		// to no Principal, so it cannot pass the authz middleware.
+		r.Post("/session/totp", s.handleVerifyTOTP)
 
 		// Guarded routes — the authz middleware resolves the request's
 		// Principal; handlers then enforce permissions.
@@ -93,6 +96,8 @@ func (s *Server) Handler() http.Handler {
 
 			r.Post("/subscribers", s.handleCreateSubscriber)
 			r.Get("/subscribers", s.handleSearchSubscribers)
+			r.Post("/subscribers/query", s.handleQuerySubscribers)
+			r.Post("/subscribers/query/count", s.handleCountSubscribers)
 			r.Get("/subscribers/{id}", s.handleGetSubscriber)
 			r.Put("/subscribers/{id}", s.handleUpdateSubscriber)
 			r.Delete("/subscribers/{id}", s.handleDeleteSubscriber)
@@ -114,6 +119,19 @@ func (s *Server) Handler() http.Handler {
 			r.Put("/users/{userId}/role", s.handleAssignRole)
 			r.Put("/users/{userId}/lists/{listId}/role", s.handleAssignListRole)
 			r.Delete("/users/{userId}/lists/{listId}/role", s.handleRemoveListRole)
+
+			// Scoped API keys (US5).
+			r.Post("/api-keys", s.handleIssueAPIKey)
+			r.Get("/api-keys", s.handleListAPIKeys)
+			r.Delete("/api-keys/{id}", s.handleRevokeAPIKey)
+
+			// TOTP two-factor enrolment (US5) — requires an active session.
+			r.Post("/me/totp", s.handleEnableTOTP)
+			r.Post("/me/totp/confirm", s.handleConfirmTOTP)
+			r.Delete("/me/totp", s.handleDisableTOTP)
+
+			// Audit trail.
+			r.Get("/audit", s.handleAuditTrail)
 		})
 	})
 

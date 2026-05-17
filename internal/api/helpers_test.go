@@ -57,6 +57,8 @@ func newTestServer(t *testing.T) *testServer {
 		BaseURL:                 "https://app.test",
 		WorkerQueue:             "import_export",
 		WorkerTenantConcurrency: 2,
+		// A fixed 32-byte key (hex-encoded) so the TOTP capability builds.
+		TOTPEncryptionKey: "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	app := service.NewApplication(pool, cfg, logger)

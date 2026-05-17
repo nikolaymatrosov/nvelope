@@ -108,6 +108,129 @@ func TestSubscribersUpdateStateAndDelete(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrSubscriberNotFound)
 }
 
+// addSubscriberWith persists a subscriber with the given email and attributes.
+func addSubscriberWith(t *testing.T, repo *adapters.Subscribers, tenantID, email string,
+	attrs map[string]any) string {
+	t.Helper()
+	a, err := domain.NewAttributes(attrs)
+	require.NoError(t, err)
+	s, err := domain.NewSubscriber(tenantID, email, "Pat", a)
+	require.NoError(t, err)
+	id, err := repo.Add(context.Background(), tenantID, s)
+	require.NoError(t, err)
+	return id
+}
+
+func mustSegment(t *testing.T, node domain.Node) domain.Segment {
+	t.Helper()
+	seg, err := domain.NewSegment(node)
+	require.NoError(t, err)
+	return *seg
+}
+
+func TestSubscribersRunSegmentAttribute(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewSubscribers(pool)
+	ctx := context.Background()
+	tenantID := seedTenant(t, pool)
+
+	addSubscriberWith(t, repo, tenantID, "pro@example.com", map[string]any{"plan": "pro"})
+	addSubscriberWith(t, repo, tenantID, "free@example.com", map[string]any{"plan": "free"})
+
+	seg := mustSegment(t, domain.Node{
+		Attr: &domain.AttrCondition{Key: "plan", Op: domain.OpEq, Value: "pro"},
+	})
+	subs, total, err := repo.RunSegment(ctx, tenantID, seg, domain.DefaultPage)
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, "pro@example.com", subs[0].Email())
+}
+
+func TestSubscribersRunSegmentMembership(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewSubscribers(pool)
+	lists := adapters.NewLists(pool)
+	memberships := adapters.NewMemberships(pool)
+	ctx := context.Background()
+	tenantID := seedTenant(t, pool)
+
+	list, err := domain.NewList(tenantID, "Newsletter", "", domain.VisibilityPrivate,
+		domain.OptInSingle, nil)
+	require.NoError(t, err)
+	listID, err := lists.Add(ctx, tenantID, list)
+	require.NoError(t, err)
+
+	memberID := addSubscriberWith(t, repo, tenantID, "in@example.com", nil)
+	addSubscriberWith(t, repo, tenantID, "out@example.com", nil)
+	require.NoError(t, memberships.Attach(ctx, tenantID, memberID, listID, domain.SubscriptionConfirmed))
+
+	seg := mustSegment(t, domain.Node{
+		Member: &domain.MemberCondition{ListID: listID},
+	})
+	subs, total, err := repo.RunSegment(ctx, tenantID, seg, domain.DefaultPage)
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, "in@example.com", subs[0].Email())
+}
+
+func TestSubscribersRunSegmentCombined(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewSubscribers(pool)
+	lists := adapters.NewLists(pool)
+	memberships := adapters.NewMemberships(pool)
+	ctx := context.Background()
+	tenantID := seedTenant(t, pool)
+
+	list, err := domain.NewList(tenantID, "Newsletter", "", domain.VisibilityPrivate,
+		domain.OptInSingle, nil)
+	require.NoError(t, err)
+	listID, err := lists.Add(ctx, tenantID, list)
+	require.NoError(t, err)
+
+	match := addSubscriberWith(t, repo, tenantID, "match@example.com", map[string]any{"plan": "pro"})
+	wrongAttr := addSubscriberWith(t, repo, tenantID, "wrong@example.com", map[string]any{"plan": "free"})
+	addSubscriberWith(t, repo, tenantID, "nomember@example.com", map[string]any{"plan": "pro"})
+	require.NoError(t, memberships.Attach(ctx, tenantID, match, listID, domain.SubscriptionConfirmed))
+	require.NoError(t, memberships.Attach(ctx, tenantID, wrongAttr, listID, domain.SubscriptionConfirmed))
+
+	seg := mustSegment(t, domain.Node{
+		Conj: domain.ConjAnd,
+		Children: []domain.Node{
+			{Attr: &domain.AttrCondition{Key: "plan", Op: domain.OpEq, Value: "pro"}},
+			{Member: &domain.MemberCondition{ListID: listID}},
+		},
+	})
+	subs, total, err := repo.RunSegment(ctx, tenantID, seg, domain.DefaultPage)
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, "match@example.com", subs[0].Email())
+
+	count, err := repo.CountSegment(ctx, tenantID, seg)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
+func TestSubscribersRunSegmentEmptyResult(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewSubscribers(pool)
+	ctx := context.Background()
+	tenantID := seedTenant(t, pool)
+
+	addSubscriberWith(t, repo, tenantID, "free@example.com", map[string]any{"plan": "free"})
+
+	seg := mustSegment(t, domain.Node{
+		Attr: &domain.AttrCondition{Key: "plan", Op: domain.OpEq, Value: "enterprise"},
+	})
+	subs, total, err := repo.RunSegment(ctx, tenantID, seg, domain.DefaultPage)
+	require.NoError(t, err)
+	require.Equal(t, 0, total)
+	require.Empty(t, subs)
+}
+
 func TestSubscribersSearch(t *testing.T) {
 	t.Parallel()
 	pool := dbtest.AppPool(t)

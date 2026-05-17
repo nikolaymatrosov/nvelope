@@ -156,6 +156,34 @@ func TestGetJobStatusHandler(t *testing.T) {
 	require.Equal(t, "bad email", view.Failures[0].Reason)
 }
 
+func TestRunSegmentHandler(t *testing.T) {
+	t.Parallel()
+	s := domain.HydrateSubscriber("s1", "t1", "a@b.com", "Pat", domain.StateEnabled,
+		domain.HydrateAttributes(map[string]any{"plan": "pro"}), time.Now(), time.Now())
+	seg, err := domain.NewSegment(domain.Node{
+		Attr: &domain.AttrCondition{Key: "plan", Op: domain.OpEq, Value: "pro"},
+	})
+	require.NoError(t, err)
+	h := query.NewRunSegmentHandler(&fakeSubscribers{items: []*domain.Subscriber{s}})
+
+	t.Run("returns matching subscribers", func(t *testing.T) {
+		t.Parallel()
+		page, err := h.Handle(context.Background(), query.RunSegment{TenantID: "t1", Segment: *seg})
+		require.NoError(t, err)
+		require.Equal(t, 1, page.Total)
+		require.Equal(t, "a@b.com", page.Subscribers[0].Email)
+	})
+
+	t.Run("count only omits the subscriber list", func(t *testing.T) {
+		t.Parallel()
+		page, err := h.Handle(context.Background(),
+			query.RunSegment{TenantID: "t1", Segment: *seg, CountOnly: true})
+		require.NoError(t, err)
+		require.Equal(t, 1, page.Total)
+		require.Empty(t, page.Subscribers)
+	})
+}
+
 func TestGetSubscriberHandlerIncludesMemberships(t *testing.T) {
 	t.Parallel()
 	s := domain.HydrateSubscriber("s1", "t1", "a@b.com", "Pat", domain.StateEnabled,

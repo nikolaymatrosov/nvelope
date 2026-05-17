@@ -73,6 +73,33 @@ type RoleRepository interface {
 		tenantPerms []Permission, listPerms map[string][]Permission, err error)
 }
 
+// APIKeyRepository persists scoped API keys. Every operation runs inside a
+// tenant-bound transaction.
+type APIKeyRepository interface {
+	// Add persists a new API key and returns its database-assigned id.
+	Add(ctx context.Context, tenantID string, k *APIKey) (string, error)
+	// ByTokenHash returns the API key for a token hash, or ErrAPIKeyNotFound.
+	ByTokenHash(ctx context.Context, tenantID, tokenHash string) (*APIKey, error)
+	// Revoke marks the API key revoked. It returns ErrAPIKeyNotFound when absent.
+	Revoke(ctx context.Context, tenantID, id string) error
+	// TouchLastUsed records that the key was just used to authenticate.
+	TouchLastUsed(ctx context.Context, tenantID, id string) error
+	// All returns every API key in the tenant, newest first.
+	All(ctx context.Context, tenantID string) ([]*APIKey, error)
+}
+
+// RecoveryCodeRepository persists single-use TOTP recovery codes.
+type RecoveryCodeRepository interface {
+	// AddBatch persists a fresh batch of recovery codes for a user, replacing
+	// any codes the user previously held.
+	AddBatch(ctx context.Context, tenantID, userID string, codeHashes []string) error
+	// Consume marks a recovery code used, reporting whether a matching unused
+	// code existed.
+	Consume(ctx context.Context, tenantID, userID, codeHash string) (consumed bool, err error)
+	// DeleteForUser removes every recovery code a user holds.
+	DeleteForUser(ctx context.Context, tenantID, userID string) error
+}
+
 // AuditRepository appends and reads privileged-action audit records.
 type AuditRepository interface {
 	// Record appends one audit record.

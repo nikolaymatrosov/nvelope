@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nikolaymatrosov/nvelope/internal/iam/domain"
@@ -233,4 +234,102 @@ func (f *fakeSessions) ByTokenHash(_ context.Context, _, tokenHash string) (*dom
 		return nil, domain.ErrSessionNotFound
 	}
 	return s, nil
+}
+
+// fakeAPIKeys is an in-memory domain.APIKeyRepository.
+type fakeAPIKeys struct {
+	byID   map[string]*domain.APIKey
+	byHash map[string]*domain.APIKey
+	seq    int
+}
+
+func newFakeAPIKeys() *fakeAPIKeys {
+	return &fakeAPIKeys{byID: map[string]*domain.APIKey{}, byHash: map[string]*domain.APIKey{}}
+}
+
+func (f *fakeAPIKeys) Add(_ context.Context, tenantID string, k *domain.APIKey) (string, error) {
+	f.seq++
+	id := "apikey-" + strconv.Itoa(f.seq)
+	stored := domain.HydrateAPIKey(id, tenantID, k.Name(), k.TokenHash(), k.Permissions(),
+		k.CreatedBy(), time.Now(), nil, nil)
+	f.byID[id] = stored
+	f.byHash[k.TokenHash()] = stored
+	return id, nil
+}
+
+func (f *fakeAPIKeys) ByTokenHash(_ context.Context, _, tokenHash string) (*domain.APIKey, error) {
+	k, ok := f.byHash[tokenHash]
+	if !ok {
+		return nil, domain.ErrAPIKeyNotFound
+	}
+	return k, nil
+}
+
+func (f *fakeAPIKeys) Revoke(_ context.Context, _, id string) error {
+	k, ok := f.byID[id]
+	if !ok || k.IsRevoked() {
+		return domain.ErrAPIKeyNotFound
+	}
+	k.Revoke(time.Now())
+	return nil
+}
+
+func (f *fakeAPIKeys) TouchLastUsed(context.Context, string, string) error { return nil }
+
+func (f *fakeAPIKeys) All(_ context.Context, tenantID string) ([]*domain.APIKey, error) {
+	var out []*domain.APIKey
+	for _, k := range f.byID {
+		if k.TenantID() == tenantID {
+			out = append(out, k)
+		}
+	}
+	return out, nil
+}
+
+// fakeRecoveryCodes is an in-memory domain.RecoveryCodeRepository.
+type fakeRecoveryCodes struct {
+	codes map[string]map[string]bool // userID → codeHash → used
+}
+
+func newFakeRecoveryCodes() *fakeRecoveryCodes {
+	return &fakeRecoveryCodes{codes: map[string]map[string]bool{}}
+}
+
+func (f *fakeRecoveryCodes) AddBatch(_ context.Context, _, userID string, hashes []string) error {
+	set := map[string]bool{}
+	for _, h := range hashes {
+		set[h] = false
+	}
+	f.codes[userID] = set
+	return nil
+}
+
+func (f *fakeRecoveryCodes) Consume(_ context.Context, _, userID, codeHash string) (bool, error) {
+	set := f.codes[userID]
+	used, ok := set[codeHash]
+	if !ok || used {
+		return false, nil
+	}
+	set[codeHash] = true
+	return true, nil
+}
+
+func (f *fakeRecoveryCodes) DeleteForUser(_ context.Context, _, userID string) error {
+	delete(f.codes, userID)
+	return nil
+}
+
+// fakeTOTP is a deterministic command.TOTP for handler unit tests.
+type fakeTOTP struct{ validCode string }
+
+func (f fakeTOTP) Generate(string) (string, string, error) {
+	return "FAKESECRET", "otpauth://totp/nvelope:user?secret=FAKESECRET", nil
+}
+
+func (f fakeTOTP) Validate(_, code string) bool { return code != "" && code == f.validCode }
+
+func (f fakeTOTP) Encrypt(secret string) ([]byte, error) { return []byte("enc:" + secret), nil }
+
+func (f fakeTOTP) Decrypt(ciphertext []byte) (string, error) {
+	return strings.TrimPrefix(string(ciphertext), "enc:"), nil
 }
