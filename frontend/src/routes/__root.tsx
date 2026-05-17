@@ -1,8 +1,12 @@
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router"
+import { HeadContent, Link, Outlet, Scripts, createRootRoute  } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 import { TanStackDevtools } from "@tanstack/react-devtools"
+import { QueryClientProvider } from "@tanstack/react-query"
 
 import appCss from "../styles.css?url"
+import { queryClient } from "@/lib/query"
+import { Toaster } from "@/components/ui/sonner"
+import { Button } from "@/components/ui/button"
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,7 +19,7 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "TanStack Start Starter",
+        title: "nvelope",
       },
     ],
     links: [
@@ -26,13 +30,28 @@ export const Route = createRootRoute({
     ],
   }),
   notFoundComponent: () => (
-    <main className="container mx-auto p-4 pt-16">
-      <h1>404</h1>
-      <p>The requested page could not be found.</p>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-4 p-6 text-center">
+      <h1 className="text-2xl font-semibold">Page not found</h1>
+      <p className="text-sm text-muted-foreground">
+        The page you were looking for does not exist.
+      </p>
+      <Button asChild>
+        <Link to="/">Back home</Link>
+      </Button>
     </main>
   ),
+  component: RootComponent,
   shellComponent: RootDocument,
 })
+
+function RootComponent() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Outlet />
+      <Toaster richColors position="bottom-right" />
+    </QueryClientProvider>
+  )
+}
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (

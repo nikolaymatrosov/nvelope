@@ -93,3 +93,15 @@ hardening (autoscaling, secrets management, network policy) arrives in a later p
 
 `.github/workflows/ci.yml` runs on every push and pull request: it builds, tests,
 and lints the backend (against a PostgreSQL service container) and the frontend.
+
+## License
+
+nvelope is **source-available, not open source**. It is licensed under the
+[PolyForm Noncommercial License 1.0.0](./LICENSE): free to use, modify, and
+share for noncommercial purposes only.
+
+**Commercial use requires a separate paid license** — see
+[`COMMERCIAL.md`](./COMMERCIAL.md).
+
+Contributions are welcome. By submitting a contribution you agree to the
+[Contributor License Agreement](./CLA.md).

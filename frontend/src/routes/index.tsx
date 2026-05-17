@@ -1,84 +1,137 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
+import { useMutation } from "@tanstack/react-query"
+import { PlusIcon } from "lucide-react"
 import { api } from "@/lib/api"
+import { isUnauthorized } from "@/lib/errors"
+import { queryClient } from "@/lib/query"
+import { useSession } from "@/hooks/use-session"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Spinner } from "@/components/ui/spinner"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 
 export const Route = createFileRoute("/")({ component: Home })
 
-type Membership = { id: string; slug: string; name: string; role: string }
-type State =
-  | { phase: "loading" }
-  | { phase: "anonymous" }
-  | { phase: "ready"; name: string; tenants: Array<Membership> }
-
 function Home() {
   const navigate = useNavigate()
-  const [state, setState] = useState<State>({ phase: "loading" })
+  const { account, user, tenants, isLoading, isError, error } = useSession()
 
-  useEffect(() => {
-    api.me().then(({ status, data }) => {
-      if (status === 200) {
-        setState({ phase: "ready", name: data.user.name, tenants: data.tenants })
-      } else {
-        setState({ phase: "anonymous" })
-      }
-    })
-  }, [])
+  const logout = useMutation({
+    mutationFn: () => api.logout(),
+    onSuccess: () => {
+      queryClient.clear()
+      navigate({ to: "/login" })
+    },
+  })
 
-  async function logout() {
-    await api.logout()
-    setState({ phase: "anonymous" })
-  }
-
-  if (state.phase === "loading") {
-    return <main className="p-6 text-sm">Loading…</main>
-  }
-
-  if (state.phase === "anonymous") {
+  if (isLoading) {
     return (
-      <main className="mx-auto flex min-h-svh max-w-sm flex-col justify-center gap-4 p-6">
-        <h1 className="text-xl font-semibold">nvelope</h1>
-        <p className="text-sm">Sign in to manage your workspaces.</p>
-        <div className="flex gap-3">
-          <Button onClick={() => navigate({ to: "/login" })}>Log in</Button>
-          <Button variant="outline" onClick={() => navigate({ to: "/signup" })}>
-            Sign up
-          </Button>
-        </div>
+      <main className="grid min-h-svh place-items-center">
+        <Spinner className="size-6 text-muted-foreground" />
+      </main>
+    )
+  }
+
+  if (isError && isUnauthorized(error)) {
+    return (
+      <main className="grid min-h-svh place-items-center p-6">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>nvelope</CardTitle>
+            <CardDescription>
+              Sign in to manage your workspaces.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-3">
+            <Button onClick={() => navigate({ to: "/login" })}>Log in</Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate({ to: "/signup" })}
+            >
+              Sign up
+            </Button>
+          </CardContent>
+        </Card>
       </main>
     )
   }
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Your workspaces</h1>
-        <Button variant="outline" onClick={logout}>
-          Log out
+    <main className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 p-6">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Your workspaces</h1>
+          <p className="text-sm text-muted-foreground">
+            Signed in as {user?.name ?? account?.user.email}.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => logout.mutate()}
+          disabled={logout.isPending}
+        >
+          Sign out
         </Button>
-      </div>
-      <p className="text-sm">Signed in as {state.name}.</p>
-      {state.tenants.length === 0 ? (
-        <p className="text-sm">You don't belong to any workspace yet.</p>
+      </header>
+
+      {tenants.length === 0 ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <PlusIcon />
+            </EmptyMedia>
+            <EmptyTitle>No workspaces yet</EmptyTitle>
+            <EmptyDescription>
+              Create your first workspace to get started.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button onClick={() => navigate({ to: "/tenants/new" })}>
+              Create a workspace
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {state.tenants.map((t) => (
-            <li key={t.id}>
-              <Link
-                className="underline"
-                to="/t/$slug"
-                params={{ slug: t.slug }}
-              >
-                {t.name}
-              </Link>{" "}
-              <span className="text-xs text-gray-500">({t.role})</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {tenants.map((t) => (
+              <Link key={t.id} to="/t/$slug" params={{ slug: t.slug }}>
+                <Card className="h-full transition-colors hover:border-primary">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between gap-2">
+                      {t.name}
+                      <Badge variant="secondary">{t.role}</Badge>
+                    </CardTitle>
+                    <CardDescription>/{t.slug}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            className="self-start"
+            onClick={() => navigate({ to: "/tenants/new" })}
+          >
+            <PlusIcon />
+            Create a workspace
+          </Button>
+        </>
       )}
-      <Button onClick={() => navigate({ to: "/tenants/new" })}>
-        Create a workspace
-      </Button>
     </main>
   )
 }

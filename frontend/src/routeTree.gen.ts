@@ -12,9 +12,19 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as TenantsNewRouteImport } from './routes/tenants.new'
-import { Route as TSlugRouteImport } from './routes/t.$slug'
-import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as TenantsNewRouteImport } from './routes/tenants/new'
+import { Route as InviteTokenRouteImport } from './routes/invite/$token'
+import { Route as TSlugRouteRouteImport } from './routes/t/$slug/route'
+import { Route as TSlugIndexRouteImport } from './routes/t/$slug/index'
+import { Route as TSlugSubscribersIndexRouteImport } from './routes/t/$slug/subscribers/index'
+import { Route as TSlugSettingsIndexRouteImport } from './routes/t/$slug/settings/index'
+import { Route as TSlugSecurityIndexRouteImport } from './routes/t/$slug/security/index'
+import { Route as TSlugListsIndexRouteImport } from './routes/t/$slug/lists/index'
+import { Route as TSlugImportExportIndexRouteImport } from './routes/t/$slug/import-export/index'
+import { Route as TSlugAuditIndexRouteImport } from './routes/t/$slug/audit/index'
+import { Route as TSlugAccessIndexRouteImport } from './routes/t/$slug/access/index'
+import { Route as TSlugSubscribersIdRouteImport } from './routes/t/$slug/subscribers/$id'
+import { Route as TSlugListsIdRouteImport } from './routes/t/$slug/lists/$id'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -36,41 +46,120 @@ const TenantsNewRoute = TenantsNewRouteImport.update({
   path: '/tenants/new',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TSlugRoute = TSlugRouteImport.update({
-  id: '/t/$slug',
-  path: '/t/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
+} as any)
+const TSlugRouteRoute = TSlugRouteRouteImport.update({
+  id: '/t/$slug',
+  path: '/t/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TSlugIndexRoute = TSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugSubscribersIndexRoute = TSlugSubscribersIndexRouteImport.update({
+  id: '/subscribers/',
+  path: '/subscribers/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugSettingsIndexRoute = TSlugSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugSecurityIndexRoute = TSlugSecurityIndexRouteImport.update({
+  id: '/security/',
+  path: '/security/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugListsIndexRoute = TSlugListsIndexRouteImport.update({
+  id: '/lists/',
+  path: '/lists/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugImportExportIndexRoute = TSlugImportExportIndexRouteImport.update({
+  id: '/import-export/',
+  path: '/import-export/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugAuditIndexRoute = TSlugAuditIndexRouteImport.update({
+  id: '/audit/',
+  path: '/audit/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugAccessIndexRoute = TSlugAccessIndexRouteImport.update({
+  id: '/access/',
+  path: '/access/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugSubscribersIdRoute = TSlugSubscribersIdRouteImport.update({
+  id: '/subscribers/$id',
+  path: '/subscribers/$id',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugListsIdRoute = TSlugListsIdRouteImport.update({
+  id: '/lists/$id',
+  path: '/lists/$id',
+  getParentRoute: () => TSlugRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/t/$slug': typeof TSlugRouteRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
-  '/t/$slug': typeof TSlugRoute
   '/tenants/new': typeof TenantsNewRoute
+  '/t/$slug/': typeof TSlugIndexRoute
+  '/t/$slug/lists/$id': typeof TSlugListsIdRoute
+  '/t/$slug/subscribers/$id': typeof TSlugSubscribersIdRoute
+  '/t/$slug/access/': typeof TSlugAccessIndexRoute
+  '/t/$slug/audit/': typeof TSlugAuditIndexRoute
+  '/t/$slug/import-export/': typeof TSlugImportExportIndexRoute
+  '/t/$slug/lists/': typeof TSlugListsIndexRoute
+  '/t/$slug/security/': typeof TSlugSecurityIndexRoute
+  '/t/$slug/settings/': typeof TSlugSettingsIndexRoute
+  '/t/$slug/subscribers/': typeof TSlugSubscribersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/invite/$token': typeof InviteTokenRoute
-  '/t/$slug': typeof TSlugRoute
   '/tenants/new': typeof TenantsNewRoute
+  '/t/$slug': typeof TSlugIndexRoute
+  '/t/$slug/lists/$id': typeof TSlugListsIdRoute
+  '/t/$slug/subscribers/$id': typeof TSlugSubscribersIdRoute
+  '/t/$slug/access': typeof TSlugAccessIndexRoute
+  '/t/$slug/audit': typeof TSlugAuditIndexRoute
+  '/t/$slug/import-export': typeof TSlugImportExportIndexRoute
+  '/t/$slug/lists': typeof TSlugListsIndexRoute
+  '/t/$slug/security': typeof TSlugSecurityIndexRoute
+  '/t/$slug/settings': typeof TSlugSettingsIndexRoute
+  '/t/$slug/subscribers': typeof TSlugSubscribersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/t/$slug': typeof TSlugRouteRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
-  '/t/$slug': typeof TSlugRoute
   '/tenants/new': typeof TenantsNewRoute
+  '/t/$slug/': typeof TSlugIndexRoute
+  '/t/$slug/lists/$id': typeof TSlugListsIdRoute
+  '/t/$slug/subscribers/$id': typeof TSlugSubscribersIdRoute
+  '/t/$slug/access/': typeof TSlugAccessIndexRoute
+  '/t/$slug/audit/': typeof TSlugAuditIndexRoute
+  '/t/$slug/import-export/': typeof TSlugImportExportIndexRoute
+  '/t/$slug/lists/': typeof TSlugListsIndexRoute
+  '/t/$slug/security/': typeof TSlugSecurityIndexRoute
+  '/t/$slug/settings/': typeof TSlugSettingsIndexRoute
+  '/t/$slug/subscribers/': typeof TSlugSubscribersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -78,33 +167,62 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/signup'
-    | '/invite/$token'
     | '/t/$slug'
+    | '/invite/$token'
     | '/tenants/new'
+    | '/t/$slug/'
+    | '/t/$slug/lists/$id'
+    | '/t/$slug/subscribers/$id'
+    | '/t/$slug/access/'
+    | '/t/$slug/audit/'
+    | '/t/$slug/import-export/'
+    | '/t/$slug/lists/'
+    | '/t/$slug/security/'
+    | '/t/$slug/settings/'
+    | '/t/$slug/subscribers/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/signup'
     | '/invite/$token'
-    | '/t/$slug'
     | '/tenants/new'
+    | '/t/$slug'
+    | '/t/$slug/lists/$id'
+    | '/t/$slug/subscribers/$id'
+    | '/t/$slug/access'
+    | '/t/$slug/audit'
+    | '/t/$slug/import-export'
+    | '/t/$slug/lists'
+    | '/t/$slug/security'
+    | '/t/$slug/settings'
+    | '/t/$slug/subscribers'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/signup'
-    | '/invite/$token'
     | '/t/$slug'
+    | '/invite/$token'
     | '/tenants/new'
+    | '/t/$slug/'
+    | '/t/$slug/lists/$id'
+    | '/t/$slug/subscribers/$id'
+    | '/t/$slug/access/'
+    | '/t/$slug/audit/'
+    | '/t/$slug/import-export/'
+    | '/t/$slug/lists/'
+    | '/t/$slug/security/'
+    | '/t/$slug/settings/'
+    | '/t/$slug/subscribers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  TSlugRouteRoute: typeof TSlugRouteRouteWithChildren
   InviteTokenRoute: typeof InviteTokenRoute
-  TSlugRoute: typeof TSlugRoute
   TenantsNewRoute: typeof TenantsNewRoute
 }
 
@@ -138,13 +256,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TenantsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/t/$slug': {
-      id: '/t/$slug'
-      path: '/t/$slug'
-      fullPath: '/t/$slug'
-      preLoaderRoute: typeof TSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -152,15 +263,122 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/t/$slug': {
+      id: '/t/$slug'
+      path: '/t/$slug'
+      fullPath: '/t/$slug'
+      preLoaderRoute: typeof TSlugRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/t/$slug/': {
+      id: '/t/$slug/'
+      path: '/'
+      fullPath: '/t/$slug/'
+      preLoaderRoute: typeof TSlugIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/subscribers/': {
+      id: '/t/$slug/subscribers/'
+      path: '/subscribers'
+      fullPath: '/t/$slug/subscribers/'
+      preLoaderRoute: typeof TSlugSubscribersIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/settings/': {
+      id: '/t/$slug/settings/'
+      path: '/settings'
+      fullPath: '/t/$slug/settings/'
+      preLoaderRoute: typeof TSlugSettingsIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/security/': {
+      id: '/t/$slug/security/'
+      path: '/security'
+      fullPath: '/t/$slug/security/'
+      preLoaderRoute: typeof TSlugSecurityIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/lists/': {
+      id: '/t/$slug/lists/'
+      path: '/lists'
+      fullPath: '/t/$slug/lists/'
+      preLoaderRoute: typeof TSlugListsIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/import-export/': {
+      id: '/t/$slug/import-export/'
+      path: '/import-export'
+      fullPath: '/t/$slug/import-export/'
+      preLoaderRoute: typeof TSlugImportExportIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/audit/': {
+      id: '/t/$slug/audit/'
+      path: '/audit'
+      fullPath: '/t/$slug/audit/'
+      preLoaderRoute: typeof TSlugAuditIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/access/': {
+      id: '/t/$slug/access/'
+      path: '/access'
+      fullPath: '/t/$slug/access/'
+      preLoaderRoute: typeof TSlugAccessIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/subscribers/$id': {
+      id: '/t/$slug/subscribers/$id'
+      path: '/subscribers/$id'
+      fullPath: '/t/$slug/subscribers/$id'
+      preLoaderRoute: typeof TSlugSubscribersIdRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/lists/$id': {
+      id: '/t/$slug/lists/$id'
+      path: '/lists/$id'
+      fullPath: '/t/$slug/lists/$id'
+      preLoaderRoute: typeof TSlugListsIdRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
   }
 }
+
+interface TSlugRouteRouteChildren {
+  TSlugIndexRoute: typeof TSlugIndexRoute
+  TSlugListsIdRoute: typeof TSlugListsIdRoute
+  TSlugSubscribersIdRoute: typeof TSlugSubscribersIdRoute
+  TSlugAccessIndexRoute: typeof TSlugAccessIndexRoute
+  TSlugAuditIndexRoute: typeof TSlugAuditIndexRoute
+  TSlugImportExportIndexRoute: typeof TSlugImportExportIndexRoute
+  TSlugListsIndexRoute: typeof TSlugListsIndexRoute
+  TSlugSecurityIndexRoute: typeof TSlugSecurityIndexRoute
+  TSlugSettingsIndexRoute: typeof TSlugSettingsIndexRoute
+  TSlugSubscribersIndexRoute: typeof TSlugSubscribersIndexRoute
+}
+
+const TSlugRouteRouteChildren: TSlugRouteRouteChildren = {
+  TSlugIndexRoute: TSlugIndexRoute,
+  TSlugListsIdRoute: TSlugListsIdRoute,
+  TSlugSubscribersIdRoute: TSlugSubscribersIdRoute,
+  TSlugAccessIndexRoute: TSlugAccessIndexRoute,
+  TSlugAuditIndexRoute: TSlugAuditIndexRoute,
+  TSlugImportExportIndexRoute: TSlugImportExportIndexRoute,
+  TSlugListsIndexRoute: TSlugListsIndexRoute,
+  TSlugSecurityIndexRoute: TSlugSecurityIndexRoute,
+  TSlugSettingsIndexRoute: TSlugSettingsIndexRoute,
+  TSlugSubscribersIndexRoute: TSlugSubscribersIndexRoute,
+}
+
+const TSlugRouteRouteWithChildren = TSlugRouteRoute._addFileChildren(
+  TSlugRouteRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  TSlugRouteRoute: TSlugRouteRouteWithChildren,
   InviteTokenRoute: InviteTokenRoute,
-  TSlugRoute: TSlugRoute,
   TenantsNewRoute: TenantsNewRoute,
 }
 export const routeTree = rootRouteImport

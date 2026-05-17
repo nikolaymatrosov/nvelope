@@ -23,7 +23,12 @@ const config = defineConfig({
       projects: ["./tsconfig.json"],
     }),
     tailwindcss(),
-    tanstackStart(),
+    tanstackStart({
+      router: {
+        // Colocated test files live beside routes — keep them out of the tree.
+        routeFileIgnorePattern: "\\.(test|spec)\\.",
+      },
+    }),
     viteReact(),
   ],
 })
