@@ -16,13 +16,18 @@ const testMigrateDSN = "postgres://nvelope:s3cr3t@localhost:5432/nvelope?sslmode
 // NVELOPE_TOTP_ENCRYPTION_KEY.
 const testTOTPKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-// setPhase3Env sets the Phase 3 required variables (Redis + Postbox
-// credentials) so a success-path Load can validate without error.
+// setPhase3Env sets the Phase 3 and Phase 4 required variables (Redis, Postbox
+// credentials, and the feedback stream settings) so a success-path Load can
+// validate without error.
 func setPhase3Env(t *testing.T) {
 	t.Helper()
 	t.Setenv("NVELOPE_REDIS_URL", "redis://localhost:6379/0")
 	t.Setenv("NVELOPE_POSTBOX_ACCESS_KEY_ID", "test-access-key")
 	t.Setenv("NVELOPE_POSTBOX_SECRET_ACCESS_KEY", "test-secret-key")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_ENDPOINT", "grpcs://ydb.example.net:2135")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_DATABASE", "/ru-central1/b1g/etn")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_TOPIC", "postbox-feedback")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_CONSUMER", "nvelope-consumer")
 }
 
 func TestLoadValidConfig(t *testing.T) {
@@ -76,6 +81,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	require.Equal(t, 15*time.Minute, cfg.SendingDomainVerifyInterval)
 	require.Equal(t, 72*time.Hour, cfg.SendingDomainVerifyWindow)
 	require.Equal(t, 500, cfg.CampaignBatchSize)
+	require.Equal(t, 60*time.Second, cfg.AnalyticsRefreshInterval)
 }
 
 func TestMigrateDatabaseURLFallsBackToDatabaseURL(t *testing.T) {

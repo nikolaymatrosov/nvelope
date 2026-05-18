@@ -15,6 +15,9 @@ const (
 	RecipientSent RecipientStatus = "sent"
 	// RecipientFailed marks a recipient whose send failed.
 	RecipientFailed RecipientStatus = "failed"
+	// RecipientSkipped marks a recipient skipped by the pre-send suppression
+	// check — no message was dispatched.
+	RecipientSkipped RecipientStatus = "skipped"
 )
 
 // Recipient is one unique target of a campaign — the unit of send progress and

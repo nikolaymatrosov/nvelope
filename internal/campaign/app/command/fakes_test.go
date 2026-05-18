@@ -129,6 +129,22 @@ func (f fakeDomainLookup) IsVerified(context.Context, string, string) (bool, err
 	return f.verified, nil
 }
 
+// stubSuppression is a SuppressionChecker that suppresses the addresses in
+// blocked; the zero value suppresses nothing.
+type stubSuppression struct{ blocked map[string]string }
+
+func (s stubSuppression) Suppressed(_ context.Context, _ string, emails []string) (
+	map[string]string, error) {
+
+	out := map[string]string{}
+	for _, e := range emails {
+		if reason, ok := s.blocked[e]; ok {
+			out[e] = reason
+		}
+	}
+	return out, nil
+}
+
 // fakeCampaignEnqueuer records EnqueueStart calls.
 type fakeCampaignEnqueuer struct {
 	starts []string

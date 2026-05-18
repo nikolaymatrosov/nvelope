@@ -67,6 +67,25 @@ type CampaignBatchArgs struct {
 // Kind is the stable River job kind for a campaign batch.
 func (CampaignBatchArgs) Kind() string { return "campaign.batch" }
 
+// FeedbackProcessArgs is the River job payload for processing one staged
+// inbound delivery-feedback notification. It carries only the identifier of
+// the inbound_feedback_events row — all state lives in PostgreSQL.
+type FeedbackProcessArgs struct {
+	InboundEventID string `json:"inbound_event_id"`
+}
+
+// Kind is the stable River job kind for inbound feedback processing.
+func (FeedbackProcessArgs) Kind() string { return "feedback.process" }
+
+// AnalyticsRefreshArgs is the River job payload for recomputing one tenant's
+// campaign analytics summary rows.
+type AnalyticsRefreshArgs struct {
+	TenantID string `json:"tenant_id"`
+}
+
+// Kind is the stable River job kind for an analytics refresh.
+func (AnalyticsRefreshArgs) Kind() string { return "analytics.refresh" }
+
 // Migrate installs (or updates) River's own queue tables. It is invoked from
 // cmd/migrate after the application migrations so `migrate up` provisions the
 // whole schema.
@@ -235,6 +254,32 @@ func (e *SendEnqueuer) EnqueueBatch(ctx context.Context, tenantID, campaignID st
 	}, &river.InsertOpts{Queue: e.queue})
 	if err != nil {
 		return fmt.Errorf("enqueuing campaign batch job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueFeedbackProcess enqueues processing of one staged inbound
+// notification, keyed to its inbound_feedback_events row.
+func (e *SendEnqueuer) EnqueueFeedbackProcess(ctx context.Context, inboundEventID string) error {
+	_, err := e.client.Insert(ctx, FeedbackProcessArgs{InboundEventID: inboundEventID},
+		&river.InsertOpts{Queue: e.queue})
+	if err != nil {
+		return fmt.Errorf("enqueuing feedback process job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueAnalyticsRefresh enqueues an analytics refresh for one tenant. The
+// unique-job option keyed on the args makes a re-arm a no-op while a refresh
+// for the same tenant is still pending, so a slow refresh is never stacked.
+func (e *SendEnqueuer) EnqueueAnalyticsRefresh(ctx context.Context, tenantID string) error {
+	_, err := e.client.Insert(ctx, AnalyticsRefreshArgs{TenantID: tenantID},
+		&river.InsertOpts{
+			Queue:      e.queue,
+			UniqueOpts: river.UniqueOpts{ByArgs: true},
+		})
+	if err != nil {
+		return fmt.Errorf("enqueuing analytics refresh job: %w", err)
 	}
 	return nil
 }

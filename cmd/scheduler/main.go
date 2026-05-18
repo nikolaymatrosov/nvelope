@@ -46,18 +46,24 @@ func main() {
 	enqueuer := jobs.NewSendEnqueuer(riverClient, cfg.WorkerSendQueue)
 
 	runner := service.RunnerFunc(func(ctx context.Context) error {
-		ticker := time.NewTicker(cfg.SendingDomainVerifyInterval)
-		defer ticker.Stop()
-		logger.Info("scheduler running the domain-verification recovery sweep",
-			"interval", cfg.SendingDomainVerifyInterval)
+		domainTicker := time.NewTicker(cfg.SendingDomainVerifyInterval)
+		defer domainTicker.Stop()
+		analyticsTicker := time.NewTicker(cfg.AnalyticsRefreshInterval)
+		defer analyticsTicker.Stop()
+		logger.Info("scheduler running",
+			"domain_verify_interval", cfg.SendingDomainVerifyInterval,
+			"analytics_refresh_interval", cfg.AnalyticsRefreshInterval)
 
 		sweepPendingDomains(ctx, pool, enqueuer, logger)
+		enqueueAnalyticsRefresh(ctx, pool, enqueuer, logger)
 		for {
 			select {
 			case <-ctx.Done():
 				return nil
-			case <-ticker.C:
+			case <-domainTicker.C:
 				sweepPendingDomains(ctx, pool, enqueuer, logger)
+			case <-analyticsTicker.C:
+				enqueueAnalyticsRefresh(ctx, pool, enqueuer, logger)
 			}
 		}
 	})
@@ -105,5 +111,40 @@ func sweepPendingDomains(ctx context.Context, pool *pgxpool.Pool,
 	}
 	if len(domains) > 0 {
 		logger.Info("domain-verification sweep complete", "pending", len(domains))
+	}
+}
+
+// enqueueAnalyticsRefresh enqueues one analytics.refresh job per active tenant.
+// The unique-job option keyed on the args makes a re-arm a no-op while a
+// refresh for the same tenant is still pending, so a slow refresh is never
+// stacked.
+func enqueueAnalyticsRefresh(ctx context.Context, pool *pgxpool.Pool,
+	enqueuer *jobs.SendEnqueuer, logger *slog.Logger) {
+
+	rows, err := pool.Query(ctx, "SELECT id FROM tenants WHERE status = 'active'")
+	if err != nil {
+		logger.Error("listing active tenants", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	var tenantIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			logger.Error("scanning active tenant", "error", err)
+			return
+		}
+		tenantIDs = append(tenantIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Error("reading active tenants", "error", err)
+		return
+	}
+
+	for _, id := range tenantIDs {
+		if err := enqueuer.EnqueueAnalyticsRefresh(ctx, id); err != nil {
+			logger.Error("enqueuing analytics refresh", "tenant_id", id, "error", err)
+		}
 	}
 }

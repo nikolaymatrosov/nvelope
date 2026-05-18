@@ -76,8 +76,13 @@ type RecipientRepository interface {
 	BulkInsert(ctx context.Context, tenantID, campaignID string, rs []*Recipient) (int, error)
 	// Pending returns a bounded slice of still-unsent recipients.
 	Pending(ctx context.Context, tenantID, campaignID string, offset, limit int) ([]*Recipient, error)
-	MarkSent(ctx context.Context, tenantID, recipientID string, at time.Time) error
+	// MarkSent records a successful send, persisting the provider message id
+	// returned by the messenger so a later bounce/complaint can be attributed.
+	MarkSent(ctx context.Context, tenantID, recipientID, providerMessageID string, at time.Time) error
 	MarkFailed(ctx context.Context, tenantID, recipientID, reason string) error
+	// MarkSkipped records a recipient skipped by the pre-send suppression
+	// check, with the suppression reason.
+	MarkSkipped(ctx context.Context, tenantID, recipientID, reason string) error
 	// Counts returns the campaign's sent, failed, and pending recipient counts.
 	Counts(ctx context.Context, tenantID, campaignID string) (sent, failed, pending int, err error)
 }
@@ -97,6 +102,14 @@ type TrackingRepository interface {
 	ResolveTenantForLink(ctx context.Context, linkID string) (tenantID string, err error)
 	// ResolveTenantForCampaign returns the tenant that owns a campaign.
 	ResolveTenantForCampaign(ctx context.Context, campaignID string) (tenantID string, err error)
+}
+
+// TransactionalMessageRepository persists a record of each transactional send,
+// so a transactional bounce or complaint can later be attributed to it. It is
+// declared here and implemented by a pgx-backed adapter.
+type TransactionalMessageRepository interface {
+	// Record persists one transactional send. templateID may be empty.
+	Record(ctx context.Context, tenantID, templateID, providerMessageID, recipientEmail string) error
 }
 
 // RecipientSource resolves a campaign's list and segment targets into audience

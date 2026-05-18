@@ -79,6 +79,27 @@ type Config struct {
 	// Secret — never log this value.
 	PostboxSecretAccessKey string
 
+	// FeedbackStreamEndpoint is the Yandex Data Streams / YDB endpoint the
+	// cmd/consumer service reads Postbox delivery feedback from. Required.
+	FeedbackStreamEndpoint string
+	// FeedbackStreamDatabase is the YDB database path the feedback topic lives
+	// in. Required.
+	FeedbackStreamDatabase string
+	// FeedbackStreamTopic is the topic path Postbox writes notifications to.
+	// Required.
+	FeedbackStreamTopic string
+	// FeedbackStreamConsumer is the registered consumer name; the stream's read
+	// offsets are kept server-side under it. Required.
+	FeedbackStreamConsumer string
+	// FeedbackStreamCredentialsFile is the path to a service-account key file
+	// used to authenticate to the feedback stream. Empty uses the SDK's
+	// metadata/anonymous credentials. Secret — never log this value.
+	FeedbackStreamCredentialsFile string
+
+	// AnalyticsRefreshInterval is how often the scheduler enqueues an
+	// analytics.refresh job per active tenant.
+	AnalyticsRefreshInterval time.Duration
+
 	// GlobalSendRateLimit is the platform-wide cap on sends per
 	// GlobalSendRateWindow, protecting the shared Postbox account.
 	GlobalSendRateLimit int
@@ -139,6 +160,12 @@ func Load(envFilePath string) (Config, error) {
 		PostboxAccessKeyID:     k.String(envPrefix + "POSTBOX_ACCESS_KEY_ID"),
 		PostboxSecretAccessKey: k.String(envPrefix + "POSTBOX_SECRET_ACCESS_KEY"),
 
+		FeedbackStreamEndpoint:        k.String(envPrefix + "FEEDBACK_STREAM_ENDPOINT"),
+		FeedbackStreamDatabase:        k.String(envPrefix + "FEEDBACK_STREAM_DATABASE"),
+		FeedbackStreamTopic:           k.String(envPrefix + "FEEDBACK_STREAM_TOPIC"),
+		FeedbackStreamConsumer:        k.String(envPrefix + "FEEDBACK_STREAM_CONSUMER"),
+		FeedbackStreamCredentialsFile: k.String(envPrefix + "FEEDBACK_STREAM_CREDENTIALS_FILE"),
+
 		GlobalSendRateLimit:        k.Int(envPrefix + "GLOBAL_SEND_RATE_LIMIT"),
 		DefaultTenantSendRateLimit: k.Int(envPrefix + "DEFAULT_TENANT_SEND_RATE_LIMIT"),
 
@@ -156,6 +183,7 @@ func Load(envFilePath string) (Config, error) {
 		{"DEFAULT_TENANT_SEND_RATE_WINDOW", &cfg.DefaultTenantSendRateWindow},
 		{"SENDING_DOMAIN_VERIFY_INTERVAL", &cfg.SendingDomainVerifyInterval},
 		{"SENDING_DOMAIN_VERIFY_WINDOW", &cfg.SendingDomainVerifyWindow},
+		{"ANALYTICS_REFRESH_INTERVAL", &cfg.AnalyticsRefreshInterval},
 	} {
 		raw := k.String(envPrefix + d.name)
 		if raw == "" {
@@ -234,6 +262,9 @@ func (c *Config) applyDefaults() {
 	if c.CampaignBatchSize == 0 {
 		c.CampaignBatchSize = 500
 	}
+	if c.AnalyticsRefreshInterval == 0 {
+		c.AnalyticsRefreshInterval = 60 * time.Second
+	}
 }
 
 // Validate reports whether the configuration is usable. The returned error,
@@ -292,6 +323,21 @@ func (c Config) Validate() error {
 	}
 	if c.CampaignBatchSize <= 0 {
 		errs = append(errs, errors.New("NVELOPE_CAMPAIGN_BATCH_SIZE must be a positive integer"))
+	}
+	if c.FeedbackStreamEndpoint == "" {
+		errs = append(errs, errors.New("NVELOPE_FEEDBACK_STREAM_ENDPOINT is required"))
+	}
+	if c.FeedbackStreamDatabase == "" {
+		errs = append(errs, errors.New("NVELOPE_FEEDBACK_STREAM_DATABASE is required"))
+	}
+	if c.FeedbackStreamTopic == "" {
+		errs = append(errs, errors.New("NVELOPE_FEEDBACK_STREAM_TOPIC is required"))
+	}
+	if c.FeedbackStreamConsumer == "" {
+		errs = append(errs, errors.New("NVELOPE_FEEDBACK_STREAM_CONSUMER is required"))
+	}
+	if c.AnalyticsRefreshInterval <= 0 {
+		errs = append(errs, errors.New("NVELOPE_ANALYTICS_REFRESH_INTERVAL must be a positive duration"))
 	}
 	return errors.Join(errs...)
 }

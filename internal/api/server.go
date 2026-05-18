@@ -12,6 +12,7 @@ import (
 	campaignapp "github.com/nikolaymatrosov/nvelope/internal/campaign/app"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
+	deliverabilityapp "github.com/nikolaymatrosov/nvelope/internal/deliverability/app"
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
 	sendingapp "github.com/nikolaymatrosov/nvelope/internal/sending/app"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
@@ -21,16 +22,17 @@ import (
 // the route table. It holds no database handle — every request flows through
 // the command and query handlers.
 type Server struct {
-	auth     authapp.Application
-	tenant   tenantapp.Application
-	audience audienceapp.Application
-	iam      iamapp.Application
-	sending  sendingapp.Application
-	campaign campaignapp.Application
-	tracking campaigndomain.TrackingRepository
-	cfg      config.Config
-	logger   *slog.Logger
-	health   http.Handler
+	auth           authapp.Application
+	tenant         tenantapp.Application
+	audience       audienceapp.Application
+	iam            iamapp.Application
+	sending        sendingapp.Application
+	campaign       campaignapp.Application
+	deliverability deliverabilityapp.Application
+	tracking       campaigndomain.TrackingRepository
+	cfg            config.Config
+	logger         *slog.Logger
+	health         http.Handler
 }
 
 // New returns a Server. The context applications are built by the composition
@@ -39,11 +41,11 @@ type Server struct {
 // caller so it can also toggle readiness during startup and graceful shutdown.
 func New(auth authapp.Application, tenant tenantapp.Application, audience audienceapp.Application,
 	iam iamapp.Application, sending sendingapp.Application, campaign campaignapp.Application,
-	tracking campaigndomain.TrackingRepository, cfg config.Config,
-	logger *slog.Logger, health http.Handler) *Server {
+	deliverability deliverabilityapp.Application, tracking campaigndomain.TrackingRepository,
+	cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
 	return &Server{
 		auth: auth, tenant: tenant, audience: audience, iam: iam, sending: sending,
-		campaign: campaign, tracking: tracking,
+		campaign: campaign, deliverability: deliverability, tracking: tracking,
 		cfg: cfg, logger: logger, health: health,
 	}
 }
@@ -163,6 +165,17 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/campaigns/{id}/pause", s.handlePauseCampaign)
 			r.Post("/campaigns/{id}/resume", s.handleResumeCampaign)
 			r.Post("/campaigns/{id}/cancel", s.handleCancelCampaign)
+
+			// Suppression list & bounce settings (Phase 4 US2).
+			r.Get("/suppressions", s.handleListSuppressions)
+			r.Post("/suppressions", s.handleAddSuppression)
+			r.Delete("/suppressions/{email}", s.handleRemoveSuppression)
+			r.Get("/bounce-settings", s.handleGetBounceSettings)
+			r.Put("/bounce-settings", s.handleUpdateBounceSettings)
+
+			// Campaign analytics & workspace dashboard (Phase 4 US3).
+			r.Get("/campaigns/{id}/analytics", s.handleCampaignAnalytics)
+			r.Get("/dashboard", s.handleDashboard)
 		})
 
 		// API-key-authenticated transactional send (Phase 3 US3) — a sibling

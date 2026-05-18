@@ -64,6 +64,20 @@ func seedList(t *testing.T, pool *pgxpool.Pool, tenantID, name string) string {
 	return id
 }
 
+// withRecipientProviderMessageID reads a campaign recipient's persisted
+// provider_message_id inside the tenant-bound transaction.
+func withRecipientProviderMessageID(t *testing.T, pool *pgxpool.Pool, tenantID, recipientID string,
+	dst *string) error {
+
+	t.Helper()
+	return tenantdb.WithTenant(context.Background(), pool, tenantID,
+		func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx,
+				"SELECT coalesce(provider_message_id, '') FROM campaign_recipients WHERE id = $1",
+				recipientID).Scan(dst)
+		})
+}
+
 // newCampaign builds a draft campaign for the given tenant.
 func newCampaign(t *testing.T, tenantID, name, sendingDomainID string) *domain.Campaign {
 	t.Helper()

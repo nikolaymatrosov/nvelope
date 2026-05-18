@@ -20,6 +20,10 @@ import (
 	campaignquery "github.com/nikolaymatrosov/nvelope/internal/campaign/app/query"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
+	deliverabilityadapters "github.com/nikolaymatrosov/nvelope/internal/deliverability/adapters"
+	deliverabilityapp "github.com/nikolaymatrosov/nvelope/internal/deliverability/app"
+	deliverabilitycommand "github.com/nikolaymatrosov/nvelope/internal/deliverability/app/command"
+	deliverabilityquery "github.com/nikolaymatrosov/nvelope/internal/deliverability/app/query"
 	iamadapters "github.com/nikolaymatrosov/nvelope/internal/iam/adapters"
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
 	iamcommand "github.com/nikolaymatrosov/nvelope/internal/iam/app/command"
@@ -43,12 +47,13 @@ import (
 // auth, tenant, audience, iam, and sending contexts' command and query
 // handlers.
 type Application struct {
-	Auth     authapp.Application
-	Tenant   tenantapp.Application
-	Audience audienceapp.Application
-	IAM      iamapp.Application
-	Sending  sendingapp.Application
-	Campaign campaignapp.Application
+	Auth           authapp.Application
+	Tenant         tenantapp.Application
+	Audience       audienceapp.Application
+	IAM            iamapp.Application
+	Sending        sendingapp.Application
+	Campaign       campaignapp.Application
+	Deliverability deliverabilityapp.Application
 	// Tracking is the campaign context's tracking repository, used directly by
 	// the public open/click endpoints.
 	Tracking campaigndomain.TrackingRepository
@@ -155,10 +160,64 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	iam := buildIAM(pool, cfg, logger)
 	sending := buildSending(pool, cfg, logger, ov)
 	campaign, tracking := buildCampaign(pool, cfg, logger, ov)
+	deliverability := buildDeliverability(pool, cfg, logger)
 
 	return Application{
 		Auth: auth, Tenant: tenant, Audience: audience, IAM: iam,
-		Sending: sending, Campaign: campaign, Tracking: tracking,
+		Sending: sending, Campaign: campaign, Deliverability: deliverability,
+		Tracking: tracking,
+	}
+}
+
+// buildDeliverability wires the deliverability context — inbound webhook
+// ingestion, suppression, and analytics — with logging decorators applied. The
+// feedback.process and analytics.refresh workers are wired separately in
+// cmd/worker; the scheduler tick in cmd/scheduler.
+func buildDeliverability(pool *pgxpool.Pool, cfg config.Config,
+	logger *slog.Logger) deliverabilityapp.Application {
+
+	events := deliverabilityadapters.NewEvents(pool)
+	parser := deliverabilityadapters.NewNotificationParser()
+	suppressions := deliverabilityadapters.NewSuppressions(pool)
+	settings := deliverabilityadapters.NewSettings(pool)
+	analytics := deliverabilityadapters.NewAnalytics(pool)
+	audit := deliverabilityadapters.NewAuditLog(pool)
+
+	riverClient, err := jobs.NewInsertOnlyClient(pool)
+	if err != nil {
+		panic("building river client: " + err.Error())
+	}
+	enqueuer := jobs.NewSendEnqueuer(riverClient, cfg.WorkerSendQueue)
+
+	return deliverabilityapp.Application{
+		Commands: deliverabilityapp.Commands{
+			IngestNotification: decorator.ApplyCommandDecorators(
+				deliverabilitycommand.NewIngestNotificationHandler(parser, events, enqueuer),
+				"IngestNotification", logger),
+			AddSuppression: decorator.ApplyCommandDecorators(
+				deliverabilitycommand.NewAddSuppressionHandler(suppressions, audit),
+				"AddSuppression", logger),
+			RemoveSuppression: decorator.ApplyCommandDecorators(
+				deliverabilitycommand.NewRemoveSuppressionHandler(suppressions, audit),
+				"RemoveSuppression", logger),
+			UpdateBounceSettings: decorator.ApplyCommandDecorators(
+				deliverabilitycommand.NewUpdateBounceSettingsHandler(settings, audit),
+				"UpdateBounceSettings", logger),
+		},
+		Queries: deliverabilityapp.Queries{
+			ListSuppressions: decorator.ApplyQueryDecorators(
+				deliverabilityquery.NewListSuppressionsHandler(suppressions),
+				"ListSuppressions", logger),
+			GetBounceSettings: decorator.ApplyQueryDecorators(
+				deliverabilityquery.NewGetBounceSettingsHandler(settings),
+				"GetBounceSettings", logger),
+			GetCampaignAnalytics: decorator.ApplyQueryDecorators(
+				deliverabilityquery.NewGetCampaignAnalyticsHandler(analytics),
+				"GetCampaignAnalytics", logger),
+			GetDashboard: decorator.ApplyQueryDecorators(
+				deliverabilityquery.NewGetDashboardHandler(analytics),
+				"GetDashboard", logger),
+		},
 	}
 }
 
@@ -172,6 +231,7 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 	templates := campaignadapters.NewTemplates(pool)
 	campaigns := campaignadapters.NewCampaigns(pool)
 	tracking := campaignadapters.NewTracking(pool)
+	txMessages := campaignadapters.NewTransactionalMessages(pool)
 	lookup := NewSendingDomainLookup(sendingadapters.NewSendingDomains(pool))
 
 	riverClient, err := jobs.NewInsertOnlyClient(pool)
@@ -232,7 +292,8 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 			CancelCampaign: decorator.ApplyCommandDecorators(
 				campaigncommand.NewCancelCampaignHandler(campaigns), "CancelCampaign", logger),
 			SendTransactional: decorator.ApplyResultCommandDecorators(
-				campaigncommand.NewSendTransactionalHandler(templates, lookup, messenger, limiter, perTenant),
+				campaigncommand.NewSendTransactionalHandler(templates, lookup, messenger, limiter,
+					txMessages, deliverabilityadapters.NewSuppressionChecker(pool), perTenant),
 				"SendTransactional", logger),
 		},
 		Queries: campaignapp.Queries{

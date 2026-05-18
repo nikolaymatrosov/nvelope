@@ -1,10 +1,22 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/007-phase-3-ui/plan.md`.
+`specs/008-phase-4-deliverability-analytics/plan.md`.
 <!-- SPECKIT END -->
 
 Use [go-ddd-architecture](.claude/skills/go-ddd-architecture) skill when need to plan Go architecture.
+
+## Services
+
+The platform runs four stateless Go services:
+
+- `cmd/api` — the HTTP API.
+- `cmd/worker` — consumes the River job queues (import/export, sending,
+  `feedback.process`, `analytics.refresh`).
+- `cmd/scheduler` — periodically enqueues recovery and refresh jobs
+  (sending-domain verification sweep, per-tenant analytics refresh).
+- `cmd/consumer` — reads the Postbox delivery-feedback Yandex Data Streams topic
+  and stages each notification for asynchronous attribution.
 
 ## Running tests
 

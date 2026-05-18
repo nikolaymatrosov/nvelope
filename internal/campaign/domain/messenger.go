@@ -42,3 +42,15 @@ type RateLimiter interface {
 	Allow(ctx context.Context, tenantID string, perTenant Limit) (allowed bool,
 		retryAfter time.Duration, err error)
 }
+
+// SuppressionChecker is the pre-send gate: it reports which recipient
+// addresses must not be mailed. It is declared here, by the campaign send
+// paths that consume it, and implemented by a deliverability adapter — so the
+// campaign context depends on an interface it owns, not on the deliverability
+// package.
+type SuppressionChecker interface {
+	// Suppressed returns the subset of emails on the tenant's suppression
+	// list, mapped to the reason each was suppressed, so a skipped recipient
+	// can be recorded with why it was skipped.
+	Suppressed(ctx context.Context, tenantID string, emails []string) (map[string]string, error)
+}

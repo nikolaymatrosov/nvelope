@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -17,29 +18,31 @@ import (
 // re-selected.
 type BatchWorker struct {
 	river.WorkerDefaults[jobs.CampaignBatchArgs]
-	campaigns  domain.CampaignRepository
-	recipients domain.RecipientRepository
-	tracking   domain.TrackingRepository
-	messenger  domain.Messenger
-	limiter    domain.RateLimiter
-	domains    domain.SendingDomainLookup
-	perTenant  domain.Limit
-	baseURL    string
+	campaigns   domain.CampaignRepository
+	recipients  domain.RecipientRepository
+	tracking    domain.TrackingRepository
+	messenger   domain.Messenger
+	limiter     domain.RateLimiter
+	domains     domain.SendingDomainLookup
+	suppression domain.SuppressionChecker
+	perTenant   domain.Limit
+	baseURL     string
 }
 
 // NewBatchWorker builds the campaign.batch worker, failing fast on a nil
 // dependency.
 func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.RecipientRepository,
 	tracking domain.TrackingRepository, messenger domain.Messenger, limiter domain.RateLimiter,
-	domains domain.SendingDomainLookup, perTenant domain.Limit, baseURL string) *BatchWorker {
+	domains domain.SendingDomainLookup, suppression domain.SuppressionChecker,
+	perTenant domain.Limit, baseURL string) *BatchWorker {
 	if campaigns == nil || recipients == nil || tracking == nil ||
-		messenger == nil || limiter == nil || domains == nil {
+		messenger == nil || limiter == nil || domains == nil || suppression == nil {
 		panic("nil dependency")
 	}
 	return &BatchWorker{
 		campaigns: campaigns, recipients: recipients, tracking: tracking,
 		messenger: messenger, limiter: limiter, domains: domains,
-		perTenant: perTenant, baseURL: baseURL,
+		suppression: suppression, perTenant: perTenant, baseURL: baseURL,
 	}
 }
 
@@ -69,6 +72,17 @@ func (w *BatchWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignBatc
 		return err
 	}
 
+	// Re-check the suppression list immediately before sending, so an address
+	// suppressed after the recipient list was built is still skipped.
+	emails := make([]string, 0, len(pending))
+	for _, rec := range pending {
+		emails = append(emails, rec.Email())
+	}
+	suppressed, err := w.suppression.Suppressed(ctx, tenantID, emails)
+	if err != nil {
+		return err
+	}
+
 	linkIDs := map[string]string{}
 	if urls := domain.ExtractLinks(campaign.BodyHTML()); len(urls) > 0 {
 		linkIDs, err = w.tracking.UpsertLinks(ctx, tenantID, campaignID, urls)
@@ -82,6 +96,12 @@ func (w *BatchWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignBatc
 		// River redelivers the job and the still-pending recipients resume.
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		// A suppressed recipient is recorded as skipped and never mailed; it
+		// does not consume the rate-limit budget.
+		if reason, ok := suppressed[strings.ToLower(rec.Email())]; ok {
+			_ = w.recipients.MarkSkipped(context.WithoutCancel(ctx), tenantID, rec.ID(), reason)
+			continue
 		}
 		allowed, retryAfter, err := w.limiter.Allow(ctx, tenantID, w.perTenant)
 		if err != nil {
@@ -109,7 +129,7 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 	if html != "" {
 		html = domain.RenderTracked(html, w.baseURL, campaign.ID(), rec.ID(), linkIDs)
 	}
-	_, err := w.messenger.Send(ctx, domain.OutboundMessage{
+	messageRef, err := w.messenger.Send(ctx, domain.OutboundMessage{
 		FromName:    campaign.FromName(),
 		FromAddress: fromAddress,
 		To:          rec.Email(),
@@ -130,7 +150,9 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 		_ = w.recipients.MarkFailed(persistCtx, tenantID, rec.ID(), err.Error())
 		return
 	}
-	_ = w.recipients.MarkSent(persistCtx, tenantID, rec.ID(), time.Now())
+	// The provider message ref is persisted so a later bounce/complaint
+	// notification can be attributed back to this recipient.
+	_ = w.recipients.MarkSent(persistCtx, tenantID, rec.ID(), messageRef, time.Now())
 }
 
 // syncProgress re-derives the campaign's counters from the per-recipient rows,

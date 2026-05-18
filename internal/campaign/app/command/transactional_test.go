@@ -38,6 +38,16 @@ func (l txLimiter) Allow(context.Context, string, domain.Limit) (bool, time.Dura
 
 func perTenant() domain.Limit { return domain.Limit{Max: 100, Window: time.Second} }
 
+// fakeTxMessages records the transactional sends persisted for attribution.
+type fakeTxMessages struct {
+	recorded []string
+}
+
+func (m *fakeTxMessages) Record(_ context.Context, _, _, providerMessageID, _ string) error {
+	m.recorded = append(m.recorded, providerMessageID)
+	return nil
+}
+
 // seedTxTemplate adds a transactional template and returns its id.
 func seedTxTemplate(t *testing.T, repo *fakeTemplateRepo) string {
 	t.Helper()
@@ -56,7 +66,7 @@ func TestSendTransactionalSucceeds(t *testing.T) {
 	msgr := &txMessenger{}
 
 	h := command.NewSendTransactionalHandler(templates, fakeDomainLookup{verified: true},
-		msgr, txLimiter{allow: true}, perTenant())
+		msgr, txLimiter{allow: true}, &fakeTxMessages{}, stubSuppression{}, perTenant())
 	res, err := h.Handle(context.Background(), command.SendTransactional{
 		TenantID: "tenant-1", TemplateID: tplID, To: "sam@example.com",
 		SendingDomainID: "dom-1", FromName: "Acme", FromLocalPart: "noreply",
@@ -73,7 +83,7 @@ func TestSendTransactionalSucceeds(t *testing.T) {
 func TestSendTransactionalTemplateNotFound(t *testing.T) {
 	t.Parallel()
 	h := command.NewSendTransactionalHandler(newFakeTemplateRepo(), fakeDomainLookup{verified: true},
-		&txMessenger{}, txLimiter{allow: true}, perTenant())
+		&txMessenger{}, txLimiter{allow: true}, &fakeTxMessages{}, stubSuppression{}, perTenant())
 	_, err := h.Handle(context.Background(), command.SendTransactional{
 		TenantID: "tenant-1", TemplateID: "missing", SendingDomainID: "dom-1",
 	})
@@ -89,7 +99,7 @@ func TestSendTransactionalRejectsCampaignTemplate(t *testing.T) {
 	require.NoError(t, err)
 
 	h := command.NewSendTransactionalHandler(templates, fakeDomainLookup{verified: true},
-		&txMessenger{}, txLimiter{allow: true}, perTenant())
+		&txMessenger{}, txLimiter{allow: true}, &fakeTxMessages{}, stubSuppression{}, perTenant())
 	_, err = h.Handle(context.Background(), command.SendTransactional{
 		TenantID: "tenant-1", TemplateID: tplID, SendingDomainID: "dom-1",
 	})
@@ -102,7 +112,7 @@ func TestSendTransactionalRejectsUnverifiedDomain(t *testing.T) {
 	tplID := seedTxTemplate(t, templates)
 
 	h := command.NewSendTransactionalHandler(templates, fakeDomainLookup{verified: false},
-		&txMessenger{}, txLimiter{allow: true}, perTenant())
+		&txMessenger{}, txLimiter{allow: true}, &fakeTxMessages{}, stubSuppression{}, perTenant())
 	_, err := h.Handle(context.Background(), command.SendTransactional{
 		TenantID: "tenant-1", TemplateID: tplID, SendingDomainID: "dom-1",
 	})
@@ -116,7 +126,7 @@ func TestSendTransactionalRateLimited(t *testing.T) {
 	msgr := &txMessenger{}
 
 	h := command.NewSendTransactionalHandler(templates, fakeDomainLookup{verified: true},
-		msgr, txLimiter{allow: false, retryAfter: 5 * time.Second}, perTenant())
+		msgr, txLimiter{allow: false, retryAfter: 5 * time.Second}, &fakeTxMessages{}, stubSuppression{}, perTenant())
 	res, err := h.Handle(context.Background(), command.SendTransactional{
 		TenantID: "tenant-1", TemplateID: tplID, SendingDomainID: "dom-1",
 	})
@@ -131,9 +141,26 @@ func TestSendTransactionalSurfacesSendFailure(t *testing.T) {
 	tplID := seedTxTemplate(t, templates)
 
 	h := command.NewSendTransactionalHandler(templates, fakeDomainLookup{verified: true},
-		&txMessenger{err: errors.New("provider down")}, txLimiter{allow: true}, perTenant())
+		&txMessenger{err: errors.New("provider down")}, txLimiter{allow: true}, &fakeTxMessages{}, stubSuppression{}, perTenant())
 	_, err := h.Handle(context.Background(), command.SendTransactional{
 		TenantID: "tenant-1", TemplateID: tplID, SendingDomainID: "dom-1",
 	})
 	require.Error(t, err)
+}
+
+func TestSendTransactionalRejectsSuppressedRecipient(t *testing.T) {
+	t.Parallel()
+	templates := newFakeTemplateRepo()
+	tplID := seedTxTemplate(t, templates)
+	msgr := &txMessenger{}
+
+	h := command.NewSendTransactionalHandler(templates, fakeDomainLookup{verified: true},
+		msgr, txLimiter{allow: true}, &fakeTxMessages{},
+		stubSuppression{blocked: map[string]string{"sam@example.com": "hard_bounce"}}, perTenant())
+	_, err := h.Handle(context.Background(), command.SendTransactional{
+		TenantID: "tenant-1", TemplateID: tplID, To: "sam@example.com", SendingDomainID: "dom-1",
+		FromName: "Acme", FromLocalPart: "noreply",
+	})
+	require.ErrorIs(t, err, domain.ErrRecipientSuppressed)
+	require.Empty(t, msgr.sent, "a suppressed recipient is never mailed")
 }

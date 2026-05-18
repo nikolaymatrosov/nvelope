@@ -77,6 +77,13 @@ func (f fakeDomainLookup) IsVerified(context.Context, string, string) (bool, err
 	return true, nil
 }
 
+// noopSuppression is a SuppressionChecker that suppresses nothing.
+type noopSuppression struct{}
+
+func (noopSuppression) Suppressed(context.Context, string, []string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
 // collectingEnqueuer records the campaign.batch jobs a start worker fans out.
 type collectingEnqueuer struct {
 	batches [][2]int // offset, limit
@@ -167,6 +174,7 @@ func (f *pipelineFixture) run(t *testing.T, batchSize int, perTenant ratelimit.L
 
 	batch := adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
 		f.messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
+		noopSuppression{},
 		domain.Limit{Max: perTenant.Max, Window: perTenant.Window}, "https://track.test")
 
 	for _, b := range f.enqueuer.batches {

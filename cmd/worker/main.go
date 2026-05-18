@@ -14,6 +14,8 @@ import (
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	"github.com/nikolaymatrosov/nvelope/internal/db"
+	deliverabilityadapters "github.com/nikolaymatrosov/nvelope/internal/deliverability/adapters"
+	deliverabilitycommand "github.com/nikolaymatrosov/nvelope/internal/deliverability/app/command"
 	"github.com/nikolaymatrosov/nvelope/internal/logging"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/postbox"
@@ -97,10 +99,26 @@ func main() {
 	river.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
 	river.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
 		cfg.SendingDomainVerifyInterval, cfg.SendingDomainVerifyWindow))
+	campaignSuppression := deliverabilityadapters.NewSuppressionChecker(pool)
 	river.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
 		recipientSource, enqueuer, cfg.CampaignBatchSize))
 	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
-		messenger, rateLimiter, domainLookup, perTenant, cfg.BaseURL))
+		messenger, rateLimiter, domainLookup, campaignSuppression, perTenant, cfg.BaseURL))
+
+	// Deliverability: inbound feedback processing with automatic suppression.
+	deliverabilityEvents := deliverabilityadapters.NewEvents(pool)
+	deliverabilitySuppressions := deliverabilityadapters.NewSuppressions(pool)
+	deliverabilitySettings := deliverabilityadapters.NewSettings(pool)
+	suppressor := deliverabilityadapters.NewSuppressionApplier(deliverabilitySuppressions,
+		deliverabilitySettings)
+	processFeedback := deliverabilitycommand.NewProcessFeedbackHandler(
+		deliverabilityEvents, suppressor, logger)
+	river.AddWorker(workers, deliverabilityadapters.NewFeedbackWorker(processFeedback))
+
+	// Deliverability: periodic per-tenant campaign analytics refresh.
+	deliverabilityAnalytics := deliverabilityadapters.NewAnalytics(pool)
+	refreshAnalytics := deliverabilitycommand.NewRefreshAnalyticsHandler(deliverabilityAnalytics)
+	river.AddWorker(workers, deliverabilityadapters.NewAnalyticsWorker(refreshAnalytics))
 
 	client, err := jobs.NewWorkerClientForQueues(pool, map[string]int{
 		cfg.WorkerQueue:     cfg.WorkerTenantConcurrency,

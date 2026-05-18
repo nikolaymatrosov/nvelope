@@ -27,24 +27,29 @@ type SendTransactionalResult struct {
 
 // SendTransactionalHandler handles the SendTransactional command.
 type SendTransactionalHandler struct {
-	templates domain.TemplateRepository
-	domains   domain.SendingDomainLookup
-	messenger domain.Messenger
-	limiter   domain.RateLimiter
-	perTenant domain.Limit
+	templates   domain.TemplateRepository
+	domains     domain.SendingDomainLookup
+	messenger   domain.Messenger
+	limiter     domain.RateLimiter
+	txMessages  domain.TransactionalMessageRepository
+	suppression domain.SuppressionChecker
+	perTenant   domain.Limit
 }
 
 // NewSendTransactionalHandler builds the handler, failing fast on a nil
 // dependency.
 func NewSendTransactionalHandler(templates domain.TemplateRepository,
 	domains domain.SendingDomainLookup, messenger domain.Messenger,
-	limiter domain.RateLimiter, perTenant domain.Limit) SendTransactionalHandler {
-	if templates == nil || domains == nil || messenger == nil || limiter == nil {
+	limiter domain.RateLimiter, txMessages domain.TransactionalMessageRepository,
+	suppression domain.SuppressionChecker, perTenant domain.Limit) SendTransactionalHandler {
+	if templates == nil || domains == nil || messenger == nil || limiter == nil ||
+		txMessages == nil || suppression == nil {
 		panic("nil dependency")
 	}
 	return SendTransactionalHandler{
 		templates: templates, domains: domains, messenger: messenger,
-		limiter: limiter, perTenant: perTenant,
+		limiter: limiter, txMessages: txMessages, suppression: suppression,
+		perTenant: perTenant,
 	}
 }
 
@@ -74,6 +79,16 @@ func (h SendTransactionalHandler) Handle(ctx context.Context, cmd SendTransactio
 		return SendTransactionalResult{}, err
 	}
 
+	// Pre-send suppression gate: a suppressed recipient is never mailed and
+	// never consumes the rate-limit budget.
+	suppressed, err := h.suppression.Suppressed(ctx, cmd.TenantID, []string{cmd.To})
+	if err != nil {
+		return SendTransactionalResult{}, err
+	}
+	if len(suppressed) > 0 {
+		return SendTransactionalResult{}, domain.ErrRecipientSuppressed
+	}
+
 	allowed, retryAfter, err := h.limiter.Allow(ctx, cmd.TenantID, h.perTenant)
 	if err != nil {
 		return SendTransactionalResult{}, err
@@ -92,6 +107,11 @@ func (h SendTransactionalHandler) Handle(ctx context.Context, cmd SendTransactio
 		Headers:     map[string]string{"X-Tenant": cmd.TenantID},
 	})
 	if err != nil {
+		return SendTransactionalResult{}, err
+	}
+	// Record the send so a later bounce or complaint notification can be
+	// attributed back to this transactional message by its provider id.
+	if err := h.txMessages.Record(ctx, cmd.TenantID, cmd.TemplateID, ref, cmd.To); err != nil {
 		return SendTransactionalResult{}, err
 	}
 	return SendTransactionalResult{MessageID: ref}, nil

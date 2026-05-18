@@ -16,6 +16,7 @@ import (
 	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
+	deliverabilityadapters "github.com/nikolaymatrosov/nvelope/internal/deliverability/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/ratelimit"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/tenantdb"
@@ -94,6 +95,7 @@ func (ts *testServer) startCampaignWorkers(messenger campaigndomain.Messenger) {
 		source, enqueuer, 500))
 	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
 		messenger, campaignadapters.NewRateLimiter(limiter), lookup,
+		deliverabilityadapters.NewSuppressionChecker(ts.pool),
 		campaigndomain.Limit{Max: 1000, Window: time.Second}, ts.URL))
 
 	client, err := jobs.NewWorkerClientForQueues(ts.pool, map[string]int{ts.sendQueue: 4}, workers)

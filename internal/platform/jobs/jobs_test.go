@@ -16,6 +16,32 @@ func TestJobKindsAreStable(t *testing.T) {
 	require.Equal(t, "domain.verify", jobs.DomainVerifyArgs{}.Kind())
 	require.Equal(t, "campaign.start", jobs.CampaignStartArgs{}.Kind())
 	require.Equal(t, "campaign.batch", jobs.CampaignBatchArgs{}.Kind())
+	require.Equal(t, "feedback.process", jobs.FeedbackProcessArgs{}.Kind())
+	require.Equal(t, "analytics.refresh", jobs.AnalyticsRefreshArgs{}.Kind())
+}
+
+func TestFeedbackProcessArgsCarryOnlyIdentifiers(t *testing.T) {
+	t.Parallel()
+	args := jobs.FeedbackProcessArgs{InboundEventID: "e1"}
+	raw, err := json.Marshal(args)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"inbound_event_id":"e1"}`, string(raw))
+
+	var back jobs.FeedbackProcessArgs
+	require.NoError(t, json.Unmarshal(raw, &back))
+	require.Equal(t, args, back)
+}
+
+func TestAnalyticsRefreshArgsCarryOnlyIdentifiers(t *testing.T) {
+	t.Parallel()
+	args := jobs.AnalyticsRefreshArgs{TenantID: "t1"}
+	raw, err := json.Marshal(args)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"tenant_id":"t1"}`, string(raw))
+
+	var back jobs.AnalyticsRefreshArgs
+	require.NoError(t, json.Unmarshal(raw, &back))
+	require.Equal(t, args, back)
 }
 
 func TestDomainVerifyArgsCarryOnlyIdentifiers(t *testing.T) {

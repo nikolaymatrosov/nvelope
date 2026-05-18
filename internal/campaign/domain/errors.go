@@ -63,4 +63,9 @@ var (
 
 	// ErrLinkNotFound is returned when a tracking link UUID matches no row.
 	ErrLinkNotFound = apperr.NewNotFound("link-not-found", "no such tracking link")
+
+	// ErrRecipientSuppressed is returned when a transactional send targets an
+	// address on the tenant's suppression list.
+	ErrRecipientSuppressed = apperr.NewConflict("recipient_suppressed",
+		"the recipient is suppressed and cannot be mailed")
 )

@@ -34,12 +34,12 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		require.NoError(t, dbErr)
 	}
 
-	// Apply: every migration applies and the recorded version reaches 10.
+	// Apply: every migration applies and the recorded version reaches 13.
 	m := newMigrator()
 	require.NoError(t, m.Up())
 	v, dirty, err := m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(10), v)
+	require.Equal(t, uint(13), v)
 	require.False(t, dirty)
 	closeMigrator(m)
 
@@ -53,12 +53,16 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		"lists", "subscribers", "subscriber_lists", "import_export_jobs",
 		"sending_domains", "templates", "campaigns", "campaign_lists",
 		"campaign_recipients", "links", "link_clicks", "campaign_views",
+		"inbound_feedback_events", "delivery_events", "transactional_messages",
+		"suppression_list", "bounce_settings", "campaign_analytics",
 	} {
 		require.True(t, tableExists(t, dsn, table), "%s should exist after up", table)
 	}
 	for _, table := range []string{
 		"tenant_settings", "users", "sessions", "roles", "lists", "subscribers", "subscriber_lists",
 		"sending_domains", "templates", "campaigns", "campaign_recipients", "links",
+		"delivery_events", "transactional_messages", "suppression_list",
+		"bounce_settings", "campaign_analytics",
 	} {
 		require.True(t, rlsForced(t, dsn, table),
 			"%s must have FORCE ROW LEVEL SECURITY", table)

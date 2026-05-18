@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	deliverabilitydomain "github.com/nikolaymatrosov/nvelope/internal/deliverability/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
 )
 
@@ -24,5 +25,24 @@ func TestStatusForCategory(t *testing.T) {
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.want, statusForCategory(tc.category))
+	}
+}
+
+func TestDeliverabilityErrorSlugsMapToExpectedStatus(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		err  error
+		slug string
+		want int
+	}{
+		{deliverabilitydomain.ErrSuppressionNotFound, "suppression_not_found", http.StatusNotFound},
+		{deliverabilitydomain.ErrRecipientSuppressed, "recipient_suppressed", http.StatusConflict},
+		{deliverabilitydomain.ErrValidationFailed, "validation_failed", http.StatusUnprocessableEntity},
+	}
+	for _, tc := range cases {
+		ae, ok := apperr.As(tc.err)
+		require.True(t, ok)
+		require.Equal(t, tc.slug, ae.Slug())
+		require.Equal(t, tc.want, statusForCategory(ae.Category()))
 	}
 }

@@ -90,15 +90,33 @@ func (r *Recipients) Pending(ctx context.Context, tenantID, campaignID string,
 	return out, nil
 }
 
-// MarkSent records a successful send for one recipient.
-func (r *Recipients) MarkSent(ctx context.Context, tenantID, recipientID string, at time.Time) error {
+// MarkSent records a successful send for one recipient, persisting the
+// provider message id so a later bounce/complaint can be attributed to it.
+func (r *Recipients) MarkSent(ctx context.Context, tenantID, recipientID, providerMessageID string,
+	at time.Time) error {
+
 	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
-			`UPDATE campaign_recipients SET status = 'sent', sent_at = $1, failure_reason = ''
-			 WHERE id = $2`,
-			at.UTC(), recipientID)
+			`UPDATE campaign_recipients
+			 SET status = 'sent', sent_at = $1, failure_reason = '', provider_message_id = $2
+			 WHERE id = $3`,
+			at.UTC(), nullableString(providerMessageID), recipientID)
 		if err != nil {
 			return fmt.Errorf("marking recipient sent: %w", err)
+		}
+		return nil
+	})
+}
+
+// MarkSkipped records a recipient skipped by the pre-send suppression check,
+// storing the suppression reason in failure_reason.
+func (r *Recipients) MarkSkipped(ctx context.Context, tenantID, recipientID, reason string) error {
+	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx,
+			`UPDATE campaign_recipients SET status = 'skipped', failure_reason = $1 WHERE id = $2`,
+			reason, recipientID)
+		if err != nil {
+			return fmt.Errorf("marking recipient skipped: %w", err)
 		}
 		return nil
 	})

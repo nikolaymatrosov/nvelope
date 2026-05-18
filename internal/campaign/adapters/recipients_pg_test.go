@@ -64,7 +64,7 @@ func TestRecipientsPendingAndProgress(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pending, 2)
 
-	require.NoError(t, recipients.MarkSent(ctx, tenantID, pending[0].ID(), time.Now()))
+	require.NoError(t, recipients.MarkSent(ctx, tenantID, pending[0].ID(), "pm-abc", time.Now()))
 	require.NoError(t, recipients.MarkFailed(ctx, tenantID, pending[1].ID(), "bounced"))
 
 	sent, failed, stillPending, err := recipients.Counts(ctx, tenantID, campaignID)
@@ -76,6 +76,44 @@ func TestRecipientsPendingAndProgress(t *testing.T) {
 	remaining, err := recipients.Pending(ctx, tenantID, campaignID, 0, 10)
 	require.NoError(t, err)
 	require.Empty(t, remaining, "sent and failed recipients are not re-selected")
+
+	// The provider message id is persisted for the sent recipient so a later
+	// bounce/complaint can be attributed to it.
+	var providerMessageID string
+	require.NoError(t, withRecipientProviderMessageID(t, pool, tenantID, pending[0].ID(),
+		&providerMessageID))
+	require.Equal(t, "pm-abc", providerMessageID)
+}
+
+func TestRecipientsMarkSkipped(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	campaigns := adapters.NewCampaigns(pool)
+	recipients := adapters.NewRecipients(pool)
+	ctx := context.Background()
+	tenantID := seedTenant(t, pool)
+	domainID := seedSendingDomain(t, pool, tenantID, "mail."+dbtest.RandString()+".com")
+	campaignID, err := campaigns.Add(ctx, tenantID, newCampaign(t, tenantID, "C-"+dbtest.RandString(), domainID))
+	require.NoError(t, err)
+	sub := seedSubscriber(t, pool, tenantID, dbtest.RandString()+"@acme.com")
+	_, err = recipients.BulkInsert(ctx, tenantID, campaignID, []*domain.Recipient{
+		domain.NewRecipient(tenantID, campaignID, sub, "skip@acme.com"),
+	})
+	require.NoError(t, err)
+	pending, err := recipients.Pending(ctx, tenantID, campaignID, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+
+	require.NoError(t, recipients.MarkSkipped(ctx, tenantID, pending[0].ID(), "hard_bounce"))
+
+	// A skipped recipient is neither sent, failed, nor pending.
+	sent, failed, stillPending, err := recipients.Counts(ctx, tenantID, campaignID)
+	require.NoError(t, err)
+	require.Equal(t, 0, sent+failed+stillPending)
+
+	remaining, err := recipients.Pending(ctx, tenantID, campaignID, 0, 10)
+	require.NoError(t, err)
+	require.Empty(t, remaining, "a skipped recipient is not re-selected for sending")
 }
 
 func TestRecipientsCrossTenantIsolation(t *testing.T) {
