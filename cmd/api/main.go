@@ -38,8 +38,9 @@ func main() {
 	app := service.NewApplication(pool, cfg, logger)
 
 	srv := &http.Server{
-		Addr:    cfg.HTTPAddr,
-		Handler: api.New(app.Auth, app.Tenant, app.Audience, app.IAM, cfg, logger, healthHandler).Handler(),
+		Addr: cfg.HTTPAddr,
+		Handler: api.New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
+			app.Campaign, app.Tracking, cfg, logger, healthHandler).Handler(),
 	}
 
 	runner := service.RunnerFunc(func(ctx context.Context) error {

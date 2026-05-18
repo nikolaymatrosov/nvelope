@@ -14,6 +14,11 @@ import (
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
 	authcommand "github.com/nikolaymatrosov/nvelope/internal/auth/app/command"
 	authquery "github.com/nikolaymatrosov/nvelope/internal/auth/app/query"
+	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
+	campaignapp "github.com/nikolaymatrosov/nvelope/internal/campaign/app"
+	campaigncommand "github.com/nikolaymatrosov/nvelope/internal/campaign/app/command"
+	campaignquery "github.com/nikolaymatrosov/nvelope/internal/campaign/app/query"
+	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	iamadapters "github.com/nikolaymatrosov/nvelope/internal/iam/adapters"
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
@@ -21,6 +26,13 @@ import (
 	iamquery "github.com/nikolaymatrosov/nvelope/internal/iam/app/query"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/decorator"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/postbox"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/ratelimit"
+	sendingadapters "github.com/nikolaymatrosov/nvelope/internal/sending/adapters"
+	sendingapp "github.com/nikolaymatrosov/nvelope/internal/sending/app"
+	sendingcommand "github.com/nikolaymatrosov/nvelope/internal/sending/app/command"
+	sendingquery "github.com/nikolaymatrosov/nvelope/internal/sending/app/query"
+	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
 	tenantadapters "github.com/nikolaymatrosov/nvelope/internal/tenant/adapters"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
 	tenantcommand "github.com/nikolaymatrosov/nvelope/internal/tenant/app/command"
@@ -28,19 +40,60 @@ import (
 )
 
 // Application is the fully wired use-case surface of the nvelope service — the
-// auth and tenant contexts' command and query handlers.
+// auth, tenant, audience, iam, and sending contexts' command and query
+// handlers.
 type Application struct {
 	Auth     authapp.Application
 	Tenant   tenantapp.Application
 	Audience audienceapp.Application
 	IAM      iamapp.Application
+	Sending  sendingapp.Application
+	Campaign campaignapp.Application
+	// Tracking is the campaign context's tracking repository, used directly by
+	// the public open/click endpoints.
+	Tracking campaigndomain.TrackingRepository
+}
+
+// overrides carries test-only substitutes for external integrations the
+// composition root would otherwise build from configuration. Production code
+// passes none; tests use them to swap a paid external service for a fake.
+type overrides struct {
+	sendingProvisioner sendingdomain.DomainProvisioner
+	campaignMessenger  campaigndomain.Messenger
+	campaignLimiter    campaigndomain.RateLimiter
+}
+
+// Option overrides a composition-root dependency. It exists so tests can
+// substitute an external integration (the mail provider) with a fake.
+type Option func(*overrides)
+
+// WithSendingProvisioner substitutes the sending context's domain provisioner —
+// used by tests to avoid calling the real mail provider.
+func WithSendingProvisioner(p sendingdomain.DomainProvisioner) Option {
+	return func(o *overrides) { o.sendingProvisioner = p }
+}
+
+// WithCampaignSender substitutes the campaign context's messenger and rate
+// limiter — used by tests to avoid the real mail provider and Redis when
+// exercising the synchronous transactional send.
+func WithCampaignSender(messenger campaigndomain.Messenger, limiter campaigndomain.RateLimiter) Option {
+	return func(o *overrides) {
+		o.campaignMessenger = messenger
+		o.campaignLimiter = limiter
+	}
 }
 
 // NewApplication is the composition root. It constructs the pgx-backed
 // adapters, builds every command and query handler with logging decorators
 // applied, and returns the wired Application. Dependencies flow through plain
 // constructors — there is no DI framework and no hidden global state.
-func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) Application {
+func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
+	opts ...Option) Application {
+
+	var ov overrides
+	for _, opt := range opts {
+		opt(&ov)
+	}
 	users := authadapters.NewUsers(pool)
 	sessions := authadapters.NewSessions(pool)
 	hasher := authadapters.NewPasswordHasher()
@@ -100,8 +153,140 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) 
 
 	audience := buildAudience(pool, cfg, logger)
 	iam := buildIAM(pool, cfg, logger)
+	sending := buildSending(pool, cfg, logger, ov)
+	campaign, tracking := buildCampaign(pool, cfg, logger, ov)
 
-	return Application{Auth: auth, Tenant: tenant, Audience: audience, IAM: iam}
+	return Application{
+		Auth: auth, Tenant: tenant, Audience: audience, IAM: iam,
+		Sending: sending, Campaign: campaign, Tracking: tracking,
+	}
+}
+
+// buildCampaign wires the campaign context's command and query handlers — the
+// surface the API service uses — with logging decorators applied. It also
+// returns the tracking repository, used directly by the public tracking
+// endpoints. The send-pipeline workers are wired separately in cmd/worker.
+func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, ov overrides) (
+	campaignapp.Application, campaigndomain.TrackingRepository) {
+
+	templates := campaignadapters.NewTemplates(pool)
+	campaigns := campaignadapters.NewCampaigns(pool)
+	tracking := campaignadapters.NewTracking(pool)
+	lookup := NewSendingDomainLookup(sendingadapters.NewSendingDomains(pool))
+
+	riverClient, err := jobs.NewInsertOnlyClient(pool)
+	if err != nil {
+		panic("building river client: " + err.Error())
+	}
+	enqueuer := jobs.NewSendEnqueuer(riverClient, cfg.WorkerSendQueue)
+
+	// The synchronous transactional send needs a messenger and a rate limiter
+	// inside the API process. Tests substitute both via WithCampaignSender.
+	messenger := ov.campaignMessenger
+	if messenger == nil {
+		client, err := postbox.New(postbox.Config{
+			Endpoint:        cfg.PostboxEndpoint,
+			Region:          cfg.PostboxRegion,
+			AccessKeyID:     cfg.PostboxAccessKeyID,
+			SecretAccessKey: cfg.PostboxSecretAccessKey,
+		})
+		if err != nil {
+			panic("building postbox client: " + err.Error())
+		}
+		messenger = campaignadapters.NewPostboxMessenger(client)
+	}
+	limiter := ov.campaignLimiter
+	if limiter == nil {
+		rl, err := ratelimit.New(cfg.RedisURL, ratelimit.Limit{
+			Max:    cfg.GlobalSendRateLimit,
+			Window: cfg.GlobalSendRateWindow,
+		})
+		if err != nil {
+			panic("building rate limiter: " + err.Error())
+		}
+		limiter = campaignadapters.NewRateLimiter(rl)
+	}
+	perTenant := campaigndomain.Limit{
+		Max:    cfg.DefaultTenantSendRateLimit,
+		Window: cfg.DefaultTenantSendRateWindow,
+	}
+
+	app := campaignapp.Application{
+		Commands: campaignapp.Commands{
+			CreateTemplate: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewCreateTemplateHandler(templates), "CreateTemplate", logger),
+			UpdateTemplate: decorator.ApplyCommandDecorators(
+				campaigncommand.NewUpdateTemplateHandler(templates), "UpdateTemplate", logger),
+			CreateCampaign: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewCreateCampaignHandler(campaigns, templates), "CreateCampaign", logger),
+			UpdateCampaign: decorator.ApplyCommandDecorators(
+				campaigncommand.NewUpdateCampaignHandler(campaigns), "UpdateCampaign", logger),
+			StartCampaign: decorator.ApplyCommandDecorators(
+				campaigncommand.NewStartCampaignHandler(campaigns, lookup, enqueuer), "StartCampaign", logger),
+			PauseCampaign: decorator.ApplyCommandDecorators(
+				campaigncommand.NewPauseCampaignHandler(campaigns), "PauseCampaign", logger),
+			ResumeCampaign: decorator.ApplyCommandDecorators(
+				campaigncommand.NewResumeCampaignHandler(campaigns, enqueuer), "ResumeCampaign", logger),
+			SendTransactional: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewSendTransactionalHandler(templates, lookup, messenger, limiter, perTenant),
+				"SendTransactional", logger),
+		},
+		Queries: campaignapp.Queries{
+			ListTemplates: decorator.ApplyQueryDecorators(
+				campaignquery.NewListTemplatesHandler(templates), "ListTemplates", logger),
+			GetTemplate: decorator.ApplyQueryDecorators(
+				campaignquery.NewGetTemplateHandler(templates), "GetTemplate", logger),
+			ListCampaigns: decorator.ApplyQueryDecorators(
+				campaignquery.NewListCampaignsHandler(campaigns), "ListCampaigns", logger),
+			GetCampaign: decorator.ApplyQueryDecorators(
+				campaignquery.NewGetCampaignHandler(campaigns), "GetCampaign", logger),
+		},
+	}
+	return app, tracking
+}
+
+// buildSending wires the sending context — sending domains and their
+// Postbox-backed verification — with logging decorators applied. When a test
+// supplies a provisioner override the real Postbox client is not built.
+func buildSending(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
+	ov overrides) sendingapp.Application {
+
+	domains := sendingadapters.NewSendingDomains(pool)
+
+	provisioner := ov.sendingProvisioner
+	if provisioner == nil {
+		client, err := postbox.New(postbox.Config{
+			Endpoint:        cfg.PostboxEndpoint,
+			Region:          cfg.PostboxRegion,
+			AccessKeyID:     cfg.PostboxAccessKeyID,
+			SecretAccessKey: cfg.PostboxSecretAccessKey,
+		})
+		if err != nil {
+			panic("building postbox client: " + err.Error())
+		}
+		provisioner = sendingadapters.NewPostboxProvisioner(client)
+	}
+
+	riverClient, err := jobs.NewInsertOnlyClient(pool)
+	if err != nil {
+		panic("building river client: " + err.Error())
+	}
+	enqueuer := jobs.NewSendEnqueuer(riverClient, cfg.WorkerSendQueue)
+
+	return sendingapp.Application{
+		Commands: sendingapp.Commands{
+			AddDomain: decorator.ApplyResultCommandDecorators(
+				sendingcommand.NewAddDomainHandler(domains, provisioner, enqueuer), "AddDomain", logger),
+			RecheckDomain: decorator.ApplyCommandDecorators(
+				sendingcommand.NewRecheckDomainHandler(domains, enqueuer), "RecheckDomain", logger),
+		},
+		Queries: sendingapp.Queries{
+			ListDomains: decorator.ApplyQueryDecorators(
+				sendingquery.NewListDomainsHandler(domains), "ListDomains", logger),
+			GetDomain: decorator.ApplyQueryDecorators(
+				sendingquery.NewGetDomainHandler(domains), "GetDomain", logger),
+		},
+	}
 }
 
 // buildIAM wires the iam context — tenant-plane users, sessions, roles,

@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	audienceadapters "github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
-	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
@@ -25,12 +24,7 @@ func (ts *testServer) startWorker() {
 	ts.t.Helper()
 	ctx := context.Background()
 
-	admin := dbtest.AdminPool(ts.t)
-	require.NoError(ts.t, jobs.Migrate(ctx, admin))
-	_, err := admin.Exec(ctx,
-		`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO nvelope_app;
-		 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nvelope_app;`)
-	require.NoError(ts.t, err)
+	ensureRiverMigrated(ts.t)
 
 	jobRepo := audienceadapters.NewJobs(ts.pool)
 	subscribers := audienceadapters.NewSubscribers(ts.pool)

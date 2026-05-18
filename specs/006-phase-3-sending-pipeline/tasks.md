@@ -73,35 +73,35 @@ after the window and cannot be used to send.
 
 ### Migration & domain layer
 
-- [ ] T012 [US1] Write migration `internal/db/migrations/000008_sending_domains.{up,down}.sql` — the `sending_domains` table with RLS (`ENABLE`/`FORCE`, `tenant_isolation` policy), constraints and indexes per data-model.md
-- [ ] T013 [P] [US1] Implement the `SendingDomain` aggregate in `internal/sending/domain/domain.go` — unexported fields, validating constructor, documented hydration path, `MarkVerified`/`MarkFailed`/`RecordCheck` transition methods
-- [ ] T014 [P] [US1] Define the context's slug errors in `internal/sending/domain/errors.go` (`domain-invalid`, `domain-already-exists`, `domain-not-found`, `domain-not-pending`, `provisioning-failed`) via the shared `apperr` package
-- [ ] T015 [P] [US1] Declare the domain-owned interfaces — `SendingDomainRepository` in `internal/sending/domain/repository.go`, `DomainProvisioner` + `IdentityVerifier` in `internal/sending/domain/provisioner.go`
-- [ ] T016 [P] [US1] Unit-test the `SendingDomain` entity transitions and constructor validation in `internal/sending/domain/domain_test.go`
+- [X] T012 [US1] Write migration `internal/db/migrations/000008_sending_domains.{up,down}.sql` — the `sending_domains` table with RLS (`ENABLE`/`FORCE`, `tenant_isolation` policy), constraints and indexes per data-model.md
+- [X] T013 [P] [US1] Implement the `SendingDomain` aggregate in `internal/sending/domain/domain.go` — unexported fields, validating constructor, documented hydration path, `MarkVerified`/`MarkFailed`/`RecordCheck` transition methods
+- [X] T014 [P] [US1] Define the context's slug errors in `internal/sending/domain/errors.go` (`domain-invalid`, `domain-already-exists`, `domain-not-found`, `domain-not-pending`, `provisioning-failed`) via the shared `apperr` package
+- [X] T015 [P] [US1] Declare the domain-owned interfaces — `SendingDomainRepository` in `internal/sending/domain/repository.go`, `DomainProvisioner` + `IdentityVerifier` in `internal/sending/domain/provisioner.go`
+- [X] T016 [P] [US1] Unit-test the `SendingDomain` entity transitions and constructor validation in `internal/sending/domain/domain_test.go`
 
 ### Adapters
 
-- [ ] T017 [US1] Implement `SendingDomainRepository` (pgx + RLS, closure-based `Update`) in `internal/sending/adapters/domains_pg.go`
-- [ ] T018 [P] [US1] Implement the Postbox-backed `DomainProvisioner` + `IdentityVerifier` adapter in `internal/sending/adapters/provisioner_postbox.go`, wrapping the `platform/postbox` client (T006); compose the platform's SPF/DMARC records
-- [ ] T019 [US1] Implement the `domain.verify` River worker in `internal/sending/adapters/verify_worker.go` — load row, check identity, `MarkVerified`/`MarkFailed`/snooze per research.md R4 and contracts/jobs.md
-- [ ] T020 [US1] Integration-test `domains_pg.go` in `internal/sending/adapters/domains_pg_test.go` against Postgres, including a cross-tenant isolation test (tenant A cannot read/write tenant B's domains even with the app-level filter omitted)
-- [ ] T021 [US1] Component-test the `verify_worker` in `internal/sending/adapters/verify_worker_test.go` using a fake verifier — verified path, failed-after-window path, snooze-while-pending path
+- [X] T017 [US1] Implement `SendingDomainRepository` (pgx + RLS, closure-based `Update`) in `internal/sending/adapters/domains_pg.go`
+- [X] T018 [P] [US1] Implement the Postbox-backed `DomainProvisioner` + `IdentityVerifier` adapter in `internal/sending/adapters/provisioner_postbox.go`, wrapping the `platform/postbox` client (T006); compose the platform's SPF/DMARC records
+- [X] T019 [US1] Implement the `domain.verify` River worker in `internal/sending/adapters/verify_worker.go` — load row, check identity, `MarkVerified`/`MarkFailed`/snooze per research.md R4 and contracts/jobs.md
+- [X] T020 [US1] Integration-test `domains_pg.go` in `internal/sending/adapters/domains_pg_test.go` against Postgres, including a cross-tenant isolation test (tenant A cannot read/write tenant B's domains even with the app-level filter omitted)
+- [X] T021 [US1] Component-test the `verify_worker` in `internal/sending/adapters/verify_worker_test.go` using a fake verifier — verified path, failed-after-window path, snooze-while-pending path
 
 ### App layer
 
-- [ ] T022 [P] [US1] Implement the `AddDomain` and `RecheckDomain` commands in `internal/sending/app/command/domains.go` (AddDomain provisions synchronously then enqueues `domain.verify`; RecheckDomain rejects non-`pending` domains)
-- [ ] T023 [P] [US1] Implement the `ListDomains` and `GetDomain` queries in `internal/sending/app/query/domains.go` returning read-model views
-- [ ] T024 [US1] Assemble `internal/sending/app/application.go` (`Application{Commands, Queries}`) and declare the `DomainVerifyEnqueuer` interface in the app layer
-- [ ] T025 [US1] Unit-test the `AddDomain`/`RecheckDomain` commands in `internal/sending/app/command/domains_test.go` with fake repository, provisioner, and enqueuer
+- [X] T022 [P] [US1] Implement the `AddDomain` and `RecheckDomain` commands in `internal/sending/app/command/domains.go` (AddDomain provisions synchronously then enqueues `domain.verify`; RecheckDomain rejects non-`pending` domains)
+- [X] T023 [P] [US1] Implement the `ListDomains` and `GetDomain` queries in `internal/sending/app/query/domains.go` returning read-model views
+- [X] T024 [US1] Assemble `internal/sending/app/application.go` (`Application{Commands, Queries}`) and declare the `DomainVerifyEnqueuer` interface in the app layer
+- [X] T025 [US1] Unit-test the `AddDomain`/`RecheckDomain` commands in `internal/sending/app/command/domains_test.go` with fake repository, provisioner, and enqueuer
 
 ### Transport & wiring
 
-- [ ] T026 [US1] Implement the sending-domain HTTP handlers in `internal/api/sending_handlers.go` — `POST/GET /sending-domains`, `GET /sending-domains/{id}`, `POST /sending-domains/{id}/recheck` per contracts/http-api.md
-- [ ] T027 [US1] Mount the sending-domain routes in `internal/api/server.go` inside the `/t/{slug}/api` authz group, and extend `internal/api/errmap.go` to map the T014 error slugs to status codes
-- [ ] T028 [US1] Wire the `sending` context in `internal/service/application.go` (new `buildSending` function — repository, Postbox provisioner adapter, enqueuer, decorated handlers) and add it to the `Application` struct and `internal/api/server.go`'s `New`
-- [ ] T029 [US1] Register the `verify_worker` in `cmd/worker/main.go` and add the `WorkerSendQueue` to the worker client config
-- [ ] T030 [US1] Implement the periodic `domain.verify` recovery sweep in `cmd/scheduler/main.go` — enqueue a unique job (keyed on domain ID) for each still-`pending` domain
-- [ ] T031 [US1] Add an API-level integration test in `internal/api/sending_handlers_test.go` covering add → records returned → recheck → status, including the isolation case
+- [X] T026 [US1] Implement the sending-domain HTTP handlers in `internal/api/sending_handlers.go` — `POST/GET /sending-domains`, `GET /sending-domains/{id}`, `POST /sending-domains/{id}/recheck` per contracts/http-api.md
+- [X] T027 [US1] Mount the sending-domain routes in `internal/api/server.go` inside the `/t/{slug}/api` authz group, and extend `internal/api/errmap.go` to map the T014 error slugs to status codes
+- [X] T028 [US1] Wire the `sending` context in `internal/service/application.go` (new `buildSending` function — repository, Postbox provisioner adapter, enqueuer, decorated handlers) and add it to the `Application` struct and `internal/api/server.go`'s `New`
+- [X] T029 [US1] Register the `verify_worker` in `cmd/worker/main.go` and add the `WorkerSendQueue` to the worker client config
+- [X] T030 [US1] Implement the periodic `domain.verify` recovery sweep in `cmd/scheduler/main.go` — enqueue a unique job (keyed on domain ID) for each still-`pending` domain
+- [X] T031 [US1] Add an API-level integration test in `internal/api/sending_handlers_test.go` covering add → records returned → recheck → status, including the isolation case
 
 **Checkpoint**: US1 fully functional — a tenant can verify a sending domain.
 
@@ -120,46 +120,46 @@ counts are accurate, and a worker restart mid-send produces no duplicates.
 
 ### Migrations & domain layer
 
-- [ ] T032 [US2] Write migration `internal/db/migrations/000009_templates_campaigns.{up,down}.sql` — `templates`, `campaigns`, `campaign_lists`, `campaign_recipients` tables with RLS, constraints (including `UNIQUE (campaign_id, email)`) and indexes per data-model.md
-- [ ] T033 [US2] Write migration `internal/db/migrations/000010_campaign_tracking.{up,down}.sql` — `links`, `link_clicks`, `campaign_views` tables with RLS, constraints and indexes per data-model.md
-- [ ] T034 [P] [US2] Implement the `Template` aggregate in `internal/campaign/domain/template.go` (constructor validation, `campaign`/`transactional` kind)
-- [ ] T035 [P] [US2] Implement the `Campaign` aggregate in `internal/campaign/domain/campaign.go` — lifecycle methods `Start`/`Pause`/`Resume`/`Finish`/`Cancel`/`RecordProgress`, draft-only editing, start preconditions
-- [ ] T036 [P] [US2] Implement the `CampaignRecipient` type in `internal/campaign/domain/recipient.go` (status, `MarkSent`/`MarkFailed`)
-- [ ] T037 [P] [US2] Implement link-rewriting and open-pixel insertion in `internal/campaign/domain/tracking.go` (rewrite tracked URLs to `/l/{id}?s=`, append `/o/{id}?s=` pixel)
-- [ ] T038 [P] [US2] Define the context's slug errors in `internal/campaign/domain/errors.go` (`template-name-taken`, `template-invalid`, `template-not-found`, `template-kind-mismatch`, `campaign-invalid`, `campaign-not-found`, `campaign-not-draft`, `campaign-not-editable`, `sending-domain-required`, `campaign-no-recipients`)
-- [ ] T039 [P] [US2] Declare the domain-owned interfaces — `TemplateRepository`, `CampaignRepository`, `RecipientRepository`, `TrackingRepository` in `internal/campaign/domain/repository.go`; `Messenger` + `RateLimiter` in `internal/campaign/domain/messenger.go`
-- [ ] T040 [P] [US2] Unit-test the `Campaign` lifecycle, `Template` validation, and link/pixel rewriting in `internal/campaign/domain/campaign_test.go` and `tracking_test.go`
+- [X] T032 [US2] Write migration `internal/db/migrations/000009_templates_campaigns.{up,down}.sql` — `templates`, `campaigns`, `campaign_lists`, `campaign_recipients` tables with RLS, constraints (including `UNIQUE (campaign_id, email)`) and indexes per data-model.md
+- [X] T033 [US2] Write migration `internal/db/migrations/000010_campaign_tracking.{up,down}.sql` — `links`, `link_clicks`, `campaign_views` tables with RLS, constraints and indexes per data-model.md
+- [X] T034 [P] [US2] Implement the `Template` aggregate in `internal/campaign/domain/template.go` (constructor validation, `campaign`/`transactional` kind)
+- [X] T035 [P] [US2] Implement the `Campaign` aggregate in `internal/campaign/domain/campaign.go` — lifecycle methods `Start`/`Pause`/`Resume`/`Finish`/`Cancel`/`RecordProgress`, draft-only editing, start preconditions
+- [X] T036 [P] [US2] Implement the `CampaignRecipient` type in `internal/campaign/domain/recipient.go` (status, `MarkSent`/`MarkFailed`)
+- [X] T037 [P] [US2] Implement link-rewriting and open-pixel insertion in `internal/campaign/domain/tracking.go` (rewrite tracked URLs to `/l/{id}?s=`, append `/o/{id}?s=` pixel)
+- [X] T038 [P] [US2] Define the context's slug errors in `internal/campaign/domain/errors.go` (`template-name-taken`, `template-invalid`, `template-not-found`, `template-kind-mismatch`, `campaign-invalid`, `campaign-not-found`, `campaign-not-draft`, `campaign-not-editable`, `sending-domain-required`, `campaign-no-recipients`)
+- [X] T039 [P] [US2] Declare the domain-owned interfaces — `TemplateRepository`, `CampaignRepository`, `RecipientRepository`, `TrackingRepository` in `internal/campaign/domain/repository.go`; `Messenger` + `RateLimiter` in `internal/campaign/domain/messenger.go`
+- [X] T040 [P] [US2] Unit-test the `Campaign` lifecycle, `Template` validation, and link/pixel rewriting in `internal/campaign/domain/campaign_test.go` and `tracking_test.go`
 
 ### Adapters
 
-- [ ] T041 [P] [US2] Implement `TemplateRepository` (pgx + RLS) in `internal/campaign/adapters/templates_pg.go`
-- [ ] T042 [P] [US2] Implement `CampaignRepository` (pgx + RLS, closure `Update`) in `internal/campaign/adapters/campaigns_pg.go`
-- [ ] T043 [P] [US2] Implement `RecipientRepository` in `internal/campaign/adapters/recipients_pg.go` — `BulkInsert` with `ON CONFLICT (campaign_id, email) DO NOTHING`, `Pending`, `MarkSent`/`MarkFailed`, `Counts`
-- [ ] T044 [P] [US2] Implement `TrackingRepository` in `internal/campaign/adapters/tracking_pg.go` — `UpsertLinks`, `RecordClick`, `RecordView`, `ResolveTenantForLink`/`...ForCampaign`
-- [ ] T045 [P] [US2] Implement the Postbox-backed `Messenger` adapter in `internal/campaign/adapters/messenger_postbox.go` — build the MIME message, set `X-Tenant`/`X-Campaign`/`X-Subscriber` headers, call `platform/postbox` `SendEmail`
-- [ ] T046 [P] [US2] Implement the `RateLimiter` adapter in `internal/campaign/adapters/ratelimiter.go` wrapping `platform/ratelimit` (T008)
-- [ ] T047 [US2] Implement the `campaign.start` River worker in `internal/campaign/adapters/start_worker.go` — resolve lists/segments, dedup recipients via `BulkInsert`, create `links`, set `recipient_count`, enqueue `campaign.batch` jobs
-- [ ] T048 [US2] Implement the `campaign.batch` River worker in `internal/campaign/adapters/batch_worker.go` — short-circuit on non-`running` state, per-recipient rate-limit check (snooze on denial), render, send, mark sent/failed, record progress, auto-pause, finish
-- [ ] T049 [US2] Integration-test `campaigns_pg.go`, `templates_pg.go`, `recipients_pg.go`, `tracking_pg.go` in `internal/campaign/adapters/*_pg_test.go` against Postgres, including a cross-tenant isolation test per repository and a `UNIQUE (campaign_id, email)` dedup assertion
-- [ ] T050 [US2] Component-test the send pipeline in `internal/campaign/adapters/send_pipeline_test.go` with a fake messenger and the real Redis limiter — full send to 100% of recipients each exactly once, rate-limit pacing, auto-pause past `max_send_errors`
-- [ ] T051 [US2] Resumability test in `internal/campaign/adapters/resumability_test.go` — cancel the worker context mid-`campaign.batch`, restart, assert the campaign finishes with no recipient `sent` twice
+- [X] T041 [P] [US2] Implement `TemplateRepository` (pgx + RLS) in `internal/campaign/adapters/templates_pg.go`
+- [X] T042 [P] [US2] Implement `CampaignRepository` (pgx + RLS, closure `Update`) in `internal/campaign/adapters/campaigns_pg.go`
+- [X] T043 [P] [US2] Implement `RecipientRepository` in `internal/campaign/adapters/recipients_pg.go` — `BulkInsert` with `ON CONFLICT (campaign_id, email) DO NOTHING`, `Pending`, `MarkSent`/`MarkFailed`, `Counts`
+- [X] T044 [P] [US2] Implement `TrackingRepository` in `internal/campaign/adapters/tracking_pg.go` — `UpsertLinks`, `RecordClick`, `RecordView`, `ResolveTenantForLink`/`...ForCampaign`
+- [X] T045 [P] [US2] Implement the Postbox-backed `Messenger` adapter in `internal/campaign/adapters/messenger_postbox.go` — build the MIME message, set `X-Tenant`/`X-Campaign`/`X-Subscriber` headers, call `platform/postbox` `SendEmail`
+- [X] T046 [P] [US2] Implement the `RateLimiter` adapter in `internal/campaign/adapters/ratelimiter.go` wrapping `platform/ratelimit` (T008)
+- [X] T047 [US2] Implement the `campaign.start` River worker in `internal/campaign/adapters/start_worker.go` — resolve lists/segments, dedup recipients via `BulkInsert`, create `links`, set `recipient_count`, enqueue `campaign.batch` jobs
+- [X] T048 [US2] Implement the `campaign.batch` River worker in `internal/campaign/adapters/batch_worker.go` — short-circuit on non-`running` state, per-recipient rate-limit check (snooze on denial), render, send, mark sent/failed, record progress, auto-pause, finish
+- [X] T049 [US2] Integration-test `campaigns_pg.go`, `templates_pg.go`, `recipients_pg.go`, `tracking_pg.go` in `internal/campaign/adapters/*_pg_test.go` against Postgres, including a cross-tenant isolation test per repository and a `UNIQUE (campaign_id, email)` dedup assertion
+- [X] T050 [US2] Component-test the send pipeline in `internal/campaign/adapters/send_pipeline_test.go` with a fake messenger and the real Redis limiter — full send to 100% of recipients each exactly once, rate-limit pacing, auto-pause past `max_send_errors`
+- [X] T051 [US2] Resumability test in `internal/campaign/adapters/resumability_test.go` — cancel the worker context mid-`campaign.batch`, restart, assert the campaign finishes with no recipient `sent` twice
 
 ### App layer
 
-- [ ] T052 [P] [US2] Implement the template commands `CreateTemplate`/`UpdateTemplate` in `internal/campaign/app/command/templates.go`
-- [ ] T053 [P] [US2] Implement the campaign commands `CreateCampaign`/`UpdateCampaign`/`StartCampaign`/`PauseCampaign`/`ResumeCampaign` in `internal/campaign/app/command/campaigns.go` (CreateCampaign inherits omitted fields from the template; StartCampaign validates a verified domain + targets, then enqueues `campaign.start`)
-- [ ] T054 [P] [US2] Implement the queries `ListTemplates`/`GetTemplate`/`ListCampaigns`/`GetCampaign` (with progress counts) in `internal/campaign/app/query/`
-- [ ] T055 [US2] Assemble `internal/campaign/app/application.go` and declare the `CampaignEnqueuer` interface in the app layer
-- [ ] T056 [US2] Unit-test the campaign commands in `internal/campaign/app/command/campaigns_test.go` with fakes (start preconditions, template-kind mismatch, draft-only editing)
+- [X] T052 [P] [US2] Implement the template commands `CreateTemplate`/`UpdateTemplate` in `internal/campaign/app/command/templates.go`
+- [X] T053 [P] [US2] Implement the campaign commands `CreateCampaign`/`UpdateCampaign`/`StartCampaign`/`PauseCampaign`/`ResumeCampaign` in `internal/campaign/app/command/campaigns.go` (CreateCampaign inherits omitted fields from the template; StartCampaign validates a verified domain + targets, then enqueues `campaign.start`)
+- [X] T054 [P] [US2] Implement the queries `ListTemplates`/`GetTemplate`/`ListCampaigns`/`GetCampaign` (with progress counts) in `internal/campaign/app/query/`
+- [X] T055 [US2] Assemble `internal/campaign/app/application.go` and declare the `CampaignEnqueuer` interface in the app layer
+- [X] T056 [US2] Unit-test the campaign commands in `internal/campaign/app/command/campaigns_test.go` with fakes (start preconditions, template-kind mismatch, draft-only editing)
 
 ### Transport & wiring
 
-- [ ] T057 [US2] Implement the template/campaign HTTP handlers in `internal/api/campaign_handlers.go` per contracts/http-api.md
-- [ ] T058 [P] [US2] Implement the public tracking handlers in `internal/api/tracking_handlers.go` — `GET /o/{campaignId}` (records a view, returns a 1×1 GIF) and `GET /l/{linkId}` (records a click, 302-redirects), resolving the tenant from the UUID before the bound transaction
-- [ ] T059 [US2] Mount the campaign routes (authz group) and the public `/o` and `/l` routes (router root) in `internal/api/server.go`; extend `internal/api/errmap.go` for the T038 slugs
-- [ ] T060 [US2] Wire the `campaign` context in `internal/service/application.go` (`buildCampaign` — repositories, Postbox messenger, rate limiter, enqueuer, decorated handlers) and add it to `Application` and `internal/api/server.go`'s `New`
-- [ ] T061 [US2] Register the `start_worker` and `batch_worker` in `cmd/worker/main.go`
-- [ ] T062 [US2] API-level integration test in `internal/api/campaign_handlers_test.go` — create template → create campaign → start → poll progress → confirm tracking pixel and rewritten links in the sent message; plus a tracking-endpoint test asserting events attribute to the correct tenant
+- [X] T057 [US2] Implement the template/campaign HTTP handlers in `internal/api/campaign_handlers.go` per contracts/http-api.md
+- [X] T058 [P] [US2] Implement the public tracking handlers in `internal/api/tracking_handlers.go` — `GET /o/{campaignId}` (records a view, returns a 1×1 GIF) and `GET /l/{linkId}` (records a click, 302-redirects), resolving the tenant from the UUID before the bound transaction
+- [X] T059 [US2] Mount the campaign routes (authz group) and the public `/o` and `/l` routes (router root) in `internal/api/server.go`; extend `internal/api/errmap.go` for the T038 slugs
+- [X] T060 [US2] Wire the `campaign` context in `internal/service/application.go` (`buildCampaign` — repositories, Postbox messenger, rate limiter, enqueuer, decorated handlers) and add it to `Application` and `internal/api/server.go`'s `New`
+- [X] T061 [US2] Register the `start_worker` and `batch_worker` in `cmd/worker/main.go`
+- [X] T062 [US2] API-level integration test in `internal/api/campaign_handlers_test.go` — create template → create campaign → start → poll progress → confirm tracking pixel and rewritten links in the sent message; plus a tracking-endpoint test asserting events attribute to the correct tenant
 
 **Checkpoint**: US1 and US2 both functional — a tenant can verify a domain and
 send a tracked campaign.
@@ -176,12 +176,12 @@ delivered immediately through the verified domain.
 call `POST /t/{slug}/api/tx` and confirm one message is delivered; confirm
 missing/invalid/wrongly-scoped keys are rejected with no send.
 
-- [ ] T063 [US3] Implement the API-key authentication middleware in `internal/api/apikey_middleware.go` — read `Authorization: Bearer`, resolve via the existing iam `AuthenticateAPIKey` query, verify the key belongs to the resolved tenant and carries the transactional-send scope
-- [ ] T064 [US3] Implement the `SendTransactional` command in `internal/campaign/app/command/transactional.go` — load the `transactional` template, render with variables, rate-limit check, send synchronously via the `Messenger`, emit a usage event; add it to `internal/campaign/app/application.go`
-- [ ] T065 [US3] Implement the `tx` HTTP handler in `internal/api/tx_handlers.go` — map `rate-limited` to `429` with a `Retry-After` header, kind-mismatch to `422` per contracts/http-api.md
-- [ ] T066 [US3] Mount `POST /t/{slug}/api/tx` in `internal/api/server.go` behind `resolveTenant` + the new API-key middleware; wire the `SendTransactional` handler in `internal/service/application.go`
-- [ ] T067 [US3] Unit-test `SendTransactional` in `internal/campaign/app/command/transactional_test.go` (template-not-found, kind-mismatch, unverified domain, rate-limited)
-- [ ] T068 [US3] API-level integration test in `internal/api/tx_handlers_test.go` — valid key sends one message; missing/invalid/wrongly-scoped keys rejected with no send; cross-tenant key rejected
+- [X] T063 [US3] Implement the API-key authentication middleware in `internal/api/apikey_middleware.go` — read `Authorization: Bearer`, resolve via the existing iam `AuthenticateAPIKey` query, verify the key belongs to the resolved tenant and carries the transactional-send scope
+- [X] T064 [US3] Implement the `SendTransactional` command in `internal/campaign/app/command/transactional.go` — load the `transactional` template, render with variables, rate-limit check, send synchronously via the `Messenger`, emit a usage event; add it to `internal/campaign/app/application.go`
+- [X] T065 [US3] Implement the `tx` HTTP handler in `internal/api/tx_handlers.go` — map `rate-limited` to `429` with a `Retry-After` header, kind-mismatch to `422` per contracts/http-api.md
+- [X] T066 [US3] Mount `POST /t/{slug}/api/tx` in `internal/api/server.go` behind `resolveTenant` + the new API-key middleware; wire the `SendTransactional` handler in `internal/service/application.go`
+- [X] T067 [US3] Unit-test `SendTransactional` in `internal/campaign/app/command/transactional_test.go` (template-not-found, kind-mismatch, unverified domain, rate-limited)
+- [X] T068 [US3] API-level integration test in `internal/api/tx_handlers_test.go` — valid key sends one message; missing/invalid/wrongly-scoped keys rejected with no send; cross-tenant key rejected
 
 **Checkpoint**: All three user stories independently functional — the phase
 exit criterion is met.
@@ -192,10 +192,10 @@ exit criterion is met.
 
 **Purpose**: Documentation, the full verification bundle, and the phase exit gate.
 
-- [ ] T069 [P] Update `docs/architecture.md` and `docs/implementation-plan.md` to mark Phase 3 delivered and note any decisions that diverged from the original outline
-- [ ] T070 [P] Update `.env.example` with every new `NVELOPE_` setting from T004 and a short comment per value
+- [X] T069 [P] Update `docs/architecture.md` and `docs/implementation-plan.md` to mark Phase 3 delivered and note any decisions that diverged from the original outline
+- [X] T070 [P] Update `.env.example` with every new `NVELOPE_` setting from T004 and a short comment per value
 - [ ] T071 Run the quickstart in `specs/006-phase-3-sending-pipeline/quickstart.md` end-to-end against a local stack and the Postbox staging account; fix any drift between the doc and reality
-- [ ] T072 Run the full verification bundle — `make test` (Postgres + Redis + River integration), `make lint`, and a clean `go run ./cmd/migrate up` on a fresh database — and confirm all gates are green
+- [X] T072 Run the full verification bundle — `make test` (Postgres + Redis + River integration), `make lint`, and a clean `go run ./cmd/migrate up` on a fresh database — and confirm all gates are green
 
 ---
 

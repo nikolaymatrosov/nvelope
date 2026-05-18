@@ -54,19 +54,28 @@ gates work. *(Satisfies Epic D, part of Epic H.)*
 
 ---
 
-## Phase 3 — Sending Pipeline
+## Phase 3 — Sending Pipeline — **delivered**
 
-- **3.1** River integration; job queue definitions and worker registration.
+- **3.1** River integration; job queue definitions and worker registration. Three new job
+  kinds (`domain.verify`, `campaign.start`, `campaign.batch`) on a dedicated `sending` queue.
 - **3.2** `sending_domains` schema; Postbox domain provisioning and the `domain.verify` polling
-  job.
+  job, with a scheduler recovery sweep that re-arms lost verification jobs.
 - **3.3** Postbox SES-compatible messenger with AWS SigV4 request signing.
 - **3.4** Redis-coordinated per-tenant and global sliding-window rate limiting.
-- **3.5** Templates and campaigns schema; the `campaign.batch` send pipeline; open-pixel and
-  click-tracking link generation.
-- **3.6** Transactional `tx` API endpoint authenticated by API key.
+- **3.5** Templates and campaigns schema; the `campaign.start` → `campaign.batch` send
+  pipeline with per-recipient dedup/resumability; open-pixel and click-tracking link generation
+  served from public, tenant-resolving endpoints.
+- **3.6** Transactional `tx` API endpoint authenticated by a scoped API key.
 
 **Exit criteria:** a tenant can verify a domain and send a campaign through Postbox with
-tracking. *(Satisfies Epic C, core of Epic E and Epic F.)*
+tracking. *(Satisfies Epic C, core of Epic E and Epic F.)* — **met.**
+
+> **Delivered notes / divergences from the original outline.** The `tx` endpoint and the
+> sending-domain/campaign routes use a small set of new permission strings
+> (`sending:*`, `campaigns:*`, `transactional:send`) added to the IAM catalogue rather than
+> reusing existing scopes. Usage events (`usage_events`) are deferred to Phase 5, where the
+> usage table and rollup actually live; the send pipeline does not emit them yet. SPF and
+> DMARC records are composed by the platform (Postbox returns only DKIM tokens).
 
 ---
 

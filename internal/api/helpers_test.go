@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,11 +17,56 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/tenantdb"
+	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/service"
 )
+
+// riverMigrateOnce guards the River queue-table migration so the many parallel
+// API tests that enqueue jobs install it exactly once per test binary.
+var riverMigrateOnce sync.Once
+
+// ensureRiverMigrated installs River's queue tables and grants the runtime
+// role access to them — idempotently, even under parallel tests.
+func ensureRiverMigrated(t *testing.T) {
+	t.Helper()
+	riverMigrateOnce.Do(func() {
+		ctx := context.Background()
+		admin := dbtest.AdminPool(t)
+		require.NoError(t, jobs.Migrate(ctx, admin))
+		_, err := admin.Exec(ctx,
+			`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO nvelope_app;
+			 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nvelope_app;`)
+		require.NoError(t, err)
+	})
+}
+
+// fakeProvisioner is a deterministic sending-domain provisioner: it never
+// reaches the real mail provider, so API tests stay hermetic.
+type fakeProvisioner struct{}
+
+func (fakeProvisioner) Provision(_ context.Context, dom string) (sendingdomain.ProvisionResult, error) {
+	return sendingdomain.ProvisionResult{
+		IdentityRef: dom,
+		DKIMRecords: []sendingdomain.DNSRecord{
+			{Type: "CNAME", Name: "sel._domainkey." + dom, Value: "sel.dkim.pstbx.ru"},
+		},
+		SPFRecord:   "v=spf1 include:_spf.postbox.yandexcloud.net ~all",
+		DMARCRecord: "v=DMARC1; p=none;",
+	}, nil
+}
+
+// permissiveLimiter is a rate limiter that always admits — API tests exercise
+// the transactional send without standing up Redis.
+type permissiveLimiter struct{}
+
+func (permissiveLimiter) Allow(context.Context, string, campaigndomain.Limit) (bool, time.Duration, error) {
+	return true, 0, nil
+}
 
 // workspaceUserID returns the tenant-plane user id for a member's email,
 // queried directly from the database — there is no list-users endpoint.
@@ -43,26 +89,36 @@ func (ts *testServer) workspaceUserID(slug, email string) string {
 // required so the Secure session cookie is stored by the jar.
 type testServer struct {
 	*httptest.Server
-	t      *testing.T
-	client *http.Client
-	pool   *pgxpool.Pool
+	t           *testing.T
+	client      *http.Client
+	pool        *pgxpool.Pool
+	sendQueue   string
+	txMessenger *capturingMessenger
 }
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 	pool := dbtest.AppPool(t)
+	// Each test gets its own send queue so the campaign workers one test
+	// starts never pick up another parallel test's jobs.
+	sendQueue := "sending-" + dbtest.RandString()
 	cfg := config.Config{
 		SessionTTL:              time.Hour,
 		InviteTTL:               time.Hour,
 		BaseURL:                 "https://app.test",
 		WorkerQueue:             "import_export",
+		WorkerSendQueue:         sendQueue,
 		WorkerTenantConcurrency: 2,
 		// A fixed 32-byte key (hex-encoded) so the TOTP capability builds.
 		TOTPEncryptionKey: "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	app := service.NewApplication(pool, cfg, logger)
-	handler := New(app.Auth, app.Tenant, app.Audience, app.IAM, cfg, logger, http.NotFoundHandler()).Handler()
+	txMessenger := &capturingMessenger{}
+	app := service.NewApplication(pool, cfg, logger,
+		service.WithSendingProvisioner(fakeProvisioner{}),
+		service.WithCampaignSender(txMessenger, permissiveLimiter{}))
+	handler := New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
+		app.Campaign, app.Tracking, cfg, logger, http.NotFoundHandler()).Handler()
 
 	hs := httptest.NewTLSServer(handler)
 	t.Cleanup(hs.Close)
@@ -74,7 +130,10 @@ func newTestServer(t *testing.T) *testServer {
 	// server's shared (TLS-configured) transport.
 	client := &http.Client{Transport: hs.Client().Transport, Jar: jar}
 
-	return &testServer{Server: hs, t: t, client: client, pool: pool}
+	return &testServer{
+		Server: hs, t: t, client: client, pool: pool,
+		sendQueue: sendQueue, txMessenger: txMessenger,
+	}
 }
 
 // newClient returns a fresh client with its own empty cookie jar — an

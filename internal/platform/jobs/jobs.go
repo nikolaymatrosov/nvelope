@@ -160,6 +160,26 @@ func NewSendWorkerClient(pool *pgxpool.Pool, queue string, perTenantConcurrency 
 	return client, nil
 }
 
+// NewWorkerClientForQueues builds a River client that consumes several queues
+// at once, each with its own per-tenant concurrency bound — so the worker
+// process can serve the import/export and sending queues from one client.
+func NewWorkerClientForQueues(pool *pgxpool.Pool, queues map[string]int,
+	workers *river.Workers) (*river.Client[pgx.Tx], error) {
+
+	cfg := make(map[string]river.QueueConfig, len(queues))
+	for name, concurrency := range queues {
+		cfg[name] = river.QueueConfig{MaxWorkers: concurrency}
+	}
+	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
+		Queues:  cfg,
+		Workers: workers,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building river worker client: %w", err)
+	}
+	return client, nil
+}
+
 // SendEnqueuer enqueues sending-pipeline jobs — domain verification, campaign
 // start, and campaign batches — onto the dedicated send queue. It is the
 // implementation behind the sending and campaign apps' enqueuer interfaces.

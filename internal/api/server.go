@@ -9,8 +9,11 @@ import (
 
 	audienceapp "github.com/nikolaymatrosov/nvelope/internal/audience/app"
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
+	campaignapp "github.com/nikolaymatrosov/nvelope/internal/campaign/app"
+	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
+	sendingapp "github.com/nikolaymatrosov/nvelope/internal/sending/app"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
 )
 
@@ -22,18 +25,25 @@ type Server struct {
 	tenant   tenantapp.Application
 	audience audienceapp.Application
 	iam      iamapp.Application
+	sending  sendingapp.Application
+	campaign campaignapp.Application
+	tracking campaigndomain.TrackingRepository
 	cfg      config.Config
 	logger   *slog.Logger
 	health   http.Handler
 }
 
-// New returns a Server. The auth, tenant, audience, and iam applications are
-// built by the composition root; the health handler is supplied by the caller
-// so it can also toggle readiness during startup and graceful shutdown.
+// New returns a Server. The context applications are built by the composition
+// root; tracking is the campaign context's tracking repository, used directly
+// by the public open/click endpoints. The health handler is supplied by the
+// caller so it can also toggle readiness during startup and graceful shutdown.
 func New(auth authapp.Application, tenant tenantapp.Application, audience audienceapp.Application,
-	iam iamapp.Application, cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
+	iam iamapp.Application, sending sendingapp.Application, campaign campaignapp.Application,
+	tracking campaigndomain.TrackingRepository, cfg config.Config,
+	logger *slog.Logger, health http.Handler) *Server {
 	return &Server{
-		auth: auth, tenant: tenant, audience: audience, iam: iam,
+		auth: auth, tenant: tenant, audience: audience, iam: iam, sending: sending,
+		campaign: campaign, tracking: tracking,
 		cfg: cfg, logger: logger, health: health,
 	}
 }
@@ -132,8 +142,39 @@ func (s *Server) Handler() http.Handler {
 
 			// Audit trail.
 			r.Get("/audit", s.handleAuditTrail)
+
+			// Sending domains (Phase 3 US1).
+			r.Post("/sending-domains", s.handleAddSendingDomain)
+			r.Get("/sending-domains", s.handleListSendingDomains)
+			r.Get("/sending-domains/{id}", s.handleGetSendingDomain)
+			r.Post("/sending-domains/{id}/recheck", s.handleRecheckSendingDomain)
+
+			// Templates & campaigns (Phase 3 US2).
+			r.Post("/templates", s.handleCreateTemplate)
+			r.Get("/templates", s.handleListTemplates)
+			r.Get("/templates/{id}", s.handleGetTemplate)
+			r.Put("/templates/{id}", s.handleUpdateTemplate)
+			r.Post("/campaigns", s.handleCreateCampaign)
+			r.Get("/campaigns", s.handleListCampaigns)
+			r.Get("/campaigns/{id}", s.handleGetCampaign)
+			r.Put("/campaigns/{id}", s.handleUpdateCampaign)
+			r.Post("/campaigns/{id}/start", s.handleStartCampaign)
+			r.Post("/campaigns/{id}/pause", s.handlePauseCampaign)
+			r.Post("/campaigns/{id}/resume", s.handleResumeCampaign)
+		})
+
+		// API-key-authenticated transactional send (Phase 3 US3) — a sibling
+		// group off the session/authz path, since callers are server-to-server.
+		r.Group(func(r chi.Router) {
+			r.Use(s.apiKeyAuth)
+			r.Post("/tx", s.handleTransactionalSend)
 		})
 	})
+
+	// Public, unauthenticated tracking endpoints (Phase 3 US2). The tenant is
+	// resolved from the link/campaign UUID, not the path.
+	r.Get("/o/{campaignId}", s.handleTrackOpen)
+	r.Get("/l/{linkId}", s.handleTrackClick)
 
 	return r
 }

@@ -1,13 +1,20 @@
-// Command scheduler runs the nvelope scheduler service.
+// Command scheduler runs the nvelope scheduler service: it periodically
+// enqueues durable recovery jobs — currently the sending-domain verification
+// sweep that re-arms any domain still awaiting verification.
 package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	"github.com/nikolaymatrosov/nvelope/internal/db"
 	"github.com/nikolaymatrosov/nvelope/internal/logging"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/service"
 )
 
@@ -22,23 +29,81 @@ func main() {
 
 	logger := logging.New(os.Stdout, serviceName, cfg.LogLevel)
 
-	pool, err := db.Open(context.Background(), cfg.DatabaseURL)
+	// The sweep is a platform-wide read across every tenant's pending domains,
+	// so it uses the privileged connection that is not constrained by RLS.
+	pool, err := db.Open(context.Background(), cfg.MigrateDatabaseURL)
 	if err != nil {
 		logger.Error("database unavailable", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
 
+	riverClient, err := jobs.NewInsertOnlyClient(pool)
+	if err != nil {
+		logger.Error("building river client", "error", err)
+		os.Exit(1)
+	}
+	enqueuer := jobs.NewSendEnqueuer(riverClient, cfg.WorkerSendQueue)
+
 	runner := service.RunnerFunc(func(ctx context.Context) error {
-		// TODO(phase-3): enqueue periodic jobs (usage rollups, view refresh,
-		// cleanup, billing sweep) on the durable queue.
-		logger.Info("scheduler idle; periodic job enqueueing arrives in a later phase")
-		<-ctx.Done()
-		return nil
+		ticker := time.NewTicker(cfg.SendingDomainVerifyInterval)
+		defer ticker.Stop()
+		logger.Info("scheduler running the domain-verification recovery sweep",
+			"interval", cfg.SendingDomainVerifyInterval)
+
+		sweepPendingDomains(ctx, pool, enqueuer, logger)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				sweepPendingDomains(ctx, pool, enqueuer, logger)
+			}
+		}
 	})
 
 	if err := service.Run(serviceName, logger, cfg.ShutdownTimeout, runner); err != nil {
 		logger.Error("service exited with error", "error", err)
 		os.Exit(1)
+	}
+}
+
+// sweepPendingDomains re-arms a verification job for every sending domain still
+// awaiting verification. The unique-job option keyed on the domain id makes a
+// re-arm a no-op when a live job already exists, so the sweep only recovers
+// domains whose job was lost.
+func sweepPendingDomains(ctx context.Context, pool *pgxpool.Pool,
+	enqueuer *jobs.SendEnqueuer, logger *slog.Logger) {
+
+	rows, err := pool.Query(ctx,
+		"SELECT id, tenant_id FROM sending_domains WHERE status = 'pending'")
+	if err != nil {
+		logger.Error("sweeping pending domains", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	type pending struct{ id, tenantID string }
+	var domains []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.tenantID); err != nil {
+			logger.Error("scanning pending domain", "error", err)
+			return
+		}
+		domains = append(domains, p)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Error("reading pending domains", "error", err)
+		return
+	}
+
+	for _, d := range domains {
+		if err := enqueuer.EnqueueVerifyUnique(ctx, d.tenantID, d.id); err != nil {
+			logger.Error("re-arming domain verification", "domain_id", d.id, "error", err)
+		}
+	}
+	if len(domains) > 0 {
+		logger.Info("domain-verification sweep complete", "pending", len(domains))
 	}
 }
