@@ -28,6 +28,76 @@ _find_project_root() {
     return 1
 }
 
+# Build a Conventional Commits message from the currently staged changes.
+# Prints the subject on line 1, a blank line, then the body. Heuristic only:
+# it summarizes what changed (type, scopes, file counts), not the intent.
+_generate_commit_message() {
+    local status_lines all_files file_count
+    status_lines=$(git diff --cached --name-status 2>/dev/null)
+    [ -z "$status_lines" ] && return 0
+
+    all_files=$(printf '%s\n' "$status_lines" | awk '{print $NF}')
+    file_count=$(printf '%s\n' "$all_files" | sed '/^$/d' | wc -l | tr -d ' ')
+
+    # Commit type: docs-only, test-only, otherwise feature work
+    local non_doc non_test ctype
+    non_doc=$(printf '%s\n' "$all_files" | grep -Ev '(^docs/|\.md$)' || true)
+    non_test=$(printf '%s\n' "$all_files" | grep -Ev '(_test\.go$|\.test\.[jt]sx?$|/tests?/)' || true)
+    if [ -z "$non_doc" ]; then
+        ctype="docs"
+    elif [ -z "$non_test" ]; then
+        ctype="test"
+    else
+        ctype="feat"
+    fi
+
+    # Map each file to a scope, then rank scopes by file count
+    local scope_ranking scope_total scope1 scope2 scope_label
+    scope_ranking=$(printf '%s\n' "$all_files" | sed -E \
+        -e 's#^[^/]+$#repo#' \
+        -e 's#^internal/([^/]+)/.*#\1#' \
+        -e 's#^cmd/([^/]+)/.*#\1#' \
+        -e 's#^frontend/.*#frontend#' \
+        -e 's#^specs?/.*#spec#' \
+        -e 's#^\.specify/.*#specify#' \
+        -e 's#^([^/]+)/.*#\1#' \
+        | sed '/^$/d' | sort | uniq -c | sort -rn)
+    scope_total=$(printf '%s\n' "$scope_ranking" | sed '/^$/d' | wc -l | tr -d ' ')
+    scope1=$(printf '%s\n' "$scope_ranking" | sed -n '1p' | awk '{print $2}')
+    scope2=$(printf '%s\n' "$scope_ranking" | sed -n '2p' | awk '{print $2}')
+    if [ "$scope_total" -le 1 ]; then
+        scope_label="$scope1"
+    else
+        scope_label="${scope1},${scope2}"
+    fi
+
+    # Added / modified / deleted counts for the subject
+    local n_add n_mod n_del parts subject
+    n_add=$(printf '%s\n' "$status_lines" | grep -c '^A' || true)
+    n_mod=$(printf '%s\n' "$status_lines" | grep -c '^M' || true)
+    n_del=$(printf '%s\n' "$status_lines" | grep -c '^D' || true)
+    parts=""
+    [ "$n_add" -gt 0 ] && parts="add ${n_add}"
+    [ "$n_mod" -gt 0 ] && parts="${parts:+$parts, }update ${n_mod}"
+    [ "$n_del" -gt 0 ] && parts="${parts:+$parts, }remove ${n_del}"
+    [ -z "$parts" ] && parts="change ${file_count}"
+    local noun="files"
+    [ "$file_count" = "1" ] && noun="file"
+    if [ "$scope_label" = "$ctype" ]; then
+        subject="${ctype}: ${parts} ${noun}"
+    else
+        subject="${ctype}(${scope_label}): ${parts} ${noun}"
+    fi
+
+    # Body: per-scope file counts plus git's own shortstat
+    local scope_body shortstat
+    scope_body=$(printf '%s\n' "$scope_ranking" | sed '/^$/d' \
+        | awk '{print "- " $2 ": " $1 " file(s)"}')
+    shortstat=$(git diff --cached --shortstat 2>/dev/null | sed 's/^ *//')
+
+    printf '%s\n\n%s\n\n%s\n' "$subject" "$scope_body" "$shortstat"
+}
+
 REPO_ROOT=$(_find_project_root "$SCRIPT_DIR") || REPO_ROOT="$(pwd)"
 cd "$REPO_ROOT"
 
@@ -128,13 +198,30 @@ fi
 _command_name=$(echo "$EVENT_NAME" | sed 's/^after_//' | sed 's/^before_//')
 _phase=$(echo "$EVENT_NAME" | grep -q '^before_' && echo 'before' || echo 'after')
 
+# Stage all changes first so message generation sees the full diff
+_git_out=$(git add . 2>&1) || { echo "[specify] Error: git add failed: $_git_out" >&2; exit 1; }
+
+# For implementation commits, generate a descriptive Conventional Commits
+# message from the staged diff instead of the static config string.
+_commit_body=""
+if [ "$EVENT_NAME" = "after_implement" ]; then
+    _generated=$(_generate_commit_message)
+    if [ -n "$_generated" ]; then
+        _commit_msg=$(printf '%s\n' "$_generated" | sed -n '1p')
+        _commit_body=$(printf '%s\n' "$_generated" | sed '1,2d')
+    fi
+fi
+
 # Use custom message if configured, otherwise default
 if [ -z "$_commit_msg" ]; then
     _commit_msg="[Spec Kit] Auto-commit ${_phase} ${_command_name}"
 fi
 
-# Stage and commit
-_git_out=$(git add . 2>&1) || { echo "[specify] Error: git add failed: $_git_out" >&2; exit 1; }
-_git_out=$(git commit -q -m "$_commit_msg" 2>&1) || { echo "[specify] Error: git commit failed: $_git_out" >&2; exit 1; }
+# Commit
+if [ -n "$_commit_body" ]; then
+    _git_out=$(git commit -q -m "$_commit_msg" -m "$_commit_body" 2>&1) || { echo "[specify] Error: git commit failed: $_git_out" >&2; exit 1; }
+else
+    _git_out=$(git commit -q -m "$_commit_msg" 2>&1) || { echo "[specify] Error: git commit failed: $_git_out" >&2; exit 1; }
+fi
 
 echo "[OK] Changes committed ${_phase} ${_command_name}" >&2

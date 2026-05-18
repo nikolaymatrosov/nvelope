@@ -17,6 +17,13 @@ This command is invoked as a hook after (or before) core commands. It:
 5. Uses the per-command `message` if configured, otherwise a default message
 6. If enabled and there are uncommitted changes, runs `git add .` + `git commit`
 
+For the `after_implement` event, the configured `message` is ignored: the
+script derives a Conventional Commits message from the staged diff instead
+(type from the kind of files touched, scope(s) from the changed directories,
+and add/update/remove counts), with a body summarizing per-scope file counts.
+This is a mechanical summary of *what* changed, not the intent — reword the
+commit afterwards if a more meaningful description is warranted.
+
 ## Execution
 
 Determine the event name from the hook that triggered this command, then run the script:

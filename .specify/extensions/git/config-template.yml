@@ -50,7 +50,9 @@ auto_commit:
     message: "[Spec Kit] Add tasks"
   after_implement:
     enabled: false
-    message: "[Spec Kit] Implementation progress"
+    # message is auto-generated from the staged diff (Conventional Commits);
+    # this value is only a fallback if generation yields nothing.
+    message: "chore: spec kit implementation progress"
   after_checklist:
     enabled: false
     message: "[Spec Kit] Add checklist"
