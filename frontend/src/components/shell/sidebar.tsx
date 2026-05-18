@@ -5,11 +5,15 @@
 import { Link, useLocation } from "@tanstack/react-router"
 import {
   ArrowDownUpIcon,
+  FileTextIcon,
+  GlobeIcon,
   ListIcon,
   ScrollTextIcon,
+  SendIcon,
   SettingsIcon,
   ShieldIcon,
   UsersIcon,
+  ZapIcon,
 } from "lucide-react"
 import type { Permission } from "@/lib/api-types"
 import type { LucideIcon } from "lucide-react"
@@ -37,6 +41,30 @@ type NavEntry = {
 const NAV: Array<NavEntry> = [
   { label: "Subscribers", segment: "subscribers", icon: UsersIcon, requires: ["subscribers:get"] },
   { label: "Lists", segment: "lists", icon: ListIcon, requires: ["lists:get"] },
+  {
+    label: "Sending Domains",
+    segment: "sending-domains",
+    icon: GlobeIcon,
+    requires: ["sending:get", "sending:manage"],
+  },
+  {
+    label: "Templates",
+    segment: "templates",
+    icon: FileTextIcon,
+    requires: ["campaigns:get", "campaigns:manage"],
+  },
+  {
+    label: "Campaigns",
+    segment: "campaigns",
+    icon: SendIcon,
+    requires: ["campaigns:get", "campaigns:manage"],
+  },
+  {
+    label: "Transactional Sending",
+    segment: "transactional",
+    icon: ZapIcon,
+    requires: ["transactional:send", "apikeys:get", "apikeys:manage"],
+  },
   { label: "People & Access", segment: "access", icon: ShieldIcon, requires: [] },
   {
     label: "Import / Export",

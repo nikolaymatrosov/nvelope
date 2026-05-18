@@ -73,4 +73,20 @@ export const queryKeys = {
   audit: (slug: string, limit: number, offset: number) =>
     ["t", slug, "audit", { limit, offset }] as const,
   job: (slug: string, id: string) => ["t", slug, "jobs", id] as const,
+
+  sendingDomains: (slug: string) => ["t", slug, "sending-domains"] as const,
+  sendingDomain: (slug: string, id: string) =>
+    ["t", slug, "sending-domains", id] as const,
+
+  templates: (slug: string) => ["t", slug, "templates"] as const,
+  templatesPage: (slug: string, limit: number, offset: number) =>
+    ["t", slug, "templates", { limit, offset }] as const,
+  template: (slug: string, id: string) =>
+    ["t", slug, "templates", id] as const,
+
+  campaigns: (slug: string) => ["t", slug, "campaigns"] as const,
+  campaignsPage: (slug: string, limit: number, offset: number) =>
+    ["t", slug, "campaigns", { limit, offset }] as const,
+  campaign: (slug: string, id: string) =>
+    ["t", slug, "campaigns", id] as const,
 }

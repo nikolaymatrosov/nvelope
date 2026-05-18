@@ -160,6 +160,56 @@ func TestCampaignTemplateCRUD(t *testing.T) {
 	require.Equal(t, "draft", body["status"])
 }
 
+func TestDeleteTemplate(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, body := ts.request(http.MethodPost, base+"/templates", map[string]any{
+		"name": "Disposable", "kind": "transactional", "subject": "Hi",
+		"body_html": "<p>Hi</p>", "body_text": "Hi",
+	})
+	require.Equal(t, http.StatusCreated, status)
+	templateID, _ := body["id"].(string)
+	require.NotEmpty(t, templateID)
+
+	status, _ = ts.request(http.MethodDelete, base+"/templates/"+templateID, nil)
+	require.Equal(t, http.StatusNoContent, status)
+
+	status, _ = ts.request(http.MethodGet, base+"/templates/"+templateID, nil)
+	require.Equal(t, http.StatusNotFound, status, "the deleted template is gone")
+}
+
+func TestCancelCampaign(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, body := ts.request(http.MethodPost, base+"/campaigns", map[string]any{
+		"name": "Abandoned", "subject": "News",
+		"body_html": "<p>News</p>", "body_text": "News",
+		"from_name": "Acme", "from_local_part": "news",
+		"list_ids": []string{},
+	})
+	require.Equal(t, http.StatusCreated, status)
+	campaignID, _ := body["id"].(string)
+	require.NotEmpty(t, campaignID)
+
+	status, body = ts.request(http.MethodPost, base+"/campaigns/"+campaignID+"/cancel", nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "cancelled", body["status"])
+
+	status, body = ts.request(http.MethodGet, base+"/campaigns/"+campaignID, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "cancelled", body["status"], "the campaign is cancelled")
+}
+
 func TestCampaignSendDeliversTrackedMessages(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)

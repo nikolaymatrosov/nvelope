@@ -217,6 +217,8 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 				campaigncommand.NewCreateTemplateHandler(templates), "CreateTemplate", logger),
 			UpdateTemplate: decorator.ApplyCommandDecorators(
 				campaigncommand.NewUpdateTemplateHandler(templates), "UpdateTemplate", logger),
+			DeleteTemplate: decorator.ApplyCommandDecorators(
+				campaigncommand.NewDeleteTemplateHandler(templates), "DeleteTemplate", logger),
 			CreateCampaign: decorator.ApplyResultCommandDecorators(
 				campaigncommand.NewCreateCampaignHandler(campaigns, templates), "CreateCampaign", logger),
 			UpdateCampaign: decorator.ApplyCommandDecorators(
@@ -227,6 +229,8 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 				campaigncommand.NewPauseCampaignHandler(campaigns), "PauseCampaign", logger),
 			ResumeCampaign: decorator.ApplyCommandDecorators(
 				campaigncommand.NewResumeCampaignHandler(campaigns, enqueuer), "ResumeCampaign", logger),
+			CancelCampaign: decorator.ApplyCommandDecorators(
+				campaigncommand.NewCancelCampaignHandler(campaigns), "CancelCampaign", logger),
 			SendTransactional: decorator.ApplyResultCommandDecorators(
 				campaigncommand.NewSendTransactionalHandler(templates, lookup, messenger, limiter, perTenant),
 				"SendTransactional", logger),

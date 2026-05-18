@@ -18,11 +18,13 @@ type Application struct {
 type Commands struct {
 	CreateTemplate    decorator.ResultCommandHandler[command.CreateTemplate, command.CreateTemplateResult]
 	UpdateTemplate    decorator.CommandHandler[command.UpdateTemplate]
+	DeleteTemplate    decorator.CommandHandler[command.DeleteTemplate]
 	CreateCampaign    decorator.ResultCommandHandler[command.CreateCampaign, command.CreateCampaignResult]
 	UpdateCampaign    decorator.CommandHandler[command.UpdateCampaign]
 	StartCampaign     decorator.CommandHandler[command.StartCampaign]
 	PauseCampaign     decorator.CommandHandler[command.PauseCampaign]
 	ResumeCampaign    decorator.CommandHandler[command.ResumeCampaign]
+	CancelCampaign    decorator.CommandHandler[command.CancelCampaign]
 	SendTransactional decorator.ResultCommandHandler[command.SendTransactional, command.SendTransactionalResult]
 }
 

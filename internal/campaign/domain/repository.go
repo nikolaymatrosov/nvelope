@@ -51,6 +51,7 @@ type TemplateRepository interface {
 	Get(ctx context.Context, tenantID, id string) (*Template, error)
 	Update(ctx context.Context, tenantID, id string, fn func(*Template) (*Template, error)) error
 	All(ctx context.Context, tenantID string, page Page) ([]*Template, int, error)
+	Delete(ctx context.Context, tenantID, id string) error
 }
 
 // CampaignRepository persists campaigns and their send targets. Every

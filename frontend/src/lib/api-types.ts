@@ -215,6 +215,11 @@ export type Permission =
   | "audit:get"
   | "settings:get"
   | "settings:manage"
+  | "sending:get"
+  | "sending:manage"
+  | "campaigns:get"
+  | "campaigns:manage"
+  | "transactional:send"
 
 export const ALL_PERMISSIONS: Array<Permission> = [
   "lists:get",
@@ -230,6 +235,11 @@ export const ALL_PERMISSIONS: Array<Permission> = [
   "audit:get",
   "settings:get",
   "settings:manage",
+  "sending:get",
+  "sending:manage",
+  "campaigns:get",
+  "campaigns:manage",
+  "transactional:send",
 ]
 
 export type Role = {
@@ -287,4 +297,124 @@ export const DEFAULT_PAGE_SIZE = 25
 export type Paged<T> = {
   items: Array<T>
   total: number
+}
+
+// ── Sending domains (Phase 3, snake_case) ────────────────────────────────────
+
+export type DomainStatus = "pending" | "verified" | "failed"
+
+export type DNSRecord = {
+  type: string
+  name: string
+  value: string
+}
+
+export type DomainView = {
+  id: string
+  domain: string
+  status: DomainStatus
+  dkim_records: Array<DNSRecord>
+  spf_record: string
+  dmarc_record: string
+  failure_reason?: string
+  created_at: string
+  verified_at?: string
+  last_checked_at?: string
+}
+
+// ── Templates (Phase 3, snake_case) ──────────────────────────────────────────
+
+export type TemplateKind = "campaign" | "transactional"
+
+export type TemplateView = {
+  id: string
+  name: string
+  kind: TemplateKind
+  subject: string
+  body_html: string
+  body_text: string
+  created_at: string
+  updated_at: string
+}
+
+export type CreateTemplateInput = {
+  name: string
+  kind: TemplateKind
+  subject: string
+  body_html: string
+  body_text: string
+}
+
+export type UpdateTemplateInput = {
+  name: string
+  subject: string
+  body_html: string
+  body_text: string
+}
+
+// ── Campaigns (Phase 3, snake_case) ──────────────────────────────────────────
+
+export type CampaignStatus =
+  | "draft"
+  | "running"
+  | "paused"
+  | "finished"
+  | "cancelled"
+
+export const TERMINAL_CAMPAIGN_STATUSES: Array<CampaignStatus> = [
+  "finished",
+  "cancelled",
+]
+
+export function isTerminalCampaignStatus(status: string): boolean {
+  return TERMINAL_CAMPAIGN_STATUSES.includes(status as CampaignStatus)
+}
+
+export type CampaignView = {
+  id: string
+  name: string
+  subject: string
+  body_html: string
+  body_text: string
+  from_name: string
+  from_local_part: string
+  sending_domain_id?: string
+  template_id?: string
+  status: CampaignStatus
+  max_send_errors: number
+  sent_count: number
+  failed_count: number
+  recipient_count: number
+  list_ids: Array<string>
+  segments: Array<Node> | null
+  created_at: string
+  updated_at: string
+  started_at?: string
+  finished_at?: string
+}
+
+export type CreateCampaignInput = {
+  name: string
+  template_id?: string
+  subject: string
+  body_html: string
+  body_text: string
+  from_name: string
+  from_local_part: string
+  sending_domain_id?: string
+  list_ids: Array<string>
+  segments?: Array<Node>
+  max_send_errors?: number
+}
+
+export type UpdateCampaignInput = {
+  name: string
+  subject: string
+  body_html: string
+  body_text: string
+  from_name: string
+  from_local_part: string
+  sending_domain_id?: string
+  list_ids: Array<string>
+  segments?: Array<Node>
 }

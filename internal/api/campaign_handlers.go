@@ -97,6 +97,20 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	s.respondTemplate(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK)
 }
 
+func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	if err := s.campaign.Commands.DeleteTemplate.Handle(r.Context(), campaigncommand.DeleteTemplate{
+		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
+	}); err != nil {
+		s.fail(w, "delete template", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // respondTemplate fetches and writes a template view.
 func (s *Server) respondTemplate(w http.ResponseWriter, r *http.Request, tenantID, id string, status int) {
 	view, err := s.campaign.Queries.GetTemplate.Handle(r.Context(), campaignquery.GetTemplate{
@@ -239,6 +253,20 @@ func (s *Server) handleResumeCampaign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "running"})
+}
+
+func (s *Server) handleCancelCampaign(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	if err := s.campaign.Commands.CancelCampaign.Handle(r.Context(), campaigncommand.CancelCampaign{
+		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
+	}); err != nil {
+		s.fail(w, "cancel campaign", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "cancelled"})
 }
 
 // respondCampaign fetches and writes a campaign view.

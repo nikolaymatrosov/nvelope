@@ -81,3 +81,27 @@ func (h UpdateTemplateHandler) Handle(ctx context.Context, cmd UpdateTemplate) e
 			return tpl, tpl.Recompose(cmd.Name, cmd.Subject, cmd.BodyHTML, cmd.BodyText)
 		})
 }
+
+// DeleteTemplate is the request to remove a template.
+type DeleteTemplate struct {
+	TenantID   string
+	TemplateID string
+}
+
+// DeleteTemplateHandler handles the DeleteTemplate command.
+type DeleteTemplateHandler struct {
+	templates domain.TemplateRepository
+}
+
+// NewDeleteTemplateHandler builds the handler, failing fast on a nil dependency.
+func NewDeleteTemplateHandler(templates domain.TemplateRepository) DeleteTemplateHandler {
+	if templates == nil {
+		panic("nil template repository")
+	}
+	return DeleteTemplateHandler{templates: templates}
+}
+
+// Handle removes the template inside the tenant-bound transaction.
+func (h DeleteTemplateHandler) Handle(ctx context.Context, cmd DeleteTemplate) error {
+	return h.templates.Delete(ctx, cmd.TenantID, cmd.TemplateID)
+}

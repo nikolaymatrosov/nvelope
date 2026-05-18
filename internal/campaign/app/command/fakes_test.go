@@ -108,6 +108,14 @@ func (r *fakeTemplateRepo) All(context.Context, string, domain.Page) ([]*domain.
 	return nil, 0, nil
 }
 
+func (r *fakeTemplateRepo) Delete(_ context.Context, _, id string) error {
+	if _, ok := r.byID[id]; !ok {
+		return domain.ErrTemplateNotFound
+	}
+	delete(r.byID, id)
+	return nil
+}
+
 // fakeDomainLookup is a deterministic SendingDomainLookup.
 type fakeDomainLookup struct {
 	verified bool

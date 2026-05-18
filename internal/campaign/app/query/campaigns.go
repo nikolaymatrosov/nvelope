@@ -2,31 +2,37 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 )
 
 // CampaignView is the read model of a campaign, including its send progress.
+// ListIDs and Segments carry the campaign's send targets; they are populated
+// by the single-campaign query (GetCampaign) only, so the editor can show and
+// preserve the current targeting.
 type CampaignView struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Subject         string     `json:"subject"`
-	BodyHTML        string     `json:"body_html"`
-	BodyText        string     `json:"body_text"`
-	FromName        string     `json:"from_name"`
-	FromLocalPart   string     `json:"from_local_part"`
-	SendingDomainID string     `json:"sending_domain_id,omitempty"`
-	TemplateID      string     `json:"template_id,omitempty"`
-	Status          string     `json:"status"`
-	MaxSendErrors   int        `json:"max_send_errors"`
-	SentCount       int        `json:"sent_count"`
-	FailedCount     int        `json:"failed_count"`
-	RecipientCount  int        `json:"recipient_count"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	StartedAt       *time.Time `json:"started_at,omitempty"`
-	FinishedAt      *time.Time `json:"finished_at,omitempty"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Subject         string            `json:"subject"`
+	BodyHTML        string            `json:"body_html"`
+	BodyText        string            `json:"body_text"`
+	FromName        string            `json:"from_name"`
+	FromLocalPart   string            `json:"from_local_part"`
+	SendingDomainID string            `json:"sending_domain_id,omitempty"`
+	TemplateID      string            `json:"template_id,omitempty"`
+	Status          string            `json:"status"`
+	MaxSendErrors   int               `json:"max_send_errors"`
+	SentCount       int               `json:"sent_count"`
+	FailedCount     int               `json:"failed_count"`
+	RecipientCount  int               `json:"recipient_count"`
+	ListIDs         []string          `json:"list_ids"`
+	Segments        []json.RawMessage `json:"segments"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
+	StartedAt       *time.Time        `json:"started_at,omitempty"`
+	FinishedAt      *time.Time        `json:"finished_at,omitempty"`
 }
 
 // campaignView projects a Campaign aggregate onto its read model.
@@ -101,11 +107,25 @@ func NewGetCampaignHandler(campaigns domain.CampaignRepository) GetCampaignHandl
 	return GetCampaignHandler{campaigns: campaigns}
 }
 
-// Handle returns the requested campaign, or domain.ErrCampaignNotFound.
+// Handle returns the requested campaign and its send targets, or
+// domain.ErrCampaignNotFound.
 func (h GetCampaignHandler) Handle(ctx context.Context, q GetCampaign) (CampaignView, error) {
 	c, err := h.campaigns.Get(ctx, q.TenantID, q.CampaignID)
 	if err != nil {
 		return CampaignView{}, err
 	}
-	return campaignView(c), nil
+	view := campaignView(c)
+	targets, err := h.campaigns.Targets(ctx, q.TenantID, q.CampaignID)
+	if err != nil {
+		return CampaignView{}, err
+	}
+	for _, t := range targets {
+		if t.ListID != "" {
+			view.ListIDs = append(view.ListIDs, t.ListID)
+		}
+		if len(t.SegmentQuery) > 0 {
+			view.Segments = append(view.Segments, json.RawMessage(t.SegmentQuery))
+		}
+	}
+	return view, nil
 }

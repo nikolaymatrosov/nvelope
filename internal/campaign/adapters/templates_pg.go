@@ -138,6 +138,25 @@ func (r *Templates) All(ctx context.Context, tenantID string, page domain.Page) 
 	return templates, total, nil
 }
 
+// Delete removes a template, or returns domain.ErrTemplateNotFound when no
+// such template exists for the tenant. Campaigns built from the template keep
+// their copied content; their template_id is set to NULL by the schema.
+func (r *Templates) Delete(ctx context.Context, tenantID, id string) error {
+	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, "DELETE FROM templates WHERE id = $1", id)
+		if db.IsInvalidInput(err) {
+			return domain.ErrTemplateNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("deleting template: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return domain.ErrTemplateNotFound
+		}
+		return nil
+	})
+}
+
 func (r *Templates) getTx(ctx context.Context, tx pgx.Tx, id string) (*domain.Template, error) {
 	row := tx.QueryRow(ctx, "SELECT "+templateColumns+" FROM templates WHERE id = $1", id)
 	t, err := scanTemplateRow(row)

@@ -130,6 +130,22 @@ func TestStartCampaignRejectsNonDraft(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrCampaignNotDraft)
 }
 
+func TestCancelCampaign(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	id := addDraftCampaign(t, campaigns, "dom-1", []domain.Target{{ListID: "list-1"}})
+
+	h := command.NewCancelCampaignHandler(campaigns)
+	require.NoError(t, h.Handle(context.Background(), command.CancelCampaign{
+		TenantID: "tenant-1", CampaignID: id,
+	}))
+	require.Equal(t, domain.CampaignCancelled, campaigns.byID[id].Status())
+
+	// A second cancel is rejected — the campaign is already cancelled.
+	err := h.Handle(context.Background(), command.CancelCampaign{TenantID: "tenant-1", CampaignID: id})
+	require.ErrorIs(t, err, domain.ErrCampaignNotEditable)
+}
+
 func TestUpdateCampaignDraftOnly(t *testing.T) {
 	t.Parallel()
 	campaigns := newFakeCampaignRepo()

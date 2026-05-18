@@ -154,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/templates", s.handleListTemplates)
 			r.Get("/templates/{id}", s.handleGetTemplate)
 			r.Put("/templates/{id}", s.handleUpdateTemplate)
+			r.Delete("/templates/{id}", s.handleDeleteTemplate)
 			r.Post("/campaigns", s.handleCreateCampaign)
 			r.Get("/campaigns", s.handleListCampaigns)
 			r.Get("/campaigns/{id}", s.handleGetCampaign)
@@ -161,6 +162,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/campaigns/{id}/start", s.handleStartCampaign)
 			r.Post("/campaigns/{id}/pause", s.handlePauseCampaign)
 			r.Post("/campaigns/{id}/resume", s.handleResumeCampaign)
+			r.Post("/campaigns/{id}/cancel", s.handleCancelCampaign)
 		})
 
 		// API-key-authenticated transactional send (Phase 3 US3) — a sibling

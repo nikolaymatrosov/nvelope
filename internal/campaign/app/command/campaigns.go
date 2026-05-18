@@ -238,6 +238,33 @@ func (h PauseCampaignHandler) Handle(ctx context.Context, cmd PauseCampaign) err
 		})
 }
 
+// CancelCampaign is the request to abandon a campaign before it finishes.
+type CancelCampaign struct {
+	TenantID   string
+	CampaignID string
+}
+
+// CancelCampaignHandler handles the CancelCampaign command.
+type CancelCampaignHandler struct {
+	campaigns domain.CampaignRepository
+}
+
+// NewCancelCampaignHandler builds the handler, failing fast on a nil dependency.
+func NewCancelCampaignHandler(campaigns domain.CampaignRepository) CancelCampaignHandler {
+	if campaigns == nil {
+		panic("nil campaign repository")
+	}
+	return CancelCampaignHandler{campaigns: campaigns}
+}
+
+// Handle cancels a campaign that has not yet finished.
+func (h CancelCampaignHandler) Handle(ctx context.Context, cmd CancelCampaign) error {
+	return h.campaigns.Update(ctx, cmd.TenantID, cmd.CampaignID,
+		func(c *domain.Campaign) (*domain.Campaign, error) {
+			return c, c.Cancel()
+		})
+}
+
 // ResumeCampaign is the request to resume a paused campaign.
 type ResumeCampaign struct {
 	TenantID   string

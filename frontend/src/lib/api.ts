@@ -12,8 +12,12 @@ import { ApiError, normalizeError } from "./errors"
 import type {
   APIKey,
   AuditRecord,
+  CampaignView,
+  CreateCampaignInput,
   CreateListInput,
   CreateSubscriberInput,
+  CreateTemplateInput,
+  DomainView,
   InvitationLookup,
   IssuedAPIKey,
   JobStatusView,
@@ -29,8 +33,11 @@ import type {
   Subscriber,
   TOTPConfirmation,
   TOTPEnrolment,
+  TemplateView,
+  UpdateCampaignInput,
   UpdateListInput,
   UpdateSubscriberInput,
+  UpdateTemplateInput,
   WorkspaceInfo,
   WorkspaceInvitation,
   WorkspaceSettings,
@@ -274,6 +281,58 @@ export const api = {
       "GET",
       tp(slug, `/audit${pageQuery(page)}`),
     ),
+
+  // ── Sending domains (Phase 3) ──────────────────────────────────────────────
+  addSendingDomain: (slug: string, domain: string) =>
+    request<DomainView>("POST", tp(slug, "/sending-domains"), { domain }),
+  listSendingDomains: (slug: string) =>
+    request<{ domains: Array<DomainView> }>(
+      "GET",
+      tp(slug, "/sending-domains"),
+    ),
+  getSendingDomain: (slug: string, id: string) =>
+    request<DomainView>("GET", tp(slug, `/sending-domains/${id}`)),
+  recheckSendingDomain: (slug: string, id: string) =>
+    request<{ status: string }>(
+      "POST",
+      tp(slug, `/sending-domains/${id}/recheck`),
+    ),
+
+  // ── Templates (Phase 3) ────────────────────────────────────────────────────
+  createTemplate: (slug: string, body: CreateTemplateInput) =>
+    request<TemplateView>("POST", tp(slug, "/templates"), { ...body }),
+  listTemplates: (slug: string, page?: Page) =>
+    request<{ templates: Array<TemplateView>; total: number }>(
+      "GET",
+      tp(slug, `/templates${pageQuery(page)}`),
+    ),
+  getTemplate: (slug: string, id: string) =>
+    request<TemplateView>("GET", tp(slug, `/templates/${id}`)),
+  updateTemplate: (slug: string, id: string, body: UpdateTemplateInput) =>
+    request<TemplateView>("PUT", tp(slug, `/templates/${id}`), { ...body }),
+  deleteTemplate: (slug: string, id: string) =>
+    request("DELETE", tp(slug, `/templates/${id}`)),
+
+  // ── Campaigns (Phase 3) ────────────────────────────────────────────────────
+  createCampaign: (slug: string, body: CreateCampaignInput) =>
+    request<CampaignView>("POST", tp(slug, "/campaigns"), { ...body }),
+  listCampaigns: (slug: string, page?: Page) =>
+    request<{ campaigns: Array<CampaignView>; total: number }>(
+      "GET",
+      tp(slug, `/campaigns${pageQuery(page)}`),
+    ),
+  getCampaign: (slug: string, id: string) =>
+    request<CampaignView>("GET", tp(slug, `/campaigns/${id}`)),
+  updateCampaign: (slug: string, id: string, body: UpdateCampaignInput) =>
+    request<CampaignView>("PUT", tp(slug, `/campaigns/${id}`), { ...body }),
+  startCampaign: (slug: string, id: string) =>
+    request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/start`)),
+  pauseCampaign: (slug: string, id: string) =>
+    request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/pause`)),
+  resumeCampaign: (slug: string, id: string) =>
+    request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/resume`)),
+  cancelCampaign: (slug: string, id: string) =>
+    request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/cancel`)),
 }
 
 export { ApiError }
