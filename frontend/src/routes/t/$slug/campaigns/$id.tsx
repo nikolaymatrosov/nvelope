@@ -62,12 +62,25 @@ export function CampaignDetail() {
 
       <AsyncState query={query}>
         {(campaign) => (
-          <CampaignEditor
-            key={campaign.id}
-            slug={slug}
-            campaign={campaign}
-            canManage={canManage}
-          />
+          <>
+            {campaign.status !== "draft" && (
+              <div>
+                <Link
+                  to="/t/$slug/campaigns/$id/analytics"
+                  params={{ slug, id: campaign.id }}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  View analytics →
+                </Link>
+              </div>
+            )}
+            <CampaignEditor
+              key={campaign.id}
+              slug={slug}
+              campaign={campaign}
+              canManage={canManage}
+            />
+          </>
         )}
       </AsyncState>
     </div>

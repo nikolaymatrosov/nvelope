@@ -7,11 +7,13 @@ import {
   ArrowDownUpIcon,
   FileTextIcon,
   GlobeIcon,
+  LayoutDashboardIcon,
   ListIcon,
   ScrollTextIcon,
   SendIcon,
   SettingsIcon,
   ShieldIcon,
+  ShieldXIcon,
   UsersIcon,
   ZapIcon,
 } from "lucide-react"
@@ -39,6 +41,12 @@ type NavEntry = {
 }
 
 const NAV: Array<NavEntry> = [
+  {
+    label: "Dashboard",
+    segment: "dashboard",
+    icon: LayoutDashboardIcon,
+    requires: ["campaigns:get", "campaigns:manage"],
+  },
   { label: "Subscribers", segment: "subscribers", icon: UsersIcon, requires: ["subscribers:get"] },
   { label: "Lists", segment: "lists", icon: ListIcon, requires: ["lists:get"] },
   {
@@ -58,6 +66,12 @@ const NAV: Array<NavEntry> = [
     segment: "campaigns",
     icon: SendIcon,
     requires: ["campaigns:get", "campaigns:manage"],
+  },
+  {
+    label: "Suppression list",
+    segment: "suppressions",
+    icon: ShieldXIcon,
+    requires: ["sending:get", "sending:manage"],
   },
   {
     label: "Transactional Sending",

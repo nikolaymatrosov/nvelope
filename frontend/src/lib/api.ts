@@ -12,11 +12,14 @@ import { ApiError, normalizeError } from "./errors"
 import type {
   APIKey,
   AuditRecord,
+  BounceSettings,
+  CampaignAnalytics,
   CampaignView,
   CreateCampaignInput,
   CreateListInput,
   CreateSubscriberInput,
   CreateTemplateInput,
+  DashboardView,
   DomainView,
   InvitationLookup,
   IssuedAPIKey,
@@ -31,6 +34,9 @@ import type {
   SessionResult,
   StartExportInput,
   Subscriber,
+  SuppressionEntry,
+  SuppressionListResponse,
+  SuppressionReason,
   TOTPConfirmation,
   TOTPEnrolment,
   TemplateView,
@@ -48,6 +54,13 @@ const BASE: string = import.meta.env.VITE_API_BASE ?? ""
 type Json = Record<string, unknown> | undefined
 
 export type ApiResult<T = unknown> = { status: number; ok: boolean; data: T }
+
+export type SuppressionListParams = {
+  cursor?: string
+  limit?: number
+  reason?: SuppressionReason
+  email?: string
+}
 
 async function parseBody(res: Response): Promise<unknown> {
   const text = await res.text()
@@ -333,6 +346,51 @@ export const api = {
     request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/resume`)),
   cancelCampaign: (slug: string, id: string) =>
     request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/cancel`)),
+
+  // ── Suppression list (Phase 4) ─────────────────────────────────────────────
+  suppressions: {
+    list: (slug: string, params?: SuppressionListParams) => {
+      const q = new URLSearchParams()
+      if (params?.cursor) q.set("cursor", params.cursor)
+      if (params?.limit) q.set("limit", String(params.limit))
+      if (params?.reason) q.set("reason", params.reason)
+      if (params?.email) q.set("email", params.email)
+      const qs = q.toString()
+      return request<SuppressionListResponse>(
+        "GET",
+        tp(slug, `/suppressions${qs ? `?${qs}` : ""}`),
+      )
+    },
+    add: (slug: string, email: string, note = "") =>
+      request<SuppressionEntry>("POST", tp(slug, "/suppressions"), {
+        email,
+        note,
+      }),
+    remove: (slug: string, email: string) =>
+      request(
+        "DELETE",
+        tp(slug, `/suppressions/${encodeURIComponent(email)}`),
+      ),
+  },
+
+  // ── Bounce-action settings (Phase 4) ───────────────────────────────────────
+  bounceSettings: {
+    get: (slug: string) =>
+      request<BounceSettings>("GET", tp(slug, "/bounce-settings")),
+    update: (slug: string, body: BounceSettings) =>
+      request<BounceSettings>("PUT", tp(slug, "/bounce-settings"), body),
+  },
+
+  // ── Analytics & dashboard (Phase 4) ────────────────────────────────────────
+  analytics: {
+    campaign: (slug: string, id: string) =>
+      request<CampaignAnalytics>(
+        "GET",
+        tp(slug, `/campaigns/${id}/analytics`),
+      ),
+    dashboard: (slug: string) =>
+      request<DashboardView>("GET", tp(slug, "/dashboard")),
+  },
 }
 
 export { ApiError }

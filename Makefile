@@ -1,5 +1,6 @@
 .PHONY: build run-api run-worker run-scheduler test test-db-clean lint lint-arch \
-        verify tidy migrate-up migrate-down migrate-version migrate-create
+        verify tidy migrate-up migrate-down migrate-version migrate-create \
+        k8s-images k8s-tls k8s-deploy k8s-delete
 
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -75,3 +76,36 @@ migrate-version:
 # Usage: make migrate-create name=add_something
 migrate-create:
 	$(GO) run ./cmd/migrate create $(name)
+
+# --- Local Kubernetes deploy (OrbStack) ------------------------------------
+# The six images the deploy/k8s/local overlay expects, and the app deployments
+# to roll. Postgres and Redis are deliberately excluded so their (ephemeral)
+# data survives a redeploy.
+K8S_GO_IMAGES   := api worker scheduler consumer migrate
+K8S_DEPLOYMENTS := nvelope-api nvelope-worker nvelope-scheduler \
+                   nvelope-consumer nvelope-frontend nvelope-gateway
+
+# Build every image the local overlay runs, tagged :dev.
+k8s-images:
+	@for s in $(K8S_GO_IMAGES); do \
+		echo "[k8s] build nvelope-$$s:dev"; \
+		docker build -q -f deploy/docker/$$s.Dockerfile -t nvelope-$$s:dev . >/dev/null; \
+	done
+	@echo "[k8s] build nvelope-frontend:dev"
+	@docker build -q -f deploy/docker/frontend.Dockerfile -t nvelope-frontend:dev . >/dev/null
+
+# Issue the locally-trusted nvelope.local TLS certificate. Run once before the
+# first k8s-deploy (or after switching clusters).
+k8s-tls:
+	sh deploy/k8s/local/tls-setup.sh
+
+# Rebuild every image and redeploy. Re-runs migrations (idempotent) and rolls
+# the app pods so they pick up the freshly built :dev images.
+k8s-deploy: k8s-images
+	-kubectl -n nvelope delete job nvelope-migrate --ignore-not-found
+	kubectl apply -k deploy/k8s/local
+	kubectl -n nvelope rollout restart deployment $(K8S_DEPLOYMENTS)
+	kubectl -n nvelope rollout status deployment/nvelope-api
+
+k8s-delete:
+	kubectl delete -k deploy/k8s/local

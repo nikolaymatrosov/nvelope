@@ -21,7 +21,9 @@ export type EffectivePermissions = {
   isOwner: boolean
 }
 
-const OWNER_ROLE = "Owner"
+// The backend emits the tenant membership role lowercase (domain RoleOwner is
+// Role{"owner"}); compare case-insensitively so a capitalised value still matches.
+const OWNER_ROLE = "owner"
 
 export function derivePermissions(
   user: PlatformUser | null | undefined,
@@ -37,7 +39,7 @@ export function derivePermissions(
   if (!mine) {
     return { permissions: new Set(), role: null, isOwner: false }
   }
-  const isOwner = mine.role === OWNER_ROLE
+  const isOwner = mine.role.toLowerCase() === OWNER_ROLE
   if (isOwner) {
     return {
       permissions: new Set(ALL_PERMISSIONS),

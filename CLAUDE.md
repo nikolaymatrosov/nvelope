@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/008-phase-4-deliverability-analytics/plan.md`.
+`specs/009-phase-4-ui/plan.md`.
 <!-- SPECKIT END -->
 
 Use [go-ddd-architecture](.claude/skills/go-ddd-architecture) skill when need to plan Go architecture.

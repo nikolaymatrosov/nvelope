@@ -407,6 +407,68 @@ export type CreateCampaignInput = {
   max_send_errors?: number
 }
 
+// ── Deliverability & Analytics (Phase 4, camelCase) ──────────────────────────
+
+export type SuppressionReason = "hard_bounce" | "complaint" | "manual"
+
+export type SuppressionEntry = {
+  email: string
+  reason: SuppressionReason
+  suppressedAt: string
+  note: string
+}
+
+export type SuppressionListResponse = {
+  items: Array<SuppressionEntry>
+  nextCursor: string | null
+}
+
+export type BounceSettings = {
+  suppressOnHardBounce: boolean
+  suppressOnComplaint: boolean
+}
+
+export type DeliveryCounts = {
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+  bounced: number
+  complained: number
+}
+
+export type CampaignRates = {
+  openRate: number
+  clickRate: number
+  bounceRate: number
+  complaintRate: number
+}
+
+export type CampaignAnalytics = {
+  campaignId: string
+  counts: DeliveryCounts
+  rates: CampaignRates
+  refreshedAt: string | null
+}
+
+export type RecentCampaign = {
+  campaignId: string
+  name: string
+  sent: number
+  openRate: number
+  bounceRate: number
+  complaintRate: number
+}
+
+export type DashboardView = {
+  totals: DeliveryCounts
+  deliverability: {
+    bounceRate: number
+    complaintRate: number
+  }
+  recentCampaigns: Array<RecentCampaign>
+}
+
 export type UpdateCampaignInput = {
   name: string
   subject: string

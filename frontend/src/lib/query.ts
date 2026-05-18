@@ -89,4 +89,15 @@ export const queryKeys = {
     ["t", slug, "campaigns", { limit, offset }] as const,
   campaign: (slug: string, id: string) =>
     ["t", slug, "campaigns", id] as const,
+
+  campaignAnalytics: (slug: string, id: string) =>
+    ["t", slug, "campaigns", id, "analytics"] as const,
+  dashboard: (slug: string) => ["t", slug, "dashboard"] as const,
+
+  suppressions: (
+    slug: string,
+    filters: { reason?: string; email?: string },
+  ) => ["t", slug, "suppressions", filters] as const,
+  bounceSettings: (slug: string) =>
+    ["t", slug, "bounce-settings"] as const,
 }

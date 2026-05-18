@@ -1,0 +1,36 @@
+# Non-secret configuration shared by every nvelope service. config.Load
+# validates the full set on startup regardless of which service reads it, so
+# every value is supplied to every workload.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvelope-config
+data:
+  NVELOPE_LOG_LEVEL: "info"
+  NVELOPE_HTTP_ADDR: ":8080"
+  NVELOPE_BASE_URL: "https://nvelope.local"
+  NVELOPE_REDIS_URL: "redis://nvelope-redis:6379/0"
+  NVELOPE_POSTBOX_REGION: "ru-central1"
+  NVELOPE_POSTBOX_ENDPOINT: "https://postbox.cloud.yandex.net"
+  # Placeholder feedback-stream values — non-empty so config validation passes.
+  # cmd/consumer cannot connect without a real Yandex Data Streams topic.
+  NVELOPE_FEEDBACK_STREAM_ENDPOINT: "grpcs://ydb.serverless.yandexcloud.net:2135"
+  NVELOPE_FEEDBACK_STREAM_DATABASE: "/ru-central1/b1g000000000000000/etn000000000000000"
+  NVELOPE_FEEDBACK_STREAM_TOPIC: "postbox-feedback"
+  NVELOPE_FEEDBACK_STREAM_CONSUMER: "nvelope-consumer"
+---
+# Secrets for local evaluation. These are throwaway dev values — never reuse
+# them anywhere real.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nvelope-secrets
+type: Opaque
+stringData:
+  NVELOPE_DATABASE_URL: "postgres://nvelope_app:nvelope_app@nvelope-postgres:5432/nvelope?sslmode=disable"
+  NVELOPE_MIGRATE_DATABASE_URL: "postgres://nvelope:nvelope@nvelope-postgres:5432/nvelope?sslmode=disable"
+  NVELOPE_TOTP_ENCRYPTION_KEY: "adcbc8f632f26df3484a8be723d700573a58228d3fc8125b8f815b381579ea8c"
+  # Placeholder Postbox credentials — non-empty so config validation passes.
+  # Actual email sending will fail without real Yandex Postbox keys.
+  NVELOPE_POSTBOX_ACCESS_KEY_ID: "local-eval-placeholder"
+  NVELOPE_POSTBOX_SECRET_ACCESS_KEY: "local-eval-placeholder"

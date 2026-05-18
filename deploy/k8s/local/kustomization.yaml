@@ -1,0 +1,23 @@
+# Local-evaluation deployment for OrbStack Kubernetes. Self-contained: bundles
+# its own Postgres and Redis with ephemeral storage. Not for any real
+# environment — see deploy/helm/nvelope for the production-bound chart.
+#
+#   sh deploy/k8s/local/tls-setup.sh   # issues the nvelope.local TLS cert
+#   kubectl apply -k deploy/k8s/local
+#
+# Add to /etc/hosts:  <gateway EXTERNAL-IP>  nvelope.local
+# Then open https://nvelope.local/
+#
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: nvelope
+
+resources:
+  - namespace.yaml
+  - config.yaml
+  - datastores.yaml
+  - migrate-job.yaml
+  - backend.yaml
+  - frontend.yaml
+  - gateway.yaml
