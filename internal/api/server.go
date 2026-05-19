@@ -16,6 +16,7 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	deliverabilityapp "github.com/nikolaymatrosov/nvelope/internal/deliverability/app"
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
+	mediaapp "github.com/nikolaymatrosov/nvelope/internal/media/app"
 	sendingapp "github.com/nikolaymatrosov/nvelope/internal/sending/app"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
 	"github.com/nikolaymatrosov/nvelope/internal/token"
@@ -33,6 +34,7 @@ type Server struct {
 	campaign       campaignapp.Application
 	deliverability deliverabilityapp.Application
 	billing        billingapp.Application
+	media          mediaapp.Application
 	tracking       campaigndomain.TrackingRepository
 	cfg            config.Config
 	logger         *slog.Logger
@@ -49,7 +51,7 @@ type Server struct {
 func New(auth authapp.Application, tenant tenantapp.Application, audience audienceapp.Application,
 	iam iamapp.Application, sending sendingapp.Application, campaign campaignapp.Application,
 	deliverability deliverabilityapp.Application, billing billingapp.Application,
-	tracking campaigndomain.TrackingRepository,
+	media mediaapp.Application, tracking campaigndomain.TrackingRepository,
 	cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
 	// The preference-token signer shares the TOTP encryption key, derived to a
 	// distinct purpose. A malformed key cannot occur in production (config
@@ -58,7 +60,7 @@ func New(auth authapp.Application, tenant tenantapp.Application, audience audien
 	return &Server{
 		auth: auth, tenant: tenant, audience: audience, iam: iam, sending: sending,
 		campaign: campaign, deliverability: deliverability, billing: billing,
-		tracking: tracking, cfg: cfg, logger: logger, health: health,
+		media: media, tracking: tracking, cfg: cfg, logger: logger, health: health,
 		prefSigner: token.NewSigner(signKey),
 	}
 }
@@ -199,6 +201,11 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/branding", s.handleGetBranding)
 			r.Put("/branding", s.handleSaveBranding)
 			r.Post("/campaigns/{id}/archive", s.handleSetCampaignArchive)
+
+			// Tenant media library (Phase 6 US4).
+			r.Get("/media", s.handleListMedia)
+			r.Post("/media", s.handleUploadMedia)
+			r.Delete("/media/{id}", s.handleDeleteMedia)
 
 			// Billing — plans, subscription, invoices (Phase 5).
 			r.Get("/plans", s.handleListPlans)

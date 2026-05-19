@@ -195,33 +195,33 @@ usable URL, and confirm a different tenant cannot see or fetch that file.
 
 ### Migration & domain (US4)
 
-- [ ] T054 [US4] Write migration `internal/db/migrations/000019_media_library.up.sql` / `.down.sql` — `media_assets` table (full RLS block) with a `(tenant_id, created_at)` index
-- [ ] T055 [P] [US4] Create the `MediaAsset` entity (validating constructor: type allowlist, size cap, non-empty filename; `Hydrate*`) in `internal/media/domain/asset.go`
-- [ ] T056 [P] [US4] Declare the `MediaRepository` interface in `internal/media/domain/repository.go` and the `BlobStore` interface in `internal/media/domain/blobstore.go`
+- [X] T054 [US4] Write migration `internal/db/migrations/000019_media_library.up.sql` / `.down.sql` — `media_assets` table (full RLS block) with a `(tenant_id, created_at)` index
+- [X] T055 [P] [US4] Create the `MediaAsset` entity (validating constructor: type allowlist, size cap, non-empty filename; `Hydrate*`) in `internal/media/domain/asset.go`
+- [X] T056 [P] [US4] Declare the `MediaRepository` interface in `internal/media/domain/repository.go` and the `BlobStore` interface in `internal/media/domain/blobstore.go`
 
 ### Adapters (US4)
 
-- [ ] T057 [P] [US4] Implement `MediaRepository` (RLS tx) in `internal/media/adapters/assets_pg.go`
-- [ ] T058 [P] [US4] Implement the S3 `BlobStore` adapter (tenant-prefixed `media/{tenantID}/{assetID}/{filename}` keys, `Put`/`Delete`, public-URL build) in `internal/media/adapters/blobstore_s3.go`
-- [ ] T059 [P] [US4] Implement an in-memory `BlobStore` fake for use-case tests in `internal/media/adapters/blobstore_memory.go`
+- [X] T057 [P] [US4] Implement `MediaRepository` (RLS tx) in `internal/media/adapters/assets_pg.go`
+- [X] T058 [P] [US4] Implement the S3 `BlobStore` adapter (tenant-prefixed `media/{tenantID}/{assetID}/{filename}` keys, `Put`/`Delete`, public-URL build) in `internal/media/adapters/blobstore_s3.go`
+- [X] T059 [P] [US4] Implement an in-memory `BlobStore` fake for use-case tests in `internal/media/adapters/blobstore_memory.go`
 
 ### Use cases (US4)
 
-- [ ] T060 [US4] Implement `UploadAsset` command (validate, write bytes to `BlobStore` first, then insert the metadata row) in `internal/media/app/command/upload_asset.go`
-- [ ] T061 [P] [US4] Implement `DeleteAsset` command (remove metadata row + object) in `internal/media/app/command/delete_asset.go`
-- [ ] T062 [P] [US4] Implement `ListAssets` query in `internal/media/app/query/list_assets.go`
-- [ ] T063 [US4] Create the `media` application assembler (`internal/media/app/app.go`) wiring commands/queries with the standard decorators
+- [X] T060 [US4] Implement `UploadAsset` command (validate, write bytes to `BlobStore` first, then insert the metadata row) in `internal/media/app/command/upload_asset.go`
+- [X] T061 [P] [US4] Implement `DeleteAsset` command (remove metadata row + object) in `internal/media/app/command/delete_asset.go`
+- [X] T062 [P] [US4] Implement `ListAssets` query in `internal/media/app/query/list_assets.go`
+- [X] T063 [US4] Create the `media` application assembler (`internal/media/app/app.go`) wiring commands/queries with the standard decorators
 
 ### Transport (US4)
 
-- [ ] T064 [US4] Implement authenticated media handlers (`GET`/`POST /t/{slug}/api/media`, `DELETE /.../{id}`) in `internal/api/media_handlers.go`; add the `media:get`/`media:manage` permissions; add the US4 typed-error mappings (`unsupported_media_type`, `media_too_large`, `empty_upload`, `media_not_found`) to `internal/api/errmap.go`
-- [ ] T065 [US4] Construct the S3 `BlobStore`, wire the `media` application into the composition root, and mount the media routes in `cmd/api/main.go` and `internal/api/server.go`
+- [X] T064 [US4] Implement authenticated media handlers (`GET`/`POST /t/{slug}/api/media`, `DELETE /.../{id}`) in `internal/api/media_handlers.go`; add the `media:get`/`media:manage` permissions; add the US4 typed-error mappings (`unsupported_media_type`, `media_too_large`, `empty_upload`, `media_not_found`) to `internal/api/errmap.go`
+- [X] T065 [US4] Construct the S3 `BlobStore`, wire the `media` application into the composition root, and mount the media routes in `cmd/api/main.go` and `internal/api/server.go`
 
 ### Tests (US4)
 
-- [ ] T066 [P] [US4] Integration test: upload/list/delete, size-cap and type-allowlist rejection, interrupted upload leaves no listed asset, against a MinIO testcontainer in `internal/media/adapters/blobstore_s3_test.go`
-- [ ] T067 [P] [US4] Use-case tests for `UploadAsset`/`DeleteAsset`/`ListAssets` with the in-memory `BlobStore` fake in `internal/media/app/command/upload_asset_test.go`
-- [ ] T068 [P] [US4] Cross-tenant isolation test for `media_assets` in `test/isolation_test.go`
+- [X] T066 [P] [US4] Integration test: upload/list/delete, size-cap and type-allowlist rejection, interrupted upload leaves no listed asset, against a MinIO testcontainer in `internal/media/adapters/blobstore_s3_test.go`
+- [X] T067 [P] [US4] Use-case tests for `UploadAsset`/`DeleteAsset`/`ListAssets` with the in-memory `BlobStore` fake in `internal/media/app/command/upload_asset_test.go`
+- [X] T068 [P] [US4] Cross-tenant isolation test for `media_assets` in `test/isolation_test.go`
 
 **Checkpoint**: All four user stories are independently functional.
 
@@ -231,10 +231,10 @@ usable URL, and confirm a different tenant cannot see or fetch that file.
 
 **Purpose**: Phase-exit verification and final consistency.
 
-- [ ] T069 [P] Verify all three migrations apply and roll back cleanly (`make migrate` up/down) and that `test/migrate_test.go` covers 000017–000019
-- [ ] T070 [P] Run `make test` (full suite + tenant-isolation tests) and confirm green
-- [ ] T071 [P] Walk through every story in `quickstart.md` and confirm both exit criteria (subscribers self-serve; media uploads work)
-- [ ] T072 [P] Update `docs/architecture.md` and `docs/implementation-plan.md` to mark Phase 6 / Epics G & H complete and document the public-page + media surfaces
+- [X] T069 [P] Verify all three migrations apply and roll back cleanly (`make migrate` up/down) and that `test/migrate_test.go` covers 000017–000019
+- [X] T070 [P] Run `make test` (full suite + tenant-isolation tests) and confirm green
+- [X] T071 [P] Walk through every story in `quickstart.md` and confirm both exit criteria (subscribers self-serve; media uploads work)
+- [X] T072 [P] Update `docs/architecture.md` and `docs/implementation-plan.md` to mark Phase 6 / Epics G & H complete and document the public-page + media surfaces
 
 ---
 

@@ -35,6 +35,11 @@ import (
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
 	iamcommand "github.com/nikolaymatrosov/nvelope/internal/iam/app/command"
 	iamquery "github.com/nikolaymatrosov/nvelope/internal/iam/app/query"
+	mediaadapters "github.com/nikolaymatrosov/nvelope/internal/media/adapters"
+	mediaapp "github.com/nikolaymatrosov/nvelope/internal/media/app"
+	mediacommand "github.com/nikolaymatrosov/nvelope/internal/media/app/command"
+	mediaquery "github.com/nikolaymatrosov/nvelope/internal/media/app/query"
+	mediadomain "github.com/nikolaymatrosov/nvelope/internal/media/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/decorator"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/postbox"
@@ -62,6 +67,7 @@ type Application struct {
 	Campaign       campaignapp.Application
 	Deliverability deliverabilityapp.Application
 	Billing        billingapp.Application
+	Media          mediaapp.Application
 	// Tracking is the campaign context's tracking repository, used directly by
 	// the public open/click endpoints.
 	Tracking campaigndomain.TrackingRepository
@@ -75,6 +81,13 @@ type overrides struct {
 	campaignMessenger  campaigndomain.Messenger
 	campaignLimiter    campaigndomain.RateLimiter
 	billingGateway     billingdomain.PaymentGateway
+	mediaBlobStore     mediadomain.BlobStore
+}
+
+// WithMediaBlobStore substitutes the media context's blob store — used by
+// tests to avoid booting an object store.
+func WithMediaBlobStore(b mediadomain.BlobStore) Option {
+	return func(o *overrides) { o.mediaBlobStore = b }
 }
 
 // Option overrides a composition-root dependency. It exists so tests can
@@ -184,11 +197,51 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	campaign, tracking := buildCampaign(pool, cfg, logger, ov)
 	deliverability := buildDeliverability(pool, cfg, logger)
 	billing := buildBilling(pool, cfg, logger, ov)
+	media := buildMedia(pool, cfg, logger, ov)
 
 	return Application{
 		Auth: auth, Tenant: tenant, Audience: audience, IAM: iam,
 		Sending: sending, Campaign: campaign, Deliverability: deliverability,
-		Billing: billing, Tracking: tracking,
+		Billing: billing, Media: media, Tracking: tracking,
+	}
+}
+
+// buildMedia wires the media context — tenant media library uploads, listing,
+// and deletion — with logging decorators applied. The blob store is built from
+// configuration; tests substitute it via WithMediaBlobStore.
+func buildMedia(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
+	ov overrides) mediaapp.Application {
+
+	assets := mediaadapters.NewAssets(pool)
+
+	blobs := ov.mediaBlobStore
+	if blobs == nil {
+		s3blobs, err := mediaadapters.NewS3BlobStore(mediaadapters.S3Config{
+			Endpoint:        cfg.ObjectStorageEndpoint,
+			Region:          cfg.ObjectStorageRegion,
+			Bucket:          cfg.ObjectStorageBucket,
+			AccessKeyID:     cfg.ObjectStorageAccessKeyID,
+			SecretAccessKey: cfg.ObjectStorageSecretAccessKey,
+			PublicBaseURL:   cfg.ObjectStoragePublicBaseURL,
+		})
+		if err != nil {
+			panic("building s3 blob store: " + err.Error())
+		}
+		blobs = s3blobs
+	}
+
+	return mediaapp.Application{
+		Commands: mediaapp.Commands{
+			UploadAsset: decorator.ApplyResultCommandDecorators(
+				mediacommand.NewUploadAssetHandler(assets, blobs, cfg.MediaMaxBytes),
+				"UploadAsset", logger),
+			DeleteAsset: decorator.ApplyCommandDecorators(
+				mediacommand.NewDeleteAssetHandler(assets, blobs), "DeleteAsset", logger),
+		},
+		Queries: mediaapp.Queries{
+			ListAssets: decorator.ApplyQueryDecorators(
+				mediaquery.NewListAssetsHandler(assets), "ListAssets", logger),
+		},
 	}
 }
 

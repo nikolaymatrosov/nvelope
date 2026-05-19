@@ -35,6 +35,8 @@ const (
 
 	PermSubscriptionPagesManage Permission = "subscription_pages:manage"
 	PermBrandingManage          Permission = "branding:manage"
+	PermMediaGet                Permission = "media:get"
+	PermMediaManage             Permission = "media:manage"
 )
 
 // catalogue is the set of every known permission.
@@ -52,6 +54,8 @@ var catalogue = map[Permission]bool{
 	PermBillingManage:           true,
 	PermSubscriptionPagesManage: true,
 	PermBrandingManage:          true,
+	PermMediaGet:                true,
+	PermMediaManage:             true,
 }
 
 // listScoped is the subset of permissions that a per-list role can also grant.
