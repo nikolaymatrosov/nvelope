@@ -95,7 +95,7 @@ func (ts *testServer) startCampaignWorkers(messenger campaigndomain.Messenger) {
 		source, enqueuer, nil, 500))
 	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
 		messenger, campaignadapters.NewRateLimiter(limiter), lookup,
-		deliverabilityadapters.NewSuppressionChecker(ts.pool), nil,
+		deliverabilityadapters.NewSuppressionChecker(ts.pool), nil, nil,
 		campaigndomain.Limit{Max: 1000, Window: time.Second}, ts.URL))
 
 	client, err := jobs.NewWorkerClientForQueues(ts.pool, map[string]int{ts.sendQueue: 4}, workers)

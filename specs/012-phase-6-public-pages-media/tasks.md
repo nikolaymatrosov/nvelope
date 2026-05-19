@@ -121,21 +121,21 @@ use the unsubscribe action and verify the subscriber stops receiving campaigns.
 
 ### Use cases (US2)
 
-- [ ] T029 [P] [US2] Implement `GetPreferences` query (resolve subscriber by preference token, return profile + per-list membership state) in `internal/audience/app/query/get_preferences.go`
-- [ ] T030 [US2] Implement `UpdatePreferences` command (validate + apply profile and per-list membership changes immediately) in `internal/audience/app/command/update_preferences.go`
-- [ ] T031 [US2] Implement `PublicUnsubscribe` command (move memberships to `unsubscribed`, add to tenant suppression scope) in `internal/audience/app/command/public_unsubscribe.go`
+- [X] T029 [P] [US2] Implement `GetPreferences` query (resolve subscriber by preference token, return profile + per-list membership state) in `internal/audience/app/query/get_preferences.go`
+- [X] T030 [US2] Implement `UpdatePreferences` command (validate + apply profile and per-list membership changes immediately) in `internal/audience/app/command/update_preferences.go`
+- [X] T031 [US2] Implement `PublicUnsubscribe` command (move memberships to `unsubscribed`, add to tenant suppression scope) in `internal/audience/app/command/public_unsubscribe.go`
 
 ### Transport (US2)
 
-- [ ] T032 [P] [US2] Create the `preferences.html` and `unsubscribed.html` templates in `internal/api/templates/`
-- [ ] T033 [US2] Implement preference + unsubscribe handlers (`GET`/`POST /p/{token}`, `GET`/`POST /u/{token}` with RFC 8058 `List-Unsubscribe=One-Click` body handling) in `internal/api/public_handlers.go`; mount the routes
-- [ ] T034 [US2] Add the `List-Unsubscribe` / `List-Unsubscribe-Post` headers (pointing at `/u/{token}`) to outbound campaign mail in the `campaign` sending path, ensuring each recipient's subscriber has a preference token
-- [ ] T035 [US2] Wire the US2 commands/queries into `cmd/api/main.go`
+- [X] T032 [P] [US2] Create the `preferences.html` and `unsubscribed.html` templates in `internal/api/templates/`
+- [X] T033 [US2] Implement preference + unsubscribe handlers (`GET`/`POST /p/{token}`, `GET`/`POST /u/{token}` with RFC 8058 `List-Unsubscribe=One-Click` body handling) in `internal/api/public_handlers.go`; mount the routes
+- [X] T034 [US2] Add the `List-Unsubscribe` / `List-Unsubscribe-Post` headers (pointing at `/u/{token}`) to outbound campaign mail in the `campaign` sending path, ensuring each recipient's subscriber has a preference token
+- [X] T035 [US2] Wire the US2 commands/queries into `cmd/api/main.go`
 
 ### Tests (US2)
 
-- [ ] T036 [P] [US2] Integration test: preference update persists, per-list change applies, invalid/tampered/expired token denied with no data exposure, single- and one-click unsubscribe both suppress in `internal/audience/app/command/update_preferences_test.go`
-- [ ] T037 [P] [US2] Test that an unsubscribed subscriber is excluded from a subsequent campaign send (recipient resolution) in the `campaign` test package
+- [X] T036 [P] [US2] Integration test: preference update persists, per-list change applies, invalid/tampered/expired token denied with no data exposure, single- and one-click unsubscribe both suppress in `internal/audience/app/command/update_preferences_test.go`
+- [X] T037 [P] [US2] Test that an unsubscribed subscriber is excluded from a subsequent campaign send (recipient resolution) in the `campaign` test package
 
 **Checkpoint**: US1 + US2 both work — subscribers can fully self-serve.
 

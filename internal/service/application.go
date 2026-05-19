@@ -160,6 +160,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				tenantquery.NewResolveWorkspaceHandler(tenants), "ResolveWorkspace", logger),
 			LocateWorkspace: decorator.ApplyQueryDecorators(
 				tenantquery.NewLocateWorkspaceHandler(tenants), "LocateWorkspace", logger),
+			LocateWorkspaceByID: decorator.ApplyQueryDecorators(
+				tenantquery.NewLocateWorkspaceByIDHandler(tenants), "LocateWorkspaceByID", logger),
 			WorkspaceMembers: decorator.ApplyQueryDecorators(
 				tenantquery.NewWorkspaceMembersHandler(tenants), "WorkspaceMembers", logger),
 			GetSettings: decorator.ApplyQueryDecorators(
@@ -579,6 +581,12 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 				audiencecommand.NewResendConfirmationHandler(pendingSubscriptions, optinEnqueuer,
 					optinTTL),
 				"ResendConfirmation", logger),
+			UpdatePreferences: decorator.ApplyCommandDecorators(
+				audiencecommand.NewUpdatePreferencesHandler(subscribers, memberships),
+				"UpdatePreferences", logger),
+			PublicUnsubscribe: decorator.ApplyCommandDecorators(
+				audiencecommand.NewPublicUnsubscribeHandler(memberships),
+				"PublicUnsubscribe", logger),
 		},
 		Queries: audienceapp.Queries{
 			ListLists: decorator.ApplyQueryDecorators(
@@ -604,6 +612,9 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 			GetPendingByToken: decorator.ApplyQueryDecorators(
 				audiencequery.NewGetPendingByTokenHandler(pendingSubscriptions),
 				"GetPendingByToken", logger),
+			GetPreferences: decorator.ApplyQueryDecorators(
+				audiencequery.NewGetPreferencesHandler(subscribers, memberships, lists),
+				"GetPreferences", logger),
 		},
 	}
 }

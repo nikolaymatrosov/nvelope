@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"os"
 
 	"github.com/riverqueue/river"
@@ -25,6 +26,7 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/platform/ratelimit"
 	sendingadapters "github.com/nikolaymatrosov/nvelope/internal/sending/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/service"
+	"github.com/nikolaymatrosov/nvelope/internal/token"
 )
 
 const serviceName = "worker"
@@ -119,11 +121,21 @@ func main() {
 	usageRecorder := billingadapters.NewUsageRecorder(billingSubscriptions, billingUsage)
 	quotaGate := billingadapters.NewQuotaGate(billingSubscriptions, billingPlans, billingUsage)
 
+	// The one-click-unsubscribe linker mints signed List-Unsubscribe tokens;
+	// the API verifies them with the same key derived from the TOTP key.
+	totpKey, err := hex.DecodeString(cfg.TOTPEncryptionKey)
+	if err != nil {
+		logger.Error("decoding token signing key", "error", err)
+		os.Exit(1)
+	}
+	unsubscribeLinker := campaignadapters.NewUnsubscribeLinker(
+		token.NewSigner(totpKey), cfg.PublicBaseURL)
+
 	river.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
 		recipientSource, enqueuer, quotaGate, cfg.CampaignBatchSize))
 	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
 		messenger, rateLimiter, domainLookup, campaignSuppression, usageRecorder,
-		perTenant, cfg.BaseURL))
+		unsubscribeLinker, perTenant, cfg.BaseURL))
 
 	// Deliverability: inbound feedback processing with automatic suppression.
 	deliverabilityEvents := deliverabilityadapters.NewEvents(pool)

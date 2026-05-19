@@ -25,11 +25,12 @@ type Commands struct {
 
 // Queries gathers the tenant context's read-only handlers.
 type Queries struct {
-	ListWorkspaces     decorator.QueryHandler[query.ListWorkspaces, []query.MembershipView]
-	ResolveWorkspace   decorator.QueryHandler[query.ResolveWorkspace, query.ResolvedWorkspace]
-	LocateWorkspace    decorator.QueryHandler[query.LocateWorkspace, query.ResolvedWorkspace]
-	WorkspaceMembers   decorator.QueryHandler[query.WorkspaceMembers, []query.MemberView]
-	GetSettings        decorator.QueryHandler[query.GetSettings, query.SettingsView]
-	PendingInvitations decorator.QueryHandler[query.PendingInvitations, []query.InvitationView]
-	LookUpInvitation   decorator.QueryHandler[query.LookUpInvitation, query.InvitationLookup]
+	ListWorkspaces      decorator.QueryHandler[query.ListWorkspaces, []query.MembershipView]
+	ResolveWorkspace    decorator.QueryHandler[query.ResolveWorkspace, query.ResolvedWorkspace]
+	LocateWorkspace     decorator.QueryHandler[query.LocateWorkspace, query.ResolvedWorkspace]
+	LocateWorkspaceByID decorator.QueryHandler[query.LocateWorkspaceByID, query.ResolvedWorkspace]
+	WorkspaceMembers    decorator.QueryHandler[query.WorkspaceMembers, []query.MemberView]
+	GetSettings         decorator.QueryHandler[query.GetSettings, query.SettingsView]
+	PendingInvitations  decorator.QueryHandler[query.PendingInvitations, []query.InvitationView]
+	LookUpInvitation    decorator.QueryHandler[query.LookUpInvitation, query.InvitationLookup]
 }

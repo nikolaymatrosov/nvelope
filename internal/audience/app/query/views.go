@@ -131,3 +131,21 @@ type PendingSubscriptionView struct {
 	Email   string
 	Expired bool
 }
+
+// PreferenceListView is one list shown on a subscriber's preference page,
+// with whether the subscriber is currently subscribed to it.
+type PreferenceListView struct {
+	ListID     string
+	Name       string
+	Subscribed bool
+}
+
+// PreferencesView is the read model for a subscriber's self-serve preference
+// page: their profile plus their per-list subscription state.
+type PreferencesView struct {
+	SubscriberID string
+	Email        string
+	Name         string
+	Attributes   map[string]any
+	Lists        []PreferenceListView
+}

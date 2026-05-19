@@ -32,6 +32,8 @@ type Commands struct {
 	SubmitPublicSubscription decorator.CommandHandler[command.SubmitPublicSubscription]
 	ConfirmSubscription      decorator.ResultCommandHandler[command.ConfirmSubscription, command.ConfirmSubscriptionResult]
 	ResendConfirmation       decorator.CommandHandler[command.ResendConfirmation]
+	UpdatePreferences        decorator.CommandHandler[command.UpdatePreferences]
+	PublicUnsubscribe        decorator.CommandHandler[command.PublicUnsubscribe]
 }
 
 // Queries gathers the audience context's read-only handlers.
@@ -47,4 +49,5 @@ type Queries struct {
 	GetSubscriptionPage   decorator.QueryHandler[query.GetSubscriptionPage, query.SubscriptionPageView]
 	ListSubscriptionPages decorator.QueryHandler[query.ListSubscriptionPages, []query.SubscriptionPageView]
 	GetPendingByToken     decorator.QueryHandler[query.GetPendingByToken, query.PendingSubscriptionView]
+	GetPreferences        decorator.QueryHandler[query.GetPreferences, query.PreferencesView]
 }

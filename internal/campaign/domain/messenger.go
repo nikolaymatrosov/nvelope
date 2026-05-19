@@ -43,6 +43,16 @@ type RateLimiter interface {
 		retryAfter time.Duration, err error)
 }
 
+// UnsubscribeLinker builds the one-click unsubscribe URL for a recipient,
+// used to populate the RFC 8058 List-Unsubscribe headers of campaign mail. It
+// is declared here, by the send path that consumes it, and implemented by an
+// adapter over the shared token signer.
+type UnsubscribeLinker interface {
+	// UnsubscribeURL returns the public one-click-unsubscribe URL for a
+	// subscriber.
+	UnsubscribeURL(tenantID, subscriberID string) string
+}
+
 // SuppressionChecker is the pre-send gate: it reports which recipient
 // addresses must not be mailed. It is declared here, by the campaign send
 // paths that consume it, and implemented by a deliverability adapter — so the

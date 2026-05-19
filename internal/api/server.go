@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 
@@ -17,6 +18,7 @@ import (
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
 	sendingapp "github.com/nikolaymatrosov/nvelope/internal/sending/app"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
+	"github.com/nikolaymatrosov/nvelope/internal/token"
 )
 
 // Server wires the nvelope HTTP API: the wired Application, configuration, and
@@ -35,6 +37,9 @@ type Server struct {
 	cfg            config.Config
 	logger         *slog.Logger
 	health         http.Handler
+	// prefSigner verifies the stateless preference / one-click-unsubscribe
+	// tokens minted by the campaign send path.
+	prefSigner token.Signer
 }
 
 // New returns a Server. The context applications are built by the composition
@@ -46,10 +51,15 @@ func New(auth authapp.Application, tenant tenantapp.Application, audience audien
 	deliverability deliverabilityapp.Application, billing billingapp.Application,
 	tracking campaigndomain.TrackingRepository,
 	cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
+	// The preference-token signer shares the TOTP encryption key, derived to a
+	// distinct purpose. A malformed key cannot occur in production (config
+	// validation rejects it) and yields a signer that verifies nothing.
+	signKey, _ := hex.DecodeString(cfg.TOTPEncryptionKey)
 	return &Server{
 		auth: auth, tenant: tenant, audience: audience, iam: iam, sending: sending,
 		campaign: campaign, deliverability: deliverability, billing: billing,
 		tracking: tracking, cfg: cfg, logger: logger, health: health,
+		prefSigner: token.NewSigner(signKey),
 	}
 }
 
@@ -210,8 +220,15 @@ func (s *Server) Handler() http.Handler {
 
 	// Public, unauthenticated subscriber-facing pages (Phase 6). The slug-
 	// scoped subtree resolves the tenant from the path; token-addressed pages
-	// resolve it from the token row.
+	// resolve it from the signed token's payload.
 	s.mountPublicRoutes(r)
+
+	// Subscriber preference page and one-click unsubscribe (Phase 6 US2). The
+	// signed token carries the tenant, so these routes are not slug-scoped.
+	r.Get("/p/{token}", s.handlePreferencesForm)
+	r.Post("/p/{token}", s.handlePreferencesSubmit)
+	r.Get("/u/{token}", s.handleUnsubscribe)
+	r.Post("/u/{token}", s.handleUnsubscribe)
 
 	return r
 }
