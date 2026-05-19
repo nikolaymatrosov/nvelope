@@ -28,7 +28,8 @@ func NewCampaigns(pool *pgxpool.Pool) *Campaigns {
 
 const campaignColumns = `id, tenant_id, name, subject, body_html, body_text, from_name,
 	from_local_part, sending_domain_id, template_id, status, max_send_errors,
-	sent_count, failed_count, recipient_count, created_at, updated_at, started_at, finished_at`
+	sent_count, failed_count, recipient_count, created_at, updated_at, started_at, finished_at,
+	archive_visible, archived_at`
 
 // nullableString maps "" to nil for a nullable text/uuid column.
 func nullableString(s string) *string {
@@ -52,17 +53,18 @@ func scanCampaignRow(row pgx.Row) (*domain.Campaign, error) {
 	var sendingDomainID, templateID *string
 	var maxSendErrors, sentCount, failedCount, recipientCount int
 	var createdAt, updatedAt time.Time
-	var startedAt, finishedAt *time.Time
+	var startedAt, finishedAt, archivedAt *time.Time
+	var archiveVisible bool
 	if err := row.Scan(&id, &tenantID, &name, &subject, &bodyHTML, &bodyText, &fromName,
 		&fromLocalPart, &sendingDomainID, &templateID, &status, &maxSendErrors,
 		&sentCount, &failedCount, &recipientCount, &createdAt, &updatedAt,
-		&startedAt, &finishedAt); err != nil {
+		&startedAt, &finishedAt, &archiveVisible, &archivedAt); err != nil {
 		return nil, err
 	}
 	return domain.HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName,
 		fromLocalPart, deref(sendingDomainID), deref(templateID), domain.CampaignStatus(status),
 		maxSendErrors, sentCount, failedCount, recipientCount,
-		createdAt, updatedAt, startedAt, finishedAt), nil
+		createdAt, updatedAt, startedAt, finishedAt, archiveVisible, archivedAt), nil
 }
 
 // Add persists a new campaign and returns its database-assigned id.
@@ -119,17 +121,53 @@ func (r *Campaigns) Update(ctx context.Context, tenantID, id string,
 			`UPDATE campaigns SET name = $1, subject = $2, body_html = $3, body_text = $4,
 			    from_name = $5, from_local_part = $6, sending_domain_id = $7, status = $8,
 			    max_send_errors = $9, sent_count = $10, failed_count = $11, recipient_count = $12,
-			    started_at = $13, finished_at = $14, updated_at = now() WHERE id = $15`,
+			    started_at = $13, finished_at = $14, archive_visible = $15, archived_at = $16,
+			    updated_at = now() WHERE id = $17`,
 			updated.Name(), updated.Subject(), updated.BodyHTML(), updated.BodyText(),
 			updated.FromName(), updated.FromLocalPart(), nullableString(updated.SendingDomainID()),
 			string(updated.Status()), updated.MaxSendErrors(), updated.SentCount(),
 			updated.FailedCount(), updated.RecipientCount(),
-			updated.StartedAt(), updated.FinishedAt(), id)
+			updated.StartedAt(), updated.FinishedAt(),
+			updated.ArchiveVisible(), updated.ArchivedAt(), id)
 		if err != nil {
 			return fmt.Errorf("updating campaign: %w", err)
 		}
 		return nil
 	})
+}
+
+// Archived returns a page of the tenant's archive-visible campaigns newest-
+// first by archived_at, and the total count.
+func (r *Campaigns) Archived(ctx context.Context, tenantID string, page domain.Page) ([]*domain.Campaign, int, error) {
+	page = page.Normalize()
+	var out []*domain.Campaign
+	var total int
+	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx,
+			"SELECT count(*) FROM campaigns WHERE archive_visible = true").Scan(&total); err != nil {
+			return fmt.Errorf("counting archived campaigns: %w", err)
+		}
+		rows, err := tx.Query(ctx,
+			"SELECT "+campaignColumns+" FROM campaigns WHERE archive_visible = true "+
+				"ORDER BY archived_at DESC LIMIT $1 OFFSET $2",
+			page.Limit, page.Offset)
+		if err != nil {
+			return fmt.Errorf("listing archived campaigns: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			c, err := scanCampaignRow(rows)
+			if err != nil {
+				return err
+			}
+			out = append(out, c)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 // All returns a page of the tenant's campaigns and the total count.

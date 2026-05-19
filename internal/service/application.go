@@ -121,6 +121,7 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	tenants := tenantadapters.NewTenants(pool)
 	invitations := tenantadapters.NewInvitations(pool)
 	settings := tenantadapters.NewSettings(pool)
+	branding := tenantadapters.NewBranding(pool)
 
 	onboard := newOnboarding(pool, hasher, cfg.SessionTTL)
 	directory := newMemberDirectory(users, tenants)
@@ -152,6 +153,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				tenantcommand.NewRevokeInvitationHandler(invitations), "RevokeInvitation", logger),
 			UpdateSettings: decorator.ApplyResultCommandDecorators(
 				tenantcommand.NewUpdateSettingsHandler(settings), "UpdateSettings", logger),
+			SaveBranding: decorator.ApplyCommandDecorators(
+				tenantcommand.NewSaveBrandingHandler(branding), "SaveBranding", logger),
 		},
 		Queries: tenantapp.Queries{
 			ListWorkspaces: decorator.ApplyQueryDecorators(
@@ -170,6 +173,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				tenantquery.NewPendingInvitationsHandler(invitations), "PendingInvitations", logger),
 			LookUpInvitation: decorator.ApplyQueryDecorators(
 				tenantquery.NewLookUpInvitationHandler(invitations, tenants), "LookUpInvitation", logger),
+			GetBranding: decorator.ApplyQueryDecorators(
+				tenantquery.NewGetBrandingHandler(branding), "GetBranding", logger),
 		},
 	}
 
@@ -365,6 +370,9 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 					txMessages, deliverabilityadapters.NewSuppressionChecker(pool), usageRecorder,
 					quotaGate, perTenant),
 				"SendTransactional", logger),
+			SetArchiveVisibility: decorator.ApplyCommandDecorators(
+				campaigncommand.NewSetArchiveVisibilityHandler(campaigns),
+				"SetArchiveVisibility", logger),
 		},
 		Queries: campaignapp.Queries{
 			ListTemplates: decorator.ApplyQueryDecorators(
@@ -375,6 +383,10 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 				campaignquery.NewListCampaignsHandler(campaigns), "ListCampaigns", logger),
 			GetCampaign: decorator.ApplyQueryDecorators(
 				campaignquery.NewGetCampaignHandler(campaigns), "GetCampaign", logger),
+			ListArchive: decorator.ApplyQueryDecorators(
+				campaignquery.NewListArchiveHandler(campaigns), "ListArchive", logger),
+			GetArchivedCampaign: decorator.ApplyQueryDecorators(
+				campaignquery.NewGetArchivedCampaignHandler(campaigns), "GetArchivedCampaign", logger),
 		},
 	}
 	return app, tracking

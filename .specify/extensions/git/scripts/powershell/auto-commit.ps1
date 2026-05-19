@@ -3,11 +3,21 @@
 # Automatically commit changes after a Spec Kit command completes.
 # Checks per-command config keys in git-config.yml before committing.
 #
-# Usage: auto-commit.ps1 <event_name>
+# Usage: auto-commit.ps1 <event_name> [-Message <subject>] [-Body <body>]
 #   e.g.: auto-commit.ps1 after_specify
+#         auto-commit.ps1 after_implement `
+#             -Message "feat(audience): import CSV uploads" `
+#             -Body "- Parses uploaded CSVs into the audience table`n- Dedupes new rows by email"
+#
+# When -Message is supplied, it overrides both the staged-diff heuristic and
+# the message configured in git-config.yml. -Body is optional and only used
+# alongside -Message. This lets the caller (e.g., the speckit-git-commit
+# skill) draft a commit message that describes intent instead of file counts.
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [string]$EventName
+    [string]$EventName,
+    [string]$Message = "",
+    [string]$Body = ""
 )
 $ErrorActionPreference = 'Stop'
 
@@ -209,10 +219,18 @@ try {
     $out = git add . 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { throw "git add failed: $out" }
 
-    # For implementation commits, generate a descriptive Conventional Commits
-    # message from the staged diff instead of the static config string.
+    # Priority:
+    #   1. -Message from the caller (the speckit-git-commit skill drafts these
+    #      from the spec/tasks/diff so they describe intent, not file counts)
+    #   2. Heuristic generator (after_implement only) — fallback when the
+    #      caller didn't supply a message
+    #   3. git-config.yml message
+    #   4. Generic "[Spec Kit] Auto-commit ..." string
     $commitBody = ""
-    if ($EventName -eq 'after_implement') {
+    if ($Message) {
+        $commitMsg = $Message
+        $commitBody = $Body
+    } elseif ($EventName -eq 'after_implement') {
         $generated = Get-GeneratedCommitMessage
         if ($generated) {
             $commitMsg = $generated.Subject
@@ -220,7 +238,6 @@ try {
         }
     }
 
-    # Use custom message if configured, otherwise default
     if (-not $commitMsg) {
         $commitMsg = "[Spec Kit] Auto-commit $phase $commandName"
     }

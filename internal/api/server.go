@@ -195,6 +195,11 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/subscription-pages", s.handleCreateSubscriptionPage)
 			r.Put("/subscription-pages/{id}", s.handleUpdateSubscriptionPage)
 
+			// Tenant branding & campaign archive toggle (Phase 6 US3).
+			r.Get("/branding", s.handleGetBranding)
+			r.Put("/branding", s.handleSaveBranding)
+			r.Post("/campaigns/{id}/archive", s.handleSetCampaignArchive)
+
 			// Billing — plans, subscription, invoices (Phase 5).
 			r.Get("/plans", s.handleListPlans)
 			r.Post("/subscription", s.handleSubscribe)
@@ -245,5 +250,10 @@ func (s *Server) mountPublicRoutes(r chi.Router) {
 		r.Post("/subscribe/{pageSlug}", s.handlePublicSubscribeSubmit)
 		r.Get("/confirm/{token}", s.handleConfirm)
 		r.Post("/confirm/{token}/resend", s.handleResendConfirmation)
+
+		// Campaign archive + RSS feed (Phase 6 US3).
+		r.Get("/archive", s.handleArchiveIndex)
+		r.Get("/archive/{campaignId}", s.handleArchiveCampaign)
+		r.Get("/feed.xml", s.handleRSSFeed)
 	})
 }

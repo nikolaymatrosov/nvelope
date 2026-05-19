@@ -337,6 +337,42 @@ func TestPublicSubscriptionCrossTenantIsolation(t *testing.T) {
 	}))
 }
 
+// TestBrandingCrossTenantIsolation proves the tenant_branding table is
+// isolated by RLS: a transaction bound to one tenant cannot see or delete
+// another tenant's branding.
+func TestBrandingCrossTenantIsolation(t *testing.T) {
+	pool := dbtest.AppPool(t)
+	ctx := context.Background()
+
+	tenantA := seedTenant(t, pool, "Tenant A")
+	tenantB := seedTenant(t, pool, "Tenant B")
+
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO tenant_branding (tenant_id, primary_color) VALUES ($1, '#aaaaaa')`,
+			tenantA)
+		return err
+	}))
+
+	require.NoError(t, boundTx(ctx, pool, tenantB, func(ctx context.Context, tx pgx.Tx) error {
+		var n int
+		require.NoError(t, tx.QueryRow(ctx, "SELECT count(*) FROM tenant_branding").Scan(&n))
+		require.Equal(t, 0, n, "bound to B, tenant_branding shows none of A's rows")
+		tag, err := tx.Exec(ctx, "DELETE FROM tenant_branding")
+		require.NoError(t, err)
+		require.EqualValues(t, 0, tag.RowsAffected())
+		return nil
+	}))
+
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		var color string
+		require.NoError(t, tx.QueryRow(ctx,
+			"SELECT primary_color FROM tenant_branding WHERE tenant_id = $1", tenantA).Scan(&color))
+		require.Equal(t, "#aaaaaa", color)
+		return nil
+	}))
+}
+
 // boundTx runs fn inside a transaction with app.tenant_id bound to tenantID —
 // the binding every tenant-plane access depends on.
 func boundTx(ctx context.Context, pool *pgxpool.Pool, tenantID string,

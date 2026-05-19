@@ -26,12 +26,16 @@ type Commands struct {
 	ResumeCampaign    decorator.CommandHandler[command.ResumeCampaign]
 	CancelCampaign    decorator.CommandHandler[command.CancelCampaign]
 	SendTransactional decorator.ResultCommandHandler[command.SendTransactional, command.SendTransactionalResult]
+
+	SetArchiveVisibility decorator.CommandHandler[command.SetArchiveVisibility]
 }
 
 // Queries gathers the campaign context's read-only handlers.
 type Queries struct {
-	ListTemplates decorator.QueryHandler[query.ListTemplates, query.TemplatePage]
-	GetTemplate   decorator.QueryHandler[query.GetTemplate, query.TemplateView]
-	ListCampaigns decorator.QueryHandler[query.ListCampaigns, query.CampaignPage]
-	GetCampaign   decorator.QueryHandler[query.GetCampaign, query.CampaignView]
+	ListTemplates       decorator.QueryHandler[query.ListTemplates, query.TemplatePage]
+	GetTemplate         decorator.QueryHandler[query.GetTemplate, query.TemplateView]
+	ListCampaigns       decorator.QueryHandler[query.ListCampaigns, query.CampaignPage]
+	GetCampaign         decorator.QueryHandler[query.GetCampaign, query.CampaignView]
+	ListArchive         decorator.QueryHandler[query.ListArchive, []query.ArchiveEntryView]
+	GetArchivedCampaign decorator.QueryHandler[query.GetArchivedCampaign, query.ArchiveEntryView]
 }

@@ -3,14 +3,52 @@
 # Automatically commit changes after a Spec Kit command completes.
 # Checks per-command config keys in git-config.yml before committing.
 #
-# Usage: auto-commit.sh <event_name>
+# Usage: auto-commit.sh <event_name> [--message <subject>] [--body <body>]
 #   e.g.: auto-commit.sh after_specify
+#         auto-commit.sh after_implement \
+#             --message "feat(audience): import CSV uploads" \
+#             --body "$(printf '%s\n' '- Parses uploaded CSVs into the audience table' '- Dedupes new rows by email')"
+#
+# When --message is supplied, it overrides both the staged-diff heuristic and
+# the message configured in git-config.yml. --body is optional and only used
+# alongside --message. This lets the caller (e.g., the speckit-git-commit
+# skill) draft a commit message that describes intent instead of file counts.
 
 set -e
 
-EVENT_NAME="${1:-}"
+EVENT_NAME=""
+OVERRIDE_MSG=""
+OVERRIDE_BODY=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --message)
+            OVERRIDE_MSG="${2:-}"
+            shift 2
+            ;;
+        --body)
+            OVERRIDE_BODY="${2:-}"
+            shift 2
+            ;;
+        --)
+            shift
+            ;;
+        -*)
+            echo "[specify] Warning: unknown auto-commit flag: $1" >&2
+            shift
+            ;;
+        *)
+            if [ -z "$EVENT_NAME" ]; then
+                EVENT_NAME="$1"
+            else
+                echo "[specify] Warning: unexpected positional arg: $1" >&2
+            fi
+            shift
+            ;;
+    esac
+done
+
 if [ -z "$EVENT_NAME" ]; then
-    echo "Usage: $0 <event_name>" >&2
+    echo "Usage: $0 <event_name> [--message <subject>] [--body <body>]" >&2
     exit 1
 fi
 
@@ -201,10 +239,18 @@ _phase=$(echo "$EVENT_NAME" | grep -q '^before_' && echo 'before' || echo 'after
 # Stage all changes first so message generation sees the full diff
 _git_out=$(git add . 2>&1) || { echo "[specify] Error: git add failed: $_git_out" >&2; exit 1; }
 
-# For implementation commits, generate a descriptive Conventional Commits
-# message from the staged diff instead of the static config string.
+# Priority:
+#   1. --message from the caller (the speckit-git-commit skill drafts these
+#      from the spec/tasks/diff so they describe intent, not file counts)
+#   2. Heuristic generator (after_implement only) — fallback when the caller
+#      didn't supply a message
+#   3. git-config.yml message
+#   4. Generic "[Spec Kit] Auto-commit ..." string
 _commit_body=""
-if [ "$EVENT_NAME" = "after_implement" ]; then
+if [ -n "$OVERRIDE_MSG" ]; then
+    _commit_msg="$OVERRIDE_MSG"
+    _commit_body="$OVERRIDE_BODY"
+elif [ "$EVENT_NAME" = "after_implement" ]; then
     _generated=$(_generate_commit_message)
     if [ -n "$_generated" ]; then
         _commit_msg=$(printf '%s\n' "$_generated" | sed -n '1p')
@@ -212,7 +258,6 @@ if [ "$EVENT_NAME" = "after_implement" ]; then
     fi
 fi
 
-# Use custom message if configured, otherwise default
 if [ -z "$_commit_msg" ]; then
     _commit_msg="[Spec Kit] Auto-commit ${_phase} ${_command_name}"
 fi

@@ -25,7 +25,7 @@ func (r *fakeCampaignRepo) Add(_ context.Context, tenantID string, c *domain.Cam
 	id := "camp-" + string(rune('a'+r.nextID))
 	r.byID[id] = domain.HydrateCampaign(id, tenantID, c.Name(), c.Subject(), c.BodyHTML(),
 		c.BodyText(), c.FromName(), c.FromLocalPart(), c.SendingDomainID(), c.TemplateID(),
-		c.Status(), c.MaxSendErrors(), 0, 0, 0, c.CreatedAt(), c.UpdatedAt(), nil, nil)
+		c.Status(), c.MaxSendErrors(), 0, 0, 0, c.CreatedAt(), c.UpdatedAt(), nil, nil, false, nil)
 	return id, nil
 }
 
@@ -52,6 +52,10 @@ func (r *fakeCampaignRepo) Update(_ context.Context, _, id string,
 }
 
 func (r *fakeCampaignRepo) All(context.Context, string, domain.Page) ([]*domain.Campaign, int, error) {
+	return nil, 0, nil
+}
+
+func (r *fakeCampaignRepo) Archived(context.Context, string, domain.Page) ([]*domain.Campaign, int, error) {
 	return nil, 0, nil
 }
 

@@ -62,6 +62,9 @@ type CampaignRepository interface {
 	Get(ctx context.Context, tenantID, id string) (*Campaign, error)
 	Update(ctx context.Context, tenantID, id string, fn func(*Campaign) (*Campaign, error)) error
 	All(ctx context.Context, tenantID string, page Page) ([]*Campaign, int, error)
+	// Archived returns a page of the tenant's archive-visible campaigns
+	// newest-first by archived_at, plus the total count.
+	Archived(ctx context.Context, tenantID string, page Page) ([]*Campaign, int, error)
 	// SaveTargets replaces a campaign's targeted lists and segments.
 	SaveTargets(ctx context.Context, tenantID, campaignID string, targets []Target) error
 	// Targets returns a campaign's targeted lists and segments.

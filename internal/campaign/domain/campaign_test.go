@@ -112,6 +112,36 @@ func TestCampaignCancel(t *testing.T) {
 	require.Error(t, c.Cancel(), "a cancelled campaign cannot be cancelled again")
 }
 
+func TestCampaignArchiveVisibilityRejectsDraft(t *testing.T) {
+	t.Parallel()
+	c := newDraft(t)
+	require.ErrorIs(t, c.SetArchiveVisible(true, time.Now()), domain.ErrCampaignNotSent,
+		"a campaign whose send has never begun cannot be made archive-visible")
+	require.False(t, c.ArchiveVisible())
+	require.Nil(t, c.ArchivedAt())
+}
+
+func TestCampaignArchiveVisibilityAfterStart(t *testing.T) {
+	t.Parallel()
+	c := newDraft(t)
+	require.NoError(t, c.Start(time.Now()))
+
+	at := time.Now().UTC()
+	require.NoError(t, c.SetArchiveVisible(true, at))
+	require.True(t, c.ArchiveVisible())
+	require.NotNil(t, c.ArchivedAt())
+	first := *c.ArchivedAt()
+
+	// Idempotent: a second enable preserves the original archived_at.
+	require.NoError(t, c.SetArchiveVisible(true, at.Add(time.Hour)))
+	require.Equal(t, first, *c.ArchivedAt())
+
+	// Disabling clears archive_visible but keeps the original archived_at.
+	require.NoError(t, c.SetArchiveVisible(false, time.Now()))
+	require.False(t, c.ArchiveVisible())
+	require.NotNil(t, c.ArchivedAt())
+}
+
 func TestNewTemplateValidates(t *testing.T) {
 	t.Parallel()
 	_, err := domain.NewTemplate("t1", "Welcome", domain.KindCampaign, "Hi", "<p>b</p>", "")

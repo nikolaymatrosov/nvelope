@@ -152,34 +152,34 @@ confirm the RSS feed validates and includes the campaign.
 
 ### Migration & domain (US3)
 
-- [ ] T038 [US3] Write migration `internal/db/migrations/000018_archive_branding.up.sql` / `.down.sql` — `campaigns.archive_visible` + `campaigns.archived_at` columns and the `tenant_branding` table (full RLS block)
-- [ ] T039 [P] [US3] Add `ArchiveVisible`/`archivedAt` + `SetArchiveVisible()` (rejects draft/never-sent) to `internal/campaign/domain/campaign.go` and its hydration path
-- [ ] T040 [P] [US3] Create the `TenantBranding` entity in `internal/tenant/domain/branding.go` — validating constructor, `SetPrimaryColor` (hex check), `SetCustomCSS` (sanitiser per research D9), and the `BrandingRepository` interface
+- [X] T038 [US3] Write migration `internal/db/migrations/000018_archive_branding.up.sql` / `.down.sql` — `campaigns.archive_visible` + `campaigns.archived_at` columns and the `tenant_branding` table (full RLS block)
+- [X] T039 [P] [US3] Add `ArchiveVisible`/`archivedAt` + `SetArchiveVisible()` (rejects draft/never-sent) to `internal/campaign/domain/campaign.go` and its hydration path
+- [X] T040 [P] [US3] Create the `TenantBranding` entity in `internal/tenant/domain/branding.go` — validating constructor, `SetPrimaryColor` (hex check), `SetCustomCSS` (sanitiser per research D9), and the `BrandingRepository` interface
 
 ### Adapters (US3)
 
-- [ ] T041 [P] [US3] Implement `BrandingRepository` (RLS tx, upsert) in `internal/tenant/adapters/branding_pg.go`
-- [ ] T042 [US3] Add `archive_visible`/`archived_at` to the read/write queries in `internal/campaign/adapters/campaigns_pg.go`
+- [X] T041 [P] [US3] Implement `BrandingRepository` (RLS tx, upsert) in `internal/tenant/adapters/branding_pg.go`
+- [X] T042 [US3] Add `archive_visible`/`archived_at` to the read/write queries in `internal/campaign/adapters/campaigns_pg.go`
 
 ### Use cases (US3)
 
-- [ ] T043 [P] [US3] Implement `SetArchiveVisibility` command in `internal/campaign/app/command/set_archive_visibility.go`
-- [ ] T044 [P] [US3] Implement `ListArchive` and `GetArchivedCampaign` queries (archive-visible only, newest-first by `archived_at`) in `internal/campaign/app/query/list_archive.go` and `get_archived_campaign.go`
-- [ ] T045 [P] [US3] Implement `SaveBranding` command and `GetBranding` query in `internal/tenant/app/command/save_branding.go` and `internal/tenant/app/query/get_branding.go`
+- [X] T043 [P] [US3] Implement `SetArchiveVisibility` command in `internal/campaign/app/command/set_archive_visibility.go`
+- [X] T044 [P] [US3] Implement `ListArchive` and `GetArchivedCampaign` queries (archive-visible only, newest-first by `archived_at`) in `internal/campaign/app/query/list_archive.go` and `get_archived_campaign.go`
+- [X] T045 [P] [US3] Implement `SaveBranding` command and `GetBranding` query in `internal/tenant/app/command/save_branding.go` and `internal/tenant/app/query/get_branding.go`
 
 ### Transport (US3)
 
-- [ ] T046 [P] [US3] Create the `archive_index.html` and `archive_campaign.html` templates in `internal/api/templates/`
-- [ ] T047 [US3] Implement archive handlers (`GET /t/{slug}/archive`, `GET /t/{slug}/archive/{campaign-id}` — 404 on draft/hidden) in `internal/api/public_handlers.go`
-- [ ] T048 [US3] Implement the RSS handler (`GET /t/{slug}/feed.xml`, RSS 2.0 via `encoding/xml`, valid-but-empty for zero campaigns) in `internal/api/rss_handler.go`
-- [ ] T049 [US3] Implement authenticated branding handlers (`GET`/`PUT /t/{slug}/api/branding`) in `internal/api/branding_handlers.go` and the archive-toggle handler (`POST /t/{slug}/api/campaigns/{id}/archive`); add the `branding:manage` permission; render branding/sanitised CSS into the public layout
-- [ ] T050 [US3] Add the US3 typed-error mappings (`invalid_color`, `unsafe_css`, `campaign_not_sent`) to `internal/api/errmap.go`; wire the US3 commands/queries into `cmd/api/main.go`
+- [X] T046 [P] [US3] Create the `archive_index.html` and `archive_campaign.html` templates in `internal/api/templates/`
+- [X] T047 [US3] Implement archive handlers (`GET /t/{slug}/archive`, `GET /t/{slug}/archive/{campaign-id}` — 404 on draft/hidden) in `internal/api/public_handlers.go`
+- [X] T048 [US3] Implement the RSS handler (`GET /t/{slug}/feed.xml`, RSS 2.0 via `encoding/xml`, valid-but-empty for zero campaigns) in `internal/api/rss_handler.go`
+- [X] T049 [US3] Implement authenticated branding handlers (`GET`/`PUT /t/{slug}/api/branding`) in `internal/api/branding_handlers.go` and the archive-toggle handler (`POST /t/{slug}/api/campaigns/{id}/archive`); add the `branding:manage` permission; render branding/sanitised CSS into the public layout
+- [X] T050 [US3] Add the US3 typed-error mappings (`invalid_color`, `unsafe_css`, `campaign_not_sent`) to `internal/api/errmap.go`; wire the US3 commands/queries into `cmd/api/main.go`
 
 ### Tests (US3)
 
-- [ ] T051 [P] [US3] Integration test: only sent campaigns can be archive-visible, drafts/hidden return 404, archive index orders newest-first, RSS output is well-formed in the `campaign` test package
-- [ ] T052 [P] [US3] Test the CSS sanitiser rejects `</style>`, `@import`, `expression(`, `javascript:`, and non-https `url()` in `internal/tenant/domain/branding_test.go`
-- [ ] T053 [P] [US3] Cross-tenant isolation test for `tenant_branding` in `test/isolation_test.go`
+- [X] T051 [P] [US3] Integration test: only sent campaigns can be archive-visible, drafts/hidden return 404, archive index orders newest-first, RSS output is well-formed in the `campaign` test package
+- [X] T052 [P] [US3] Test the CSS sanitiser rejects `</style>`, `@import`, `expression(`, `javascript:`, and non-https `url()` in `internal/tenant/domain/branding_test.go`
+- [X] T053 [P] [US3] Cross-tenant isolation test for `tenant_branding` in `test/isolation_test.go`
 
 **Checkpoint**: US1–US3 all work independently.
 

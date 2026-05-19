@@ -6,6 +6,8 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+
+	tenantquery "github.com/nikolaymatrosov/nvelope/internal/tenant/app/query"
 )
 
 // templateFS holds the server-rendered public page templates. They are
@@ -53,12 +55,23 @@ func (s *Server) chromeFor(ctx context.Context, title string) publicChrome {
 }
 
 // applyBranding overlays a tenant's configured branding onto the page chrome.
-// The tenant branding context is wired in by US3; until then it is a no-op
-// and public pages render with the platform defaults.
+// A lookup failure is logged and ignored — public pages then render with the
+// platform defaults rather than fail.
 func (s *Server) applyBranding(ctx context.Context, c *publicChrome, tenantID string) {
-	_ = ctx
-	_ = tenantID
-	_ = c
+	view, err := s.tenant.Queries.GetBranding.Handle(ctx, tenantquery.GetBranding{TenantID: tenantID})
+	if err != nil {
+		s.logger.Warn("loading tenant branding", "tenant", tenantID, "error", err)
+		return
+	}
+	if view.PrimaryColor != "" {
+		c.PrimaryColor = view.PrimaryColor
+	}
+	if view.LogoURL != "" {
+		c.LogoURL = view.LogoURL
+	}
+	if view.CustomCSS != "" {
+		c.CustomCSS = template.CSS(view.CustomCSS)
+	}
 }
 
 // errorPage is the data the branded error template renders.

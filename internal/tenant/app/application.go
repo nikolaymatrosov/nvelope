@@ -21,6 +21,7 @@ type Commands struct {
 	AcceptInvitation decorator.ResultCommandHandler[command.AcceptInvitation, command.AcceptInvitationResult]
 	RevokeInvitation decorator.CommandHandler[command.RevokeInvitation]
 	UpdateSettings   decorator.ResultCommandHandler[command.UpdateSettings, command.UpdateSettingsResult]
+	SaveBranding     decorator.CommandHandler[command.SaveBranding]
 }
 
 // Queries gathers the tenant context's read-only handlers.
@@ -33,4 +34,5 @@ type Queries struct {
 	GetSettings         decorator.QueryHandler[query.GetSettings, query.SettingsView]
 	PendingInvitations  decorator.QueryHandler[query.PendingInvitations, []query.InvitationView]
 	LookUpInvitation    decorator.QueryHandler[query.LookUpInvitation, query.InvitationLookup]
+	GetBranding         decorator.QueryHandler[query.GetBranding, query.BrandingView]
 }
