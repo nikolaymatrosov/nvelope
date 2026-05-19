@@ -20,13 +20,32 @@ func newDraft(t *testing.T) *domain.Campaign {
 func TestNewCampaignValidates(t *testing.T) {
 	t.Parallel()
 	_, err := domain.NewCampaign("tenant-1", "", "s", "<p>b</p>", "", "Acme", "news", "d", "", 100)
-	require.ErrorIs(t, err, domain.ErrCampaignInvalid)
-
-	_, err = domain.NewCampaign("tenant-1", "C", "s", "", "", "Acme", "news", "d", "", 100)
-	require.ErrorIs(t, err, domain.ErrCampaignInvalid, "needs a body")
+	require.ErrorIs(t, err, domain.ErrCampaignInvalid, "name is required")
 
 	_, err = domain.NewCampaign("tenant-1", "C", "s", "<p>b</p>", "", "Acme", "bad local part", "d", "", 100)
 	require.ErrorIs(t, err, domain.ErrCampaignInvalid, "rejects an invalid local part")
+}
+
+func TestNewCampaignAllowsBareDraft(t *testing.T) {
+	t.Parallel()
+	c, err := domain.NewCampaign("tenant-1", "Just a name", "", "", "", "", "", "", "", 0)
+	require.NoError(t, err, "a draft only needs a name")
+	require.True(t, c.IsDraft())
+}
+
+func TestCampaignStartRequiresContent(t *testing.T) {
+	t.Parallel()
+	c, err := domain.NewCampaign("tenant-1", "C", "", "", "", "", "", "domain-1", "", 100)
+	require.NoError(t, err)
+	require.ErrorIs(t, c.Start(time.Now()), domain.ErrCampaignInvalid, "subject is required")
+
+	c, err = domain.NewCampaign("tenant-1", "C", "s", "", "", "", "", "domain-1", "", 100)
+	require.NoError(t, err)
+	require.ErrorIs(t, c.Start(time.Now()), domain.ErrCampaignInvalid, "needs a body")
+
+	c, err = domain.NewCampaign("tenant-1", "C", "s", "<p>b</p>", "", "", "", "domain-1", "", 100)
+	require.NoError(t, err)
+	require.ErrorIs(t, c.Start(time.Now()), domain.ErrCampaignInvalid, "From local part is required")
 }
 
 func TestCampaignStartRequiresDomain(t *testing.T) {

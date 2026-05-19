@@ -4,6 +4,7 @@
 
 import { WorkspaceSidebar } from "./sidebar"
 import { TopBar } from "./top-bar"
+import { SuspensionBanner } from "./suspension-banner"
 import type { ReactNode } from "react"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 
@@ -19,7 +20,10 @@ export function AppShell({ slug, workspaceName, children }: AppShellProps) {
       <WorkspaceSidebar slug={slug} />
       <SidebarInset>
         <TopBar workspaceName={workspaceName} />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+        <main className="flex flex-1 flex-col gap-4 overflow-auto p-6">
+          <SuspensionBanner slug={slug} />
+          {children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   )

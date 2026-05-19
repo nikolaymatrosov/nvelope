@@ -5,6 +5,7 @@
 import { Link, useLocation } from "@tanstack/react-router"
 import {
   ArrowDownUpIcon,
+  CreditCardIcon,
   FileTextIcon,
   GlobeIcon,
   LayoutDashboardIcon,
@@ -87,6 +88,12 @@ const NAV: Array<NavEntry> = [
     requires: ["subscribers:import", "subscribers:export"],
   },
   { label: "Audit", segment: "audit", icon: ScrollTextIcon, requires: ["audit:get"] },
+  {
+    label: "Billing",
+    segment: "billing",
+    icon: CreditCardIcon,
+    requires: ["billing:get", "billing:manage"],
+  },
   { label: "Settings", segment: "settings", icon: SettingsIcon, requires: ["settings:get"] },
 ]
 

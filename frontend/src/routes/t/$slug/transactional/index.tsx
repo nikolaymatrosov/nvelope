@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { Link, createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -104,6 +104,20 @@ export function TransactionalView() {
               {PAYLOAD_EXAMPLE}
             </pre>
           </div>
+          <p className="text-muted-foreground">
+            The endpoint responds <code>403</code> with{" "}
+            <code>quota_exceeded</code> when the workspace has used its plan's
+            send allowance, or <code>tenant_suspended</code> when the account
+            is suspended for non-payment. Check{" "}
+            <Link
+              to="/t/$slug/billing"
+              params={{ slug }}
+              className="text-primary hover:underline"
+            >
+              billing
+            </Link>{" "}
+            if transactional sends start failing.
+          </p>
         </CardContent>
       </Card>
     </div>

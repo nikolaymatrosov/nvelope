@@ -22,6 +22,8 @@ import type {
   DashboardView,
   DomainView,
   InvitationLookup,
+  InvoiceSummary,
+  InvoiceView,
   IssuedAPIKey,
   JobStatusView,
   List,
@@ -29,11 +31,14 @@ import type {
   Node,
   Page,
   Permission,
+  PlanView,
   PlatformAccount,
   Role,
   SessionResult,
   StartExportInput,
+  SubscribeResult,
   Subscriber,
+  SubscriptionResponse,
   SuppressionEntry,
   SuppressionListResponse,
   SuppressionReason,
@@ -390,6 +395,27 @@ export const api = {
       ),
     dashboard: (slug: string) =>
       request<DashboardView>("GET", tp(slug, "/dashboard")),
+  },
+
+  // ── Billing & metering (Phase 5) ───────────────────────────────────────────
+  billing: {
+    plans: (slug: string) =>
+      request<{ plans: Array<PlanView> }>("GET", tp(slug, "/plans")),
+    getSubscription: (slug: string) =>
+      request<SubscriptionResponse>("GET", tp(slug, "/subscription")),
+    subscribe: (slug: string, planId: string) =>
+      request<SubscribeResult>("POST", tp(slug, "/subscription"), { planId }),
+    cancelSubscription: (slug: string) =>
+      request("DELETE", tp(slug, "/subscription")),
+    listInvoices: (slug: string, limit: number, offset: number) =>
+      request<{ invoices: Array<InvoiceSummary>; total: number }>(
+        "GET",
+        tp(slug, `/invoices?limit=${limit}&offset=${offset}`),
+      ),
+    getInvoice: (slug: string, id: string) =>
+      request<InvoiceView>("GET", tp(slug, `/invoices/${id}`)),
+    settleInvoice: (slug: string, id: string) =>
+      request<InvoiceView>("POST", tp(slug, `/invoices/${id}/settle`)),
   },
 }
 

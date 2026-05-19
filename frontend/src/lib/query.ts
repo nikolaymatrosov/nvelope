@@ -100,4 +100,12 @@ export const queryKeys = {
   ) => ["t", slug, "suppressions", filters] as const,
   bounceSettings: (slug: string) =>
     ["t", slug, "bounce-settings"] as const,
+
+  plans: (slug: string) => ["t", slug, "plans"] as const,
+  subscription: (slug: string) => ["t", slug, "subscription"] as const,
+  invoices: (slug: string) => ["t", slug, "invoices"] as const,
+  invoicesPage: (slug: string, limit: number, offset: number) =>
+    ["t", slug, "invoices", { limit, offset }] as const,
+  invoice: (slug: string, id: string) =>
+    ["t", slug, "invoices", id] as const,
 }

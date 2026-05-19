@@ -14,10 +14,10 @@ LDFLAGS := -X github.com/nikolaymatrosov/nvelope/internal/service.Version=$(VERS
 CLEANARCH_FLAGS := -domain domain -application app -infrastructure adapters
 
 build:
-	$(GO) build -ldflags "$(LDFLAGS)" -o bin/api       ./cmd/api
-	$(GO) build -ldflags "$(LDFLAGS)" -o bin/worker    ./cmd/worker
-	$(GO) build -ldflags "$(LDFLAGS)" -o bin/scheduler ./cmd/scheduler
-	$(GO) build -ldflags "$(LDFLAGS)" -o bin/migrate   ./cmd/migrate
+	$(GO) build --pull -ldflags "$(LDFLAGS)" -o bin/api       ./cmd/api
+	$(GO) build --pull -ldflags "$(LDFLAGS)" -o bin/worker    ./cmd/worker
+	$(GO) build --pull -ldflags "$(LDFLAGS)" -o bin/scheduler ./cmd/scheduler
+	$(GO) build --pull -ldflags "$(LDFLAGS)" -o bin/migrate   ./cmd/migrate
 
 run-api:
 	$(GO) run -ldflags "$(LDFLAGS)" ./cmd/api
@@ -89,10 +89,10 @@ K8S_DEPLOYMENTS := nvelope-api nvelope-worker nvelope-scheduler \
 k8s-images:
 	@for s in $(K8S_GO_IMAGES); do \
 		echo "[k8s] build nvelope-$$s:dev"; \
-		docker build -q -f deploy/docker/$$s.Dockerfile -t nvelope-$$s:dev . >/dev/null; \
+		docker build --pull -q -f deploy/docker/$$s.Dockerfile -t nvelope-$$s:dev . >/dev/null; \
 	done
 	@echo "[k8s] build nvelope-frontend:dev"
-	@docker build -q -f deploy/docker/frontend.Dockerfile -t nvelope-frontend:dev . >/dev/null
+	@docker build --pull -q -f deploy/docker/frontend.Dockerfile -t nvelope-frontend:dev . >/dev/null
 
 # Issue the locally-trusted nvelope.local TLS certificate. Run once before the
 # first k8s-deploy (or after switching clusters).

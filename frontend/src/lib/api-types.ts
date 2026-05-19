@@ -220,6 +220,8 @@ export type Permission =
   | "campaigns:get"
   | "campaigns:manage"
   | "transactional:send"
+  | "billing:get"
+  | "billing:manage"
 
 export const ALL_PERMISSIONS: Array<Permission> = [
   "lists:get",
@@ -240,6 +242,8 @@ export const ALL_PERMISSIONS: Array<Permission> = [
   "campaigns:get",
   "campaigns:manage",
   "transactional:send",
+  "billing:get",
+  "billing:manage",
 ]
 
 export type Role = {
@@ -479,4 +483,115 @@ export type UpdateCampaignInput = {
   sending_domain_id?: string
   list_ids: Array<string>
   segments?: Array<Node>
+}
+
+// ── Billing & Metering (Phase 5, camelCase) ──────────────────────────────────
+
+export type OverageMode = "block" | "meter"
+
+export type SubscriptionState =
+  | "pending"
+  | "active"
+  | "past_due"
+  | "suspended"
+  | "cancelled"
+
+export type InvoiceStatus = "open" | "paid" | "void"
+
+// A plan as presented in the catalogue (GET /plans).
+export type PlanView = {
+  id: string
+  code: string
+  name: string
+  priceMinor: number
+  currency: string
+  billingPeriod: string
+  includedSends: number
+  overageMode: OverageMode
+  overagePriceMinor: number
+}
+
+// The plan summary embedded in a subscription (GET /subscription).
+export type PlanRef = {
+  id: string
+  code: string
+  name: string
+  overageMode: OverageMode
+}
+
+export type SubscriptionView = {
+  id: string
+  plan: PlanRef
+  state: SubscriptionState
+  currentPeriodStart: string
+  currentPeriodEnd: string
+  cancelAtPeriodEnd: boolean
+}
+
+export type UsageView = {
+  includedSends: number
+  usedSends: number
+  overageSends: number
+  remainingSends: number
+}
+
+// GET /subscription envelope — subscription + current-period usage.
+export type SubscriptionResponse = {
+  subscription: SubscriptionView
+  usage: UsageView
+}
+
+// POST /subscription result — the new subscription plus its first invoice.
+export type SubscribeResult = {
+  subscription: {
+    id: string
+    planId: string
+    state: SubscriptionState
+    currentPeriodStart: string
+    currentPeriodEnd: string
+    cancelAtPeriodEnd: boolean
+  }
+  invoice: {
+    id: string
+    status: InvoiceStatus
+    totalMinor: number
+    currency: string
+  }
+}
+
+// An invoice row as listed in the history (GET /invoices).
+export type InvoiceSummary = {
+  id: string
+  periodStart: string
+  periodEnd: string
+  totalMinor: number
+  currency: string
+  status: InvoiceStatus
+  issuedAt: string | null
+  paidAt: string | null
+}
+
+export type LineItemView = {
+  kind: string
+  description: string
+  quantity: number
+  unitPriceMinor: number
+  amountMinor: number
+}
+
+export type PaymentAttemptView = {
+  attemptNumber: number
+  status: "succeeded" | "failed"
+  gatewayReference: string
+  failureReason: string
+  createdAt: string
+}
+
+// A full invoice with line items and payment attempts (GET /invoices/{id}).
+export type InvoiceView = InvoiceSummary & {
+  subscriptionId: string
+  attemptCount: number
+  nextAttemptAt: string | null
+  lineItems: Array<LineItemView>
+  paymentAttempts: Array<PaymentAttemptView>
 }
