@@ -2,10 +2,13 @@
 FROM golang:1.26 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build \
     -ldflags "-X github.com/nikolaymatrosov/nvelope/internal/service.Version=${VERSION}" \
     -o /out/worker ./cmd/worker
 

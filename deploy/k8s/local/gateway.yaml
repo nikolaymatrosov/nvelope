@@ -95,6 +95,9 @@ metadata:
     component: gateway
 spec:
   type: LoadBalancer
+  # Pinned so /etc/hosts (nvelope.local -> this IP) stays valid across restarts
+  # and re-applies. The LoadBalancer external IP still drifts; use the clusterIP.
+  clusterIP: 192.168.194.213
   selector:
     app: nvelope
     component: gateway

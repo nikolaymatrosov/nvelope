@@ -51,7 +51,9 @@ type Campaign struct {
 	finishedAt      *time.Time
 }
 
-// NewCampaign builds a draft campaign, rejecting any invariant violation.
+// NewCampaign builds a draft campaign, rejecting any invariant violation. A
+// draft only needs a name; its content (subject, body, From address, sending
+// domain) may be filled in later and is enforced by Start.
 func NewCampaign(tenantID, name, subject, bodyHTML, bodyText, fromName, fromLocalPart,
 	sendingDomainID, templateID string, maxSendErrors int) (*Campaign, error) {
 
@@ -64,14 +66,8 @@ func NewCampaign(tenantID, name, subject, bodyHTML, bodyText, fromName, fromLoca
 	if name == "" {
 		return nil, ErrCampaignInvalid.WithMessage("campaign name is required")
 	}
-	if subject == "" {
-		return nil, ErrCampaignInvalid.WithMessage("campaign subject is required")
-	}
-	if strings.TrimSpace(bodyHTML) == "" && strings.TrimSpace(bodyText) == "" {
-		return nil, ErrCampaignInvalid.WithMessage("a campaign needs an HTML or text body")
-	}
-	if fromLocalPart == "" || !localPartPattern.MatchString(fromLocalPart) {
-		return nil, ErrCampaignInvalid.WithMessage("a valid From address local part is required")
+	if fromLocalPart != "" && !localPartPattern.MatchString(fromLocalPart) {
+		return nil, ErrCampaignInvalid.WithMessage("the From address local part is not valid")
 	}
 	if maxSendErrors <= 0 {
 		maxSendErrors = 100
@@ -189,12 +185,21 @@ func (c *Campaign) Recompose(name, subject, bodyHTML, bodyText, fromName, fromLo
 	return nil
 }
 
-// Start transitions a draft campaign to running. It requires a selected
-// sending domain; the caller is responsible for confirming the domain is
-// verified and that targets exist.
+// Start transitions a draft campaign to running. It requires the campaign's
+// content to be complete and a selected sending domain; the caller is
+// responsible for confirming the domain is verified and that targets exist.
 func (c *Campaign) Start(at time.Time) error {
 	if c.status != CampaignDraft {
 		return ErrCampaignNotDraft
+	}
+	if c.subject == "" {
+		return ErrCampaignInvalid.WithMessage("campaign subject is required")
+	}
+	if strings.TrimSpace(c.bodyHTML) == "" && strings.TrimSpace(c.bodyText) == "" {
+		return ErrCampaignInvalid.WithMessage("a campaign needs an HTML or text body")
+	}
+	if c.fromLocalPart == "" {
+		return ErrCampaignInvalid.WithMessage("a valid From address local part is required")
 	}
 	if c.sendingDomainID == "" {
 		return ErrSendingDomainRequired

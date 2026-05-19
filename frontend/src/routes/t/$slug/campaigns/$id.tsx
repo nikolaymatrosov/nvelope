@@ -7,7 +7,7 @@ import { CampaignStatusBadge } from "./index"
 import type { CampaignView } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
-import { errorMessage } from "@/lib/errors"
+import { ApiError, errorMessage } from "@/lib/errors"
 import { usePermissions } from "@/hooks/use-permissions"
 import {
   campaignProgress,
@@ -103,6 +103,9 @@ function CampaignEditor({
   const [listIds, setListIds] = useState<Array<string>>(campaign.list_ids)
   const [confirmStart, setConfirmStart] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [sendBlock, setSendBlock] = useState<"quota" | "suspended" | null>(
+    null,
+  )
 
   const domainsQuery = useQuery({
     queryKey: queryKeys.sendingDomains(slug),
@@ -161,10 +164,19 @@ function CampaignEditor({
       await invalidate()
       toast.success("Campaign started.")
       setConfirmStart(false)
+      setSendBlock(null)
     },
     onError: (e) => {
-      toast.error(errorMessage(e))
       setConfirmStart(false)
+      if (e instanceof ApiError && e.slug === "quota_exceeded") {
+        setSendBlock("quota")
+        return
+      }
+      if (e instanceof ApiError && e.slug === "tenant_suspended") {
+        setSendBlock("suspended")
+        return
+      }
+      toast.error(errorMessage(e))
     },
   })
 
@@ -255,6 +267,42 @@ function CampaignEditor({
           <AlertDescription>
             Select a verified sending domain below before this campaign can be
             started.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {sendBlock === "quota" && (
+        <Alert variant="destructive" data-testid="campaign-quota-blocked">
+          <AlertTitle>Send allowance reached</AlertTitle>
+          <AlertDescription>
+            This campaign was not started because the workspace has used its
+            plan's send allowance for the current period. Review your{" "}
+            <Link
+              to="/t/$slug/billing/usage"
+              params={{ slug }}
+              className="font-medium underline underline-offset-2"
+            >
+              usage and plan
+            </Link>{" "}
+            to continue sending.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {sendBlock === "suspended" && (
+        <Alert variant="destructive" data-testid="campaign-suspended-blocked">
+          <AlertTitle>Account suspended</AlertTitle>
+          <AlertDescription>
+            This campaign was not started because the workspace is suspended
+            for non-payment. Settle the outstanding balance in{" "}
+            <Link
+              to="/t/$slug/billing"
+              params={{ slug }}
+              className="font-medium underline underline-offset-2"
+            >
+              billing
+            </Link>{" "}
+            to re-enable sending.
           </AlertDescription>
         </Alert>
       )}

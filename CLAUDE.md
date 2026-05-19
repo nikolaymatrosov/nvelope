@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/010-phase-5-billing-metering/plan.md`.
+`specs/011-phase-5-ui/plan.md`.
 <!-- SPECKIT END -->
 
 Use [go-ddd-architecture](.claude/skills/go-ddd-architecture) skill when need to plan Go architecture.
