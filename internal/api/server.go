@@ -9,6 +9,7 @@ import (
 
 	audienceapp "github.com/nikolaymatrosov/nvelope/internal/audience/app"
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
+	billingapp "github.com/nikolaymatrosov/nvelope/internal/billing/app"
 	campaignapp "github.com/nikolaymatrosov/nvelope/internal/campaign/app"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
@@ -29,6 +30,7 @@ type Server struct {
 	sending        sendingapp.Application
 	campaign       campaignapp.Application
 	deliverability deliverabilityapp.Application
+	billing        billingapp.Application
 	tracking       campaigndomain.TrackingRepository
 	cfg            config.Config
 	logger         *slog.Logger
@@ -41,12 +43,13 @@ type Server struct {
 // caller so it can also toggle readiness during startup and graceful shutdown.
 func New(auth authapp.Application, tenant tenantapp.Application, audience audienceapp.Application,
 	iam iamapp.Application, sending sendingapp.Application, campaign campaignapp.Application,
-	deliverability deliverabilityapp.Application, tracking campaigndomain.TrackingRepository,
+	deliverability deliverabilityapp.Application, billing billingapp.Application,
+	tracking campaigndomain.TrackingRepository,
 	cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
 	return &Server{
 		auth: auth, tenant: tenant, audience: audience, iam: iam, sending: sending,
-		campaign: campaign, deliverability: deliverability, tracking: tracking,
-		cfg: cfg, logger: logger, health: health,
+		campaign: campaign, deliverability: deliverability, billing: billing,
+		tracking: tracking, cfg: cfg, logger: logger, health: health,
 	}
 }
 
@@ -176,6 +179,15 @@ func (s *Server) Handler() http.Handler {
 			// Campaign analytics & workspace dashboard (Phase 4 US3).
 			r.Get("/campaigns/{id}/analytics", s.handleCampaignAnalytics)
 			r.Get("/dashboard", s.handleDashboard)
+
+			// Billing — plans, subscription, invoices (Phase 5).
+			r.Get("/plans", s.handleListPlans)
+			r.Post("/subscription", s.handleSubscribe)
+			r.Get("/subscription", s.handleGetSubscription)
+			r.Delete("/subscription", s.handleCancelSubscription)
+			r.Get("/invoices", s.handleListInvoices)
+			r.Get("/invoices/{id}", s.handleGetInvoice)
+			r.Post("/invoices/{id}/settle", s.handleSettleInvoice)
 		})
 
 		// API-key-authenticated transactional send (Phase 3 US3) — a sibling

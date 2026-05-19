@@ -25,16 +25,18 @@ type BatchWorker struct {
 	limiter     domain.RateLimiter
 	domains     domain.SendingDomainLookup
 	suppression domain.SuppressionChecker
+	usage       domain.UsageRecorder
 	perTenant   domain.Limit
 	baseURL     string
 }
 
 // NewBatchWorker builds the campaign.batch worker, failing fast on a nil
-// dependency.
+// dependency. usage may be nil — a deployment without billing does not meter
+// sends.
 func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.RecipientRepository,
 	tracking domain.TrackingRepository, messenger domain.Messenger, limiter domain.RateLimiter,
 	domains domain.SendingDomainLookup, suppression domain.SuppressionChecker,
-	perTenant domain.Limit, baseURL string) *BatchWorker {
+	usage domain.UsageRecorder, perTenant domain.Limit, baseURL string) *BatchWorker {
 	if campaigns == nil || recipients == nil || tracking == nil ||
 		messenger == nil || limiter == nil || domains == nil || suppression == nil {
 		panic("nil dependency")
@@ -42,7 +44,7 @@ func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.Recip
 	return &BatchWorker{
 		campaigns: campaigns, recipients: recipients, tracking: tracking,
 		messenger: messenger, limiter: limiter, domains: domains,
-		suppression: suppression, perTenant: perTenant, baseURL: baseURL,
+		suppression: suppression, usage: usage, perTenant: perTenant, baseURL: baseURL,
 	}
 }
 
@@ -91,6 +93,7 @@ func (w *BatchWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignBatc
 		}
 	}
 
+	var sentIDs []string
 	for _, rec := range pending {
 		// A cancelled context means the worker is shutting down. Stop here;
 		// River redelivers the job and the still-pending recipients resume.
@@ -110,20 +113,34 @@ func (w *BatchWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignBatc
 		if !allowed {
 			// Pace the campaign: snooze the rest of the batch. Recipients
 			// already sent above are skipped on resume.
+			w.recordUsage(ctx, tenantID, sentIDs)
 			if syncErr := w.syncProgress(ctx, tenantID, campaignID); syncErr != nil {
 				return syncErr
 			}
 			return river.JobSnooze(retryAfter)
 		}
-		w.sendOne(ctx, tenantID, campaign, rec, fromAddress, linkIDs)
+		if w.sendOne(ctx, tenantID, campaign, rec, fromAddress, linkIDs) {
+			sentIDs = append(sentIDs, rec.ID())
+		}
 	}
+	w.recordUsage(ctx, tenantID, sentIDs)
 	return w.syncProgress(ctx, tenantID, campaignID)
 }
 
+// recordUsage meters the sent recipients as campaign-send usage events. A
+// repeated record is a no-op, so a redelivered batch never double-counts.
+func (w *BatchWorker) recordUsage(ctx context.Context, tenantID string, recipientIDs []string) {
+	if w.usage == nil || len(recipientIDs) == 0 {
+		return
+	}
+	_ = w.usage.Record(context.WithoutCancel(ctx), tenantID, domain.UsageCampaignSend, recipientIDs)
+}
+
 // sendOne renders and delivers one recipient's message, recording the outcome
-// on the recipient row.
+// on the recipient row. It reports whether the message was accepted by the
+// provider.
 func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *domain.Campaign,
-	rec *domain.Recipient, fromAddress string, linkIDs map[string]string) {
+	rec *domain.Recipient, fromAddress string, linkIDs map[string]string) bool {
 
 	html := campaign.BodyHTML()
 	if html != "" {
@@ -148,11 +165,12 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 	persistCtx := context.WithoutCancel(ctx)
 	if err != nil {
 		_ = w.recipients.MarkFailed(persistCtx, tenantID, rec.ID(), err.Error())
-		return
+		return false
 	}
 	// The provider message ref is persisted so a later bounce/complaint
 	// notification can be attributed back to this recipient.
 	_ = w.recipients.MarkSent(persistCtx, tenantID, rec.ID(), messageRef, time.Now())
+	return true
 }
 
 // syncProgress re-derives the campaign's counters from the per-recipient rows,

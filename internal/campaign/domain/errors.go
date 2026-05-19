@@ -68,4 +68,15 @@ var (
 	// address on the tenant's suppression list.
 	ErrRecipientSuppressed = apperr.NewConflict("recipient_suppressed",
 		"the recipient is suppressed and cannot be mailed")
+
+	// ErrQuotaExceeded is returned when a send would exceed the tenant's plan
+	// allowance under a block-mode plan, or the tenant has no active
+	// subscription.
+	ErrQuotaExceeded = apperr.NewForbidden("quota_exceeded",
+		"the tenant's send allowance is exhausted")
+
+	// ErrTenantSuspended is returned when the tenant's subscription is
+	// suspended for non-payment, blocking all sends.
+	ErrTenantSuspended = apperr.NewForbidden("tenant_suspended",
+		"the tenant's subscription is suspended for non-payment")
 )

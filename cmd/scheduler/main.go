@@ -50,12 +50,20 @@ func main() {
 		defer domainTicker.Stop()
 		analyticsTicker := time.NewTicker(cfg.AnalyticsRefreshInterval)
 		defer analyticsTicker.Stop()
+		billingTicker := time.NewTicker(cfg.BillingSweepInterval)
+		defer billingTicker.Stop()
+		rollupTicker := time.NewTicker(cfg.UsageRollupInterval)
+		defer rollupTicker.Stop()
 		logger.Info("scheduler running",
 			"domain_verify_interval", cfg.SendingDomainVerifyInterval,
-			"analytics_refresh_interval", cfg.AnalyticsRefreshInterval)
+			"analytics_refresh_interval", cfg.AnalyticsRefreshInterval,
+			"billing_sweep_interval", cfg.BillingSweepInterval,
+			"usage_rollup_interval", cfg.UsageRollupInterval)
 
 		sweepPendingDomains(ctx, pool, enqueuer, logger)
 		enqueueAnalyticsRefresh(ctx, pool, enqueuer, logger)
+		enqueueBillingSweep(ctx, enqueuer, logger)
+		enqueueUsageRollup(ctx, pool, enqueuer, logger)
 		for {
 			select {
 			case <-ctx.Done():
@@ -64,6 +72,10 @@ func main() {
 				sweepPendingDomains(ctx, pool, enqueuer, logger)
 			case <-analyticsTicker.C:
 				enqueueAnalyticsRefresh(ctx, pool, enqueuer, logger)
+			case <-billingTicker.C:
+				enqueueBillingSweep(ctx, enqueuer, logger)
+			case <-rollupTicker.C:
+				enqueueUsageRollup(ctx, pool, enqueuer, logger)
 			}
 		}
 	})
@@ -145,6 +157,49 @@ func enqueueAnalyticsRefresh(ctx context.Context, pool *pgxpool.Pool,
 	for _, id := range tenantIDs {
 		if err := enqueuer.EnqueueAnalyticsRefresh(ctx, id); err != nil {
 			logger.Error("enqueuing analytics refresh", "tenant_id", id, "error", err)
+		}
+	}
+}
+
+// enqueueBillingSweep enqueues one billing.sweep job. The unique-job option
+// keyed on the args makes a re-arm a no-op while a sweep is still pending, so a
+// slow sweep is never stacked.
+func enqueueBillingSweep(ctx context.Context, enqueuer *jobs.SendEnqueuer, logger *slog.Logger) {
+	if err := enqueuer.EnqueueBillingSweep(ctx); err != nil {
+		logger.Error("enqueuing billing sweep", "error", err)
+	}
+}
+
+// enqueueUsageRollup enqueues one usage.rollup job per active tenant. The
+// unique-job option keyed on the args makes a re-arm a no-op while a rollup for
+// the same tenant is still pending.
+func enqueueUsageRollup(ctx context.Context, pool *pgxpool.Pool,
+	enqueuer *jobs.SendEnqueuer, logger *slog.Logger) {
+
+	rows, err := pool.Query(ctx, "SELECT id FROM tenants WHERE status = 'active'")
+	if err != nil {
+		logger.Error("listing active tenants", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	var tenantIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			logger.Error("scanning active tenant", "error", err)
+			return
+		}
+		tenantIDs = append(tenantIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Error("reading active tenants", "error", err)
+		return
+	}
+
+	for _, id := range tenantIDs {
+		if err := enqueuer.EnqueueUsageRollup(ctx, id); err != nil {
+			logger.Error("enqueuing usage rollup", "tenant_id", id, "error", err)
 		}
 	}
 }

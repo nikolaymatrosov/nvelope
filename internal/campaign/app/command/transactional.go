@@ -33,15 +33,19 @@ type SendTransactionalHandler struct {
 	limiter     domain.RateLimiter
 	txMessages  domain.TransactionalMessageRepository
 	suppression domain.SuppressionChecker
+	usage       domain.UsageRecorder
+	quota       domain.QuotaGate
 	perTenant   domain.Limit
 }
 
 // NewSendTransactionalHandler builds the handler, failing fast on a nil
-// dependency.
+// dependency. usage and quota may be nil — a deployment without billing does
+// not meter or quota-check transactional sends.
 func NewSendTransactionalHandler(templates domain.TemplateRepository,
 	domains domain.SendingDomainLookup, messenger domain.Messenger,
 	limiter domain.RateLimiter, txMessages domain.TransactionalMessageRepository,
-	suppression domain.SuppressionChecker, perTenant domain.Limit) SendTransactionalHandler {
+	suppression domain.SuppressionChecker, usage domain.UsageRecorder,
+	quota domain.QuotaGate, perTenant domain.Limit) SendTransactionalHandler {
 	if templates == nil || domains == nil || messenger == nil || limiter == nil ||
 		txMessages == nil || suppression == nil {
 		panic("nil dependency")
@@ -49,7 +53,7 @@ func NewSendTransactionalHandler(templates domain.TemplateRepository,
 	return SendTransactionalHandler{
 		templates: templates, domains: domains, messenger: messenger,
 		limiter: limiter, txMessages: txMessages, suppression: suppression,
-		perTenant: perTenant,
+		usage: usage, quota: quota, perTenant: perTenant,
 	}
 }
 
@@ -89,6 +93,18 @@ func (h SendTransactionalHandler) Handle(ctx context.Context, cmd SendTransactio
 		return SendTransactionalResult{}, domain.ErrRecipientSuppressed
 	}
 
+	// Quota gate: a suspended tenant or an exhausted block-mode allowance
+	// rejects the send before it consumes the rate-limit budget.
+	if h.quota != nil {
+		decision, err := h.quota.Authorize(ctx, cmd.TenantID, domain.UsageTransactionalSend, 1)
+		if err != nil {
+			return SendTransactionalResult{}, err
+		}
+		if !decision.Allowed {
+			return SendTransactionalResult{}, domain.QuotaError(decision.Reason)
+		}
+	}
+
 	allowed, retryAfter, err := h.limiter.Allow(ctx, cmd.TenantID, h.perTenant)
 	if err != nil {
 		return SendTransactionalResult{}, err
@@ -113,6 +129,13 @@ func (h SendTransactionalHandler) Handle(ctx context.Context, cmd SendTransactio
 	// attributed back to this transactional message by its provider id.
 	if err := h.txMessages.Record(ctx, cmd.TenantID, cmd.TemplateID, ref, cmd.To); err != nil {
 		return SendTransactionalResult{}, err
+	}
+	// Meter the send. The provider message id is the stable per-send ref, so a
+	// repeated record is a no-op.
+	if h.usage != nil {
+		if err := h.usage.Record(ctx, cmd.TenantID, domain.UsageTransactionalSend, []string{ref}); err != nil {
+			return SendTransactionalResult{}, err
+		}
 	}
 	return SendTransactionalResult{MessageID: ref}, nil
 }

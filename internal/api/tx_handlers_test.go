@@ -53,6 +53,22 @@ func (ts *testServer) issueAPIKey(slug string, permissions []string) string {
 	return token
 }
 
+// subscribe subscribes the workspace to the first published plan, so billing's
+// quota gate permits metered sends.
+func (ts *testServer) subscribe(slug string) {
+	ts.t.Helper()
+	status, body := ts.request(http.MethodGet, "/t/"+slug+"/api/plans", nil)
+	require.Equal(ts.t, http.StatusOK, status)
+	plans, _ := body["plans"].([]any)
+	require.NotEmpty(ts.t, plans, "the seeded plan catalog is published")
+	first, _ := plans[0].(map[string]any)
+	planID, _ := first["id"].(string)
+	require.NotEmpty(ts.t, planID)
+	status, _ = ts.request(http.MethodPost, "/t/"+slug+"/api/subscription",
+		map[string]any{"planId": planID})
+	require.Equal(ts.t, http.StatusCreated, status)
+}
+
 // createTxTemplate creates a transactional template and returns its id.
 func (ts *testServer) createTxTemplate(slug string) string {
 	ts.t.Helper()
@@ -73,6 +89,7 @@ func TestTransactionalSendWithValidKey(t *testing.T) {
 	slug := ts.createTenant()
 	ts.enterWorkspace(slug)
 
+	ts.subscribe(slug)
 	domainID := ts.seedVerifiedDomain(slug, "mail.acme.com")
 	templateID := ts.createTxTemplate(slug)
 	key := ts.issueAPIKey(slug, []string{"transactional:send"})

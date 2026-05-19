@@ -40,7 +40,8 @@ func main() {
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: api.New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
-			app.Campaign, app.Deliverability, app.Tracking, cfg, logger, healthHandler).Handler(),
+			app.Campaign, app.Deliverability, app.Billing, app.Tracking,
+			cfg, logger, healthHandler).Handler(),
 	}
 
 	runner := service.RunnerFunc(func(ctx context.Context) error {

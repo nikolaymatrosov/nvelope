@@ -14,6 +14,11 @@ import (
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
 	authcommand "github.com/nikolaymatrosov/nvelope/internal/auth/app/command"
 	authquery "github.com/nikolaymatrosov/nvelope/internal/auth/app/query"
+	billingadapters "github.com/nikolaymatrosov/nvelope/internal/billing/adapters"
+	billingapp "github.com/nikolaymatrosov/nvelope/internal/billing/app"
+	billingcommand "github.com/nikolaymatrosov/nvelope/internal/billing/app/command"
+	billingquery "github.com/nikolaymatrosov/nvelope/internal/billing/app/query"
+	billingdomain "github.com/nikolaymatrosov/nvelope/internal/billing/domain"
 	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	campaignapp "github.com/nikolaymatrosov/nvelope/internal/campaign/app"
 	campaigncommand "github.com/nikolaymatrosov/nvelope/internal/campaign/app/command"
@@ -54,6 +59,7 @@ type Application struct {
 	Sending        sendingapp.Application
 	Campaign       campaignapp.Application
 	Deliverability deliverabilityapp.Application
+	Billing        billingapp.Application
 	// Tracking is the campaign context's tracking repository, used directly by
 	// the public open/click endpoints.
 	Tracking campaigndomain.TrackingRepository
@@ -66,6 +72,7 @@ type overrides struct {
 	sendingProvisioner sendingdomain.DomainProvisioner
 	campaignMessenger  campaigndomain.Messenger
 	campaignLimiter    campaigndomain.RateLimiter
+	billingGateway     billingdomain.PaymentGateway
 }
 
 // Option overrides a composition-root dependency. It exists so tests can
@@ -86,6 +93,12 @@ func WithCampaignSender(messenger campaigndomain.Messenger, limiter campaigndoma
 		o.campaignMessenger = messenger
 		o.campaignLimiter = limiter
 	}
+}
+
+// WithBillingGateway substitutes the billing context's payment gateway — used
+// by tests to program deterministic decline and error outcomes.
+func WithBillingGateway(g billingdomain.PaymentGateway) Option {
+	return func(o *overrides) { o.billingGateway = g }
 }
 
 // NewApplication is the composition root. It constructs the pgx-backed
@@ -161,11 +174,57 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	sending := buildSending(pool, cfg, logger, ov)
 	campaign, tracking := buildCampaign(pool, cfg, logger, ov)
 	deliverability := buildDeliverability(pool, cfg, logger)
+	billing := buildBilling(pool, cfg, logger, ov)
 
 	return Application{
 		Auth: auth, Tenant: tenant, Audience: audience, IAM: iam,
 		Sending: sending, Campaign: campaign, Deliverability: deliverability,
-		Tracking: tracking,
+		Billing: billing, Tracking: tracking,
+	}
+}
+
+// buildBilling wires the billing context — plans, subscriptions, invoicing, and
+// the synchronous first charge — with logging decorators applied. The billing
+// workers (sweep, charge, rollup) are wired separately in cmd/worker; the
+// scheduler ticks in cmd/scheduler.
+func buildBilling(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
+	ov overrides) billingapp.Application {
+	plans := billingadapters.NewPlans(pool)
+	subscriptions := billingadapters.NewSubscriptions(pool)
+	invoices := billingadapters.NewInvoices(pool)
+	usage := billingadapters.NewUsage(pool)
+	audit := billingadapters.NewAuditLog(pool)
+
+	gateway := ov.billingGateway
+	if gateway == nil {
+		gateway = billingadapters.NewMockGateway()
+	}
+
+	dunning := billingdomain.NewDunningPolicy(cfg.DunningMaxAttempts, cfg.DunningRetryInterval)
+	charge := billingcommand.NewChargeInvoiceHandler(subscriptions, invoices, plans, gateway, dunning)
+	subscribe := billingcommand.NewSubscribeHandler(plans, subscriptions, invoices, charge, audit)
+	cancel := billingcommand.NewCancelSubscriptionHandler(subscriptions, audit)
+	settle := billingcommand.NewSettleInvoiceHandler(charge, audit)
+
+	return billingapp.Application{
+		Commands: billingapp.Commands{
+			Subscribe: decorator.ApplyResultCommandDecorators(subscribe, "Subscribe", logger),
+			CancelSubscription: decorator.ApplyCommandDecorators(
+				cancel, "CancelSubscription", logger),
+			SettleInvoice: decorator.ApplyResultCommandDecorators(
+				settle, "SettleInvoice", logger),
+		},
+		Queries: billingapp.Queries{
+			ListPlans: decorator.ApplyQueryDecorators(
+				billingquery.NewListPlansHandler(plans), "ListPlans", logger),
+			GetSubscription: decorator.ApplyQueryDecorators(
+				billingquery.NewGetSubscriptionHandler(subscriptions, plans, usage),
+				"GetSubscription", logger),
+			ListInvoices: decorator.ApplyQueryDecorators(
+				billingquery.NewListInvoicesHandler(invoices), "ListInvoices", logger),
+			GetInvoice: decorator.ApplyQueryDecorators(
+				billingquery.NewGetInvoiceHandler(invoices), "GetInvoice", logger),
+		},
 	}
 }
 
@@ -271,6 +330,12 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 		Window: cfg.DefaultTenantSendRateWindow,
 	}
 
+	// The billing gates meter and quota-check every transactional send.
+	usageRecorder := billingadapters.NewUsageRecorder(
+		billingadapters.NewSubscriptions(pool), billingadapters.NewUsage(pool))
+	quotaGate := billingadapters.NewQuotaGate(billingadapters.NewSubscriptions(pool),
+		billingadapters.NewPlans(pool), billingadapters.NewUsage(pool))
+
 	app := campaignapp.Application{
 		Commands: campaignapp.Commands{
 			CreateTemplate: decorator.ApplyResultCommandDecorators(
@@ -293,7 +358,8 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 				campaigncommand.NewCancelCampaignHandler(campaigns), "CancelCampaign", logger),
 			SendTransactional: decorator.ApplyResultCommandDecorators(
 				campaigncommand.NewSendTransactionalHandler(templates, lookup, messenger, limiter,
-					txMessages, deliverabilityadapters.NewSuppressionChecker(pool), perTenant),
+					txMessages, deliverabilityadapters.NewSuppressionChecker(pool), usageRecorder,
+					quotaGate, perTenant),
 				"SendTransactional", logger),
 		},
 		Queries: campaignapp.Queries{

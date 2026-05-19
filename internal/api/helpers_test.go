@@ -118,7 +118,8 @@ func newTestServer(t *testing.T) *testServer {
 		service.WithSendingProvisioner(fakeProvisioner{}),
 		service.WithCampaignSender(txMessenger, permissiveLimiter{}))
 	handler := New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
-		app.Campaign, app.Deliverability, app.Tracking, cfg, logger, http.NotFoundHandler()).Handler()
+		app.Campaign, app.Deliverability, app.Billing, app.Tracking,
+		cfg, logger, http.NotFoundHandler()).Handler()
 
 	hs := httptest.NewTLSServer(handler)
 	t.Cleanup(hs.Close)

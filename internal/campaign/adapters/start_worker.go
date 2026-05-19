@@ -28,14 +28,16 @@ type StartWorker struct {
 	tracking   domain.TrackingRepository
 	source     domain.RecipientSource
 	enqueuer   batchEnqueuer
+	quota      domain.QuotaGate
 	batchSize  int
 }
 
 // NewStartWorker builds the campaign.start worker, failing fast on a nil
-// dependency.
+// dependency. quota may be nil — a deployment without billing does not enforce
+// send quotas.
 func NewStartWorker(campaigns domain.CampaignRepository, recipients domain.RecipientRepository,
 	tracking domain.TrackingRepository, source domain.RecipientSource,
-	enqueuer batchEnqueuer, batchSize int) *StartWorker {
+	enqueuer batchEnqueuer, quota domain.QuotaGate, batchSize int) *StartWorker {
 	if campaigns == nil || recipients == nil || tracking == nil || source == nil || enqueuer == nil {
 		panic("nil dependency")
 	}
@@ -44,7 +46,7 @@ func NewStartWorker(campaigns domain.CampaignRepository, recipients domain.Recip
 	}
 	return &StartWorker{
 		campaigns: campaigns, recipients: recipients, tracking: tracking,
-		source: source, enqueuer: enqueuer, batchSize: batchSize,
+		source: source, enqueuer: enqueuer, quota: quota, batchSize: batchSize,
 	}
 }
 
@@ -66,6 +68,26 @@ func (w *StartWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignStar
 	members, err := w.resolveMembers(ctx, tenantID, campaignID)
 	if err != nil {
 		return err
+	}
+
+	// Authorize the whole campaign against the tenant's remaining allowance
+	// before any recipient is sent. A block-mode plan over its allowance fails
+	// the campaign outright — it is never partially sent (research R9); a
+	// meter-mode plan proceeds and bills the excess as overage.
+	if w.quota != nil {
+		decision, err := w.quota.Authorize(ctx, tenantID, domain.UsageCampaignSend, int64(len(members)))
+		if err != nil {
+			return err
+		}
+		if !decision.Allowed {
+			return w.campaigns.Update(ctx, tenantID, campaignID,
+				func(c *domain.Campaign) (*domain.Campaign, error) {
+					if !c.IsRunning() {
+						return c, nil
+					}
+					return c, c.Cancel()
+				})
+		}
 	}
 
 	recipients := make([]*domain.Recipient, 0, len(members))

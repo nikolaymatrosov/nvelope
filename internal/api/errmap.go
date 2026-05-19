@@ -32,6 +32,9 @@ func statusForCategory(c apperr.Category) int {
 // generic internal error.
 var statusForSlug = map[string]int{
 	"provisioning-failed": http.StatusBadGateway,
+	// A declined payment is a distinct, well-known HTTP status — neither a
+	// generic 422 nor a 500.
+	"payment_failed": http.StatusPaymentRequired,
 }
 
 // fail is the single place a domain error becomes an HTTP response. A typed

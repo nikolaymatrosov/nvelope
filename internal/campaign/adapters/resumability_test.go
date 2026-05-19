@@ -65,7 +65,7 @@ func TestSendPipelineResumesAfterWorkerCrash(t *testing.T) {
 
 	// Materialise recipients and the single batch via the start worker.
 	start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
-		f.source, f.enqueuer, 100)
+		f.source, f.enqueuer, nil, 100)
 	require.NoError(t, start.Work(context.Background(), &river.Job[jobs.CampaignStartArgs]{
 		Args: jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID},
 	}))
@@ -75,7 +75,7 @@ func TestSendPipelineResumesAfterWorkerCrash(t *testing.T) {
 	newBatch := func() *adapters.BatchWorker {
 		return adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
 			messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
-			noopSuppression{},
+			noopSuppression{}, nil,
 			domain.Limit{Max: limit.Max, Window: limit.Window}, "https://track.test")
 	}
 	job := &river.Job[jobs.CampaignBatchArgs]{

@@ -121,6 +121,18 @@ type Config struct {
 	// CampaignBatchSize is the number of recipients processed per
 	// campaign.batch job.
 	CampaignBatchSize int
+
+	// BillingSweepInterval is how often the scheduler enqueues a billing.sweep
+	// job that finds subscriptions due for renewal or a dunning retry.
+	BillingSweepInterval time.Duration
+	// UsageRollupInterval is how often the scheduler enqueues a per-tenant
+	// usage.rollup job that aggregates raw usage events into counters.
+	UsageRollupInterval time.Duration
+	// DunningMaxAttempts is the number of failed charges a tenant may incur
+	// before the subscription is suspended.
+	DunningMaxAttempts int
+	// DunningRetryInterval is the spacing between dunning retry charges.
+	DunningRetryInterval time.Duration
 }
 
 // Load reads configuration from the environment, optionally layered over the
@@ -170,6 +182,8 @@ func Load(envFilePath string) (Config, error) {
 		DefaultTenantSendRateLimit: k.Int(envPrefix + "DEFAULT_TENANT_SEND_RATE_LIMIT"),
 
 		CampaignBatchSize: k.Int(envPrefix + "CAMPAIGN_BATCH_SIZE"),
+
+		DunningMaxAttempts: k.Int(envPrefix + "DUNNING_MAX_ATTEMPTS"),
 	}
 
 	for _, d := range []struct {
@@ -184,6 +198,9 @@ func Load(envFilePath string) (Config, error) {
 		{"SENDING_DOMAIN_VERIFY_INTERVAL", &cfg.SendingDomainVerifyInterval},
 		{"SENDING_DOMAIN_VERIFY_WINDOW", &cfg.SendingDomainVerifyWindow},
 		{"ANALYTICS_REFRESH_INTERVAL", &cfg.AnalyticsRefreshInterval},
+		{"BILLING_SWEEP_INTERVAL", &cfg.BillingSweepInterval},
+		{"USAGE_ROLLUP_INTERVAL", &cfg.UsageRollupInterval},
+		{"DUNNING_RETRY_INTERVAL", &cfg.DunningRetryInterval},
 	} {
 		raw := k.String(envPrefix + d.name)
 		if raw == "" {
@@ -265,6 +282,18 @@ func (c *Config) applyDefaults() {
 	if c.AnalyticsRefreshInterval == 0 {
 		c.AnalyticsRefreshInterval = 60 * time.Second
 	}
+	if c.BillingSweepInterval == 0 {
+		c.BillingSweepInterval = time.Hour
+	}
+	if c.UsageRollupInterval == 0 {
+		c.UsageRollupInterval = 15 * time.Minute
+	}
+	if c.DunningMaxAttempts == 0 {
+		c.DunningMaxAttempts = 3
+	}
+	if c.DunningRetryInterval == 0 {
+		c.DunningRetryInterval = 72 * time.Hour
+	}
 }
 
 // Validate reports whether the configuration is usable. The returned error,
@@ -338,6 +367,18 @@ func (c Config) Validate() error {
 	}
 	if c.AnalyticsRefreshInterval <= 0 {
 		errs = append(errs, errors.New("NVELOPE_ANALYTICS_REFRESH_INTERVAL must be a positive duration"))
+	}
+	if c.BillingSweepInterval <= 0 {
+		errs = append(errs, errors.New("NVELOPE_BILLING_SWEEP_INTERVAL must be a positive duration"))
+	}
+	if c.UsageRollupInterval <= 0 {
+		errs = append(errs, errors.New("NVELOPE_USAGE_ROLLUP_INTERVAL must be a positive duration"))
+	}
+	if c.DunningMaxAttempts <= 0 {
+		errs = append(errs, errors.New("NVELOPE_DUNNING_MAX_ATTEMPTS must be a positive integer"))
+	}
+	if c.DunningRetryInterval <= 0 {
+		errs = append(errs, errors.New("NVELOPE_DUNNING_RETRY_INTERVAL must be a positive duration"))
 	}
 	return errors.Join(errs...)
 }

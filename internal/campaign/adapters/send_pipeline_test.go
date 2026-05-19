@@ -167,14 +167,14 @@ func (f *pipelineFixture) run(t *testing.T, batchSize int, perTenant ratelimit.L
 	ctx := context.Background()
 
 	start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
-		f.source, f.enqueuer, batchSize)
+		f.source, f.enqueuer, nil, batchSize)
 	require.NoError(t, start.Work(ctx, &river.Job[jobs.CampaignStartArgs]{
 		Args: jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID},
 	}))
 
 	batch := adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
 		f.messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
-		noopSuppression{},
+		noopSuppression{}, nil,
 		domain.Limit{Max: perTenant.Max, Window: perTenant.Window}, "https://track.test")
 
 	for _, b := range f.enqueuer.batches {

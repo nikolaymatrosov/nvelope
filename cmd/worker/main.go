@@ -10,6 +10,9 @@ import (
 	"github.com/riverqueue/river"
 
 	audienceadapters "github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
+	billingadapters "github.com/nikolaymatrosov/nvelope/internal/billing/adapters"
+	billingcommand "github.com/nikolaymatrosov/nvelope/internal/billing/app/command"
+	billingdomain "github.com/nikolaymatrosov/nvelope/internal/billing/domain"
 	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
@@ -100,10 +103,23 @@ func main() {
 	river.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
 		cfg.SendingDomainVerifyInterval, cfg.SendingDomainVerifyWindow))
 	campaignSuppression := deliverabilityadapters.NewSuppressionChecker(pool)
+
+	// Billing adapters, shared by the billing workers and the campaign send
+	// paths' usage-recording and quota-enforcement gates.
+	billingPlans := billingadapters.NewPlans(pool)
+	billingSubscriptions := billingadapters.NewSubscriptions(pool)
+	billingInvoices := billingadapters.NewInvoices(pool)
+	billingUsage := billingadapters.NewUsage(pool)
+	billingGateway := billingadapters.NewMockGateway()
+	billingDue := billingadapters.NewDueSubscriptions(pool)
+	usageRecorder := billingadapters.NewUsageRecorder(billingSubscriptions, billingUsage)
+	quotaGate := billingadapters.NewQuotaGate(billingSubscriptions, billingPlans, billingUsage)
+
 	river.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
-		recipientSource, enqueuer, cfg.CampaignBatchSize))
+		recipientSource, enqueuer, quotaGate, cfg.CampaignBatchSize))
 	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
-		messenger, rateLimiter, domainLookup, campaignSuppression, perTenant, cfg.BaseURL))
+		messenger, rateLimiter, domainLookup, campaignSuppression, usageRecorder,
+		perTenant, cfg.BaseURL))
 
 	// Deliverability: inbound feedback processing with automatic suppression.
 	deliverabilityEvents := deliverabilityadapters.NewEvents(pool)
@@ -119,6 +135,19 @@ func main() {
 	deliverabilityAnalytics := deliverabilityadapters.NewAnalytics(pool)
 	refreshAnalytics := deliverabilitycommand.NewRefreshAnalyticsHandler(deliverabilityAnalytics)
 	river.AddWorker(workers, deliverabilityadapters.NewAnalyticsWorker(refreshAnalytics))
+
+	// Billing: the renewal/dunning sweep, per-subscription charges, and usage
+	// rollup. The MockGateway approves by default; a real provider is a later,
+	// additive phase behind the same PaymentGateway port.
+	dunning := billingdomain.NewDunningPolicy(cfg.DunningMaxAttempts, cfg.DunningRetryInterval)
+	chargeHandler := billingcommand.NewChargeInvoiceHandler(
+		billingSubscriptions, billingInvoices, billingPlans, billingGateway, dunning)
+	sweepHandler := billingcommand.NewRunBillingSweepHandler(billingDue, enqueuer)
+	rollupHandler := billingcommand.NewRollupUsageHandler(
+		billingUsage, billingSubscriptions, billingPlans)
+	river.AddWorker(workers, billingadapters.NewSweepWorker(sweepHandler))
+	river.AddWorker(workers, billingadapters.NewChargeWorker(chargeHandler))
+	river.AddWorker(workers, billingadapters.NewRollupWorker(rollupHandler))
 
 	client, err := jobs.NewWorkerClientForQueues(pool, map[string]int{
 		cfg.WorkerQueue:     cfg.WorkerTenantConcurrency,
