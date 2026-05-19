@@ -180,6 +180,11 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/campaigns/{id}/analytics", s.handleCampaignAnalytics)
 			r.Get("/dashboard", s.handleDashboard)
 
+			// Public subscription pages — admin configuration (Phase 6 US1).
+			r.Get("/subscription-pages", s.handleListSubscriptionPages)
+			r.Post("/subscription-pages", s.handleCreateSubscriptionPage)
+			r.Put("/subscription-pages/{id}", s.handleUpdateSubscriptionPage)
+
 			// Billing — plans, subscription, invoices (Phase 5).
 			r.Get("/plans", s.handleListPlans)
 			r.Post("/subscription", s.handleSubscribe)
@@ -203,5 +208,25 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/o/{campaignId}", s.handleTrackOpen)
 	r.Get("/l/{linkId}", s.handleTrackClick)
 
+	// Public, unauthenticated subscriber-facing pages (Phase 6). The slug-
+	// scoped subtree resolves the tenant from the path; token-addressed pages
+	// resolve it from the token row.
+	s.mountPublicRoutes(r)
+
 	return r
+}
+
+// mountPublicRoutes registers the Phase 6 server-rendered public pages — the
+// subscription form, double-opt-in confirmation, preference management,
+// campaign archive, and RSS feed — none of which require a session.
+func (s *Server) mountPublicRoutes(r chi.Router) {
+	r.Route("/t/{slug}", func(r chi.Router) {
+		r.Use(s.resolvePublicTenant)
+
+		// Public subscription + double opt-in (Phase 6 US1).
+		r.Get("/subscribe/{pageSlug}", s.handlePublicSubscribeForm)
+		r.Post("/subscribe/{pageSlug}", s.handlePublicSubscribeSubmit)
+		r.Get("/confirm/{token}", s.handleConfirm)
+		r.Post("/confirm/{token}/resend", s.handleResendConfirmation)
+	})
 }

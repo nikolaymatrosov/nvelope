@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/hex"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -10,6 +11,7 @@ import (
 	audienceapp "github.com/nikolaymatrosov/nvelope/internal/audience/app"
 	audiencecommand "github.com/nikolaymatrosov/nvelope/internal/audience/app/command"
 	audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
+	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	authadapters "github.com/nikolaymatrosov/nvelope/internal/auth/adapters"
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
 	authcommand "github.com/nikolaymatrosov/nvelope/internal/auth/app/command"
@@ -487,13 +489,24 @@ func buildIAM(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) iamapp
 	}
 }
 
+// optinThrottleMax and optinThrottleWindow bound how often a public
+// subscription form may be submitted for one address or source, so the form
+// cannot be used to flood an inbox with confirmation mail.
+const (
+	optinThrottleMax    = 5
+	optinThrottleWindow = 10 * time.Minute
+)
+
 // buildAudience wires the audience context — lists, subscribers, memberships,
-// and import/export jobs — with logging decorators applied to every handler.
+// import/export jobs, and the Phase 6 public subscription pages — with logging
+// decorators applied to every handler.
 func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) audienceapp.Application {
 	lists := audienceadapters.NewLists(pool)
 	subscribers := audienceadapters.NewSubscribers(pool)
 	memberships := audienceadapters.NewMemberships(pool)
 	jobRepo := audienceadapters.NewJobs(pool)
+	subscriptionPages := audienceadapters.NewSubscriptionPages(pool)
+	pendingSubscriptions := audienceadapters.NewPendingSubscriptions(pool)
 
 	// The API service only enqueues jobs; the worker service consumes them.
 	riverClient, err := jobs.NewInsertOnlyClient(pool)
@@ -501,6 +514,31 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 		panic("building river client: " + err.Error())
 	}
 	enqueuer := jobs.NewEnqueuer(riverClient, cfg.WorkerQueue)
+	// Double-opt-in confirmation emails ride the sending queue.
+	optinEnqueuer := jobs.NewSendEnqueuer(riverClient, cfg.WorkerSendQueue)
+
+	// The submission throttle needs Redis. Production config always supplies a
+	// Redis DSN (config.Validate requires it); a config without one — only
+	// constructed directly in tests — gets a permissive no-op throttle.
+	var throttle audiencedomain.SubmissionThrottle = allowAllThrottle{}
+	if cfg.RedisURL != "" {
+		redisThrottle, err := audienceadapters.NewSubmissionThrottle(cfg.RedisURL,
+			optinThrottleMax, optinThrottleWindow)
+		if err != nil {
+			panic("building submission throttle: " + err.Error())
+		}
+		throttle = redisThrottle
+	}
+	sendingDomains := sendingadapters.NewSendingDomains(pool)
+	domainCheck := NewSendingDomainOwnership(sendingDomains)
+	suppression := deliverabilityadapters.NewSuppressionChecker(pool)
+
+	// Production config always supplies a confirmation TTL (config.Validate
+	// requires a positive value); a directly-constructed test config may not.
+	optinTTL := cfg.OptinConfirmationTTL
+	if optinTTL <= 0 {
+		optinTTL = 168 * time.Hour
+	}
 
 	return audienceapp.Application{
 		Commands: audienceapp.Commands{
@@ -526,6 +564,21 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 				audiencecommand.NewStartImportHandler(jobRepo, enqueuer), "StartImport", logger),
 			StartExport: decorator.ApplyResultCommandDecorators(
 				audiencecommand.NewStartExportHandler(jobRepo, enqueuer), "StartExport", logger),
+			SaveSubscriptionPage: decorator.ApplyResultCommandDecorators(
+				audiencecommand.NewSaveSubscriptionPageHandler(subscriptionPages, lists, domainCheck),
+				"SaveSubscriptionPage", logger),
+			SubmitPublicSubscription: decorator.ApplyCommandDecorators(
+				audiencecommand.NewSubmitPublicSubscriptionHandler(subscriptionPages,
+					pendingSubscriptions, throttle, optinEnqueuer, optinTTL),
+				"SubmitPublicSubscription", logger),
+			ConfirmSubscription: decorator.ApplyResultCommandDecorators(
+				audiencecommand.NewConfirmSubscriptionHandler(pendingSubscriptions, subscribers,
+					memberships, suppression),
+				"ConfirmSubscription", logger),
+			ResendConfirmation: decorator.ApplyCommandDecorators(
+				audiencecommand.NewResendConfirmationHandler(pendingSubscriptions, optinEnqueuer,
+					optinTTL),
+				"ResendConfirmation", logger),
 		},
 		Queries: audienceapp.Queries{
 			ListLists: decorator.ApplyQueryDecorators(
@@ -542,6 +595,15 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 				audiencequery.NewGetJobStatusHandler(jobRepo), "GetJobStatus", logger),
 			ExportFile: decorator.ApplyQueryDecorators(
 				audiencequery.NewExportFileHandler(jobRepo), "ExportFile", logger),
+			GetSubscriptionPage: decorator.ApplyQueryDecorators(
+				audiencequery.NewGetSubscriptionPageHandler(subscriptionPages),
+				"GetSubscriptionPage", logger),
+			ListSubscriptionPages: decorator.ApplyQueryDecorators(
+				audiencequery.NewListSubscriptionPagesHandler(subscriptionPages),
+				"ListSubscriptionPages", logger),
+			GetPendingByToken: decorator.ApplyQueryDecorators(
+				audiencequery.NewGetPendingByTokenHandler(pendingSubscriptions),
+				"GetPendingByToken", logger),
 		},
 	}
 }

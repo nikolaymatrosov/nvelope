@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
@@ -117,3 +118,39 @@ func (l *sendingDomainLookup) IsVerified(ctx context.Context, tenantID, domainID
 	}
 	return d.IsVerified(), nil
 }
+
+// sendingDomainOwnership adapts the sending context's repository to the
+// audience context's SendingDomainChecker port, so a subscription page can be
+// validated against the tenant's own sending domains.
+type sendingDomainOwnership struct {
+	domains sendingdomain.SendingDomainRepository
+}
+
+var _ audiencedomain.SendingDomainChecker = (*sendingDomainOwnership)(nil)
+
+// NewSendingDomainOwnership builds the bridge over the sending domain
+// repository.
+func NewSendingDomainOwnership(domains sendingdomain.SendingDomainRepository) *sendingDomainOwnership {
+	return &sendingDomainOwnership{domains: domains}
+}
+
+// OwnedByTenant reports whether domainID is a sending domain of tenantID.
+func (o *sendingDomainOwnership) OwnedByTenant(ctx context.Context, tenantID, domainID string) (bool, error) {
+	_, err := o.domains.Get(ctx, tenantID, domainID)
+	if errors.Is(err, sendingdomain.ErrDomainNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// allowAllThrottle is the no-op submission throttle used when no Redis DSN is
+// configured — only in tests, since production config always supplies one.
+type allowAllThrottle struct{}
+
+var _ audiencedomain.SubmissionThrottle = allowAllThrottle{}
+
+// Allow always admits the submission.
+func (allowAllThrottle) Allow(context.Context, string) (bool, error) { return true, nil }

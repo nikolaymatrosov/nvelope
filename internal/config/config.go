@@ -133,6 +133,33 @@ type Config struct {
 	DunningMaxAttempts int
 	// DunningRetryInterval is the spacing between dunning retry charges.
 	DunningRetryInterval time.Duration
+
+	// ObjectStorageEndpoint is the base URL of the S3-compatible object store
+	// backing the media library. Required.
+	ObjectStorageEndpoint string
+	// ObjectStorageRegion is the region used to sign object-store requests.
+	ObjectStorageRegion string
+	// ObjectStorageBucket is the bucket media objects are stored in. Required.
+	ObjectStorageBucket string
+	// ObjectStorageAccessKeyID is the access key for the object store.
+	// Required. Secret — never log this value.
+	ObjectStorageAccessKeyID string
+	// ObjectStorageSecretAccessKey is the secret key for the object store.
+	// Required. Secret — never log this value.
+	ObjectStorageSecretAccessKey string
+	// ObjectStoragePublicBaseURL is the externally reachable base URL media
+	// objects are served from; the stable public_url of an asset is this base
+	// joined with the object's storage key. Required.
+	ObjectStoragePublicBaseURL string
+
+	// PublicBaseURL is the externally reachable origin public pages and
+	// confirmation/preference links are built from. Falls back to BaseURL.
+	PublicBaseURL string
+	// OptinConfirmationTTL is how long a pending-subscription confirmation
+	// link stays valid.
+	OptinConfirmationTTL time.Duration
+	// MediaMaxBytes is the largest media file a tenant may upload.
+	MediaMaxBytes int64
 }
 
 // Load reads configuration from the environment, optionally layered over the
@@ -184,6 +211,16 @@ func Load(envFilePath string) (Config, error) {
 		CampaignBatchSize: k.Int(envPrefix + "CAMPAIGN_BATCH_SIZE"),
 
 		DunningMaxAttempts: k.Int(envPrefix + "DUNNING_MAX_ATTEMPTS"),
+
+		ObjectStorageEndpoint:        k.String(envPrefix + "OBJECT_STORAGE_ENDPOINT"),
+		ObjectStorageRegion:          k.String(envPrefix + "OBJECT_STORAGE_REGION"),
+		ObjectStorageBucket:          k.String(envPrefix + "OBJECT_STORAGE_BUCKET"),
+		ObjectStorageAccessKeyID:     k.String(envPrefix + "OBJECT_STORAGE_ACCESS_KEY_ID"),
+		ObjectStorageSecretAccessKey: k.String(envPrefix + "OBJECT_STORAGE_SECRET_ACCESS_KEY"),
+		ObjectStoragePublicBaseURL:   k.String(envPrefix + "OBJECT_STORAGE_PUBLIC_BASE_URL"),
+
+		PublicBaseURL: k.String(envPrefix + "PUBLIC_BASE_URL"),
+		MediaMaxBytes: k.Int64(envPrefix + "MEDIA_MAX_BYTES"),
 	}
 
 	for _, d := range []struct {
@@ -201,6 +238,7 @@ func Load(envFilePath string) (Config, error) {
 		{"BILLING_SWEEP_INTERVAL", &cfg.BillingSweepInterval},
 		{"USAGE_ROLLUP_INTERVAL", &cfg.UsageRollupInterval},
 		{"DUNNING_RETRY_INTERVAL", &cfg.DunningRetryInterval},
+		{"OPTIN_CONFIRMATION_TTL", &cfg.OptinConfirmationTTL},
 	} {
 		raw := k.String(envPrefix + d.name)
 		if raw == "" {
@@ -294,6 +332,18 @@ func (c *Config) applyDefaults() {
 	if c.DunningRetryInterval == 0 {
 		c.DunningRetryInterval = 72 * time.Hour
 	}
+	if c.ObjectStorageRegion == "" {
+		c.ObjectStorageRegion = "ru-central1"
+	}
+	if c.PublicBaseURL == "" {
+		c.PublicBaseURL = c.BaseURL
+	}
+	if c.OptinConfirmationTTL == 0 {
+		c.OptinConfirmationTTL = 168 * time.Hour
+	}
+	if c.MediaMaxBytes == 0 {
+		c.MediaMaxBytes = 10 << 20
+	}
 }
 
 // Validate reports whether the configuration is usable. The returned error,
@@ -379,6 +429,27 @@ func (c Config) Validate() error {
 	}
 	if c.DunningRetryInterval <= 0 {
 		errs = append(errs, errors.New("NVELOPE_DUNNING_RETRY_INTERVAL must be a positive duration"))
+	}
+	if c.ObjectStorageEndpoint == "" {
+		errs = append(errs, errors.New("NVELOPE_OBJECT_STORAGE_ENDPOINT is required"))
+	}
+	if c.ObjectStorageBucket == "" {
+		errs = append(errs, errors.New("NVELOPE_OBJECT_STORAGE_BUCKET is required"))
+	}
+	if c.ObjectStorageAccessKeyID == "" {
+		errs = append(errs, errors.New("NVELOPE_OBJECT_STORAGE_ACCESS_KEY_ID is required"))
+	}
+	if c.ObjectStorageSecretAccessKey == "" {
+		errs = append(errs, errors.New("NVELOPE_OBJECT_STORAGE_SECRET_ACCESS_KEY is required"))
+	}
+	if c.ObjectStoragePublicBaseURL == "" {
+		errs = append(errs, errors.New("NVELOPE_OBJECT_STORAGE_PUBLIC_BASE_URL is required"))
+	}
+	if c.OptinConfirmationTTL <= 0 {
+		errs = append(errs, errors.New("NVELOPE_OPTIN_CONFIRMATION_TTL must be a positive duration"))
+	}
+	if c.MediaMaxBytes <= 0 {
+		errs = append(errs, errors.New("NVELOPE_MEDIA_MAX_BYTES must be a positive integer"))
 	}
 	return errors.Join(errs...)
 }

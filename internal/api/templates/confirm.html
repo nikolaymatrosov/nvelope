@@ -1,0 +1,9 @@
+{{define "confirm"}}{{template "header" .}}
+<h2>{{.Heading}}</h2>
+<p>{{.Message}}</p>
+{{if .ShowResend}}
+<form method="post" action="/c/{{.ResendToken}}/resend">
+<button type="submit">Send a new confirmation link</button>
+</form>
+{{end}}
+{{template "footer" .}}{{end}}

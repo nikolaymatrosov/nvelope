@@ -32,6 +32,8 @@ const (
 	PermTransactionalSend Permission = "transactional:send"
 	PermBillingGet        Permission = "billing:get"
 	PermBillingManage     Permission = "billing:manage"
+
+	PermSubscriptionPagesManage Permission = "subscription_pages:manage"
 )
 
 // catalogue is the set of every known permission.
@@ -44,9 +46,10 @@ var catalogue = map[Permission]bool{
 	PermAuditGet: true, PermSettingsGet: true, PermSettingsManage: true,
 	PermSendingGet: true, PermSendingManage: true,
 	PermCampaignsGet: true, PermCampaignsManage: true,
-	PermTransactionalSend: true,
-	PermBillingGet:        true,
-	PermBillingManage:     true,
+	PermTransactionalSend:       true,
+	PermBillingGet:              true,
+	PermBillingManage:           true,
+	PermSubscriptionPagesManage: true,
 }
 
 // listScoped is the subset of permissions that a per-list role can also grant.

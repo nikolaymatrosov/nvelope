@@ -267,6 +267,76 @@ func TestIAMCrossTenantIsolation(t *testing.T) {
 	}))
 }
 
+// TestPublicSubscriptionCrossTenantIsolation proves the Phase 6 public
+// subscription tables — subscription_pages and pending_subscriptions — are
+// isolated by RLS: a transaction bound to one tenant cannot see or delete
+// another tenant's rows.
+func TestPublicSubscriptionCrossTenantIsolation(t *testing.T) {
+	pool := dbtest.AppPool(t)
+	ctx := context.Background()
+
+	tenantA := seedTenant(t, pool, "Tenant A")
+	tenantB := seedTenant(t, pool, "Tenant B")
+
+	// Seed a sending domain, a subscription page, and a pending subscription
+	// into tenant A.
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		var listID, domainID, pageID string
+		if err := tx.QueryRow(ctx,
+			"INSERT INTO lists (tenant_id, name) VALUES ($1, 'A-list') RETURNING id",
+			tenantA).Scan(&listID); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx,
+			"INSERT INTO sending_domains (tenant_id, domain, status) VALUES ($1, 'a.example.com', 'verified') RETURNING id",
+			tenantA).Scan(&domainID); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO subscription_pages
+			   (tenant_id, slug, title, target_list_ids, sending_domain_id, from_name, from_local_part)
+			 VALUES ($1, 'join', 'Join A', ARRAY[$2]::uuid[], $3, 'A', 'hello') RETURNING id`,
+			tenantA, listID, domainID).Scan(&pageID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx,
+			`INSERT INTO pending_subscriptions
+			   (tenant_id, subscription_page_id, email, target_list_ids, confirmation_token_hash, expires_at)
+			 VALUES ($1, $2, 'p@example.com', ARRAY[$3]::uuid[], 'hash-a', now() + interval '7 days')`,
+			tenantA, pageID, listID)
+		return err
+	}))
+
+	for _, table := range []string{"subscription_pages", "pending_subscriptions"} {
+		t.Run(table, func(t *testing.T) {
+			require.NoError(t, boundTx(ctx, pool, tenantB, func(ctx context.Context, tx pgx.Tx) error {
+				var n int
+				if err := tx.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&n); err != nil {
+					return err
+				}
+				require.Equal(t, 0, n, "bound to B, %s shows none of A's rows", table)
+				tag, err := tx.Exec(ctx, "DELETE FROM "+table)
+				if err != nil {
+					return err
+				}
+				require.EqualValues(t, 0, tag.RowsAffected(),
+					"bound to B, an unfiltered DELETE on %s reaches no row of A's", table)
+				return nil
+			}))
+		})
+	}
+
+	// A's rows survive B's unfiltered DELETE attempts.
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		var pages, pending int
+		require.NoError(t, tx.QueryRow(ctx, "SELECT count(*) FROM subscription_pages").Scan(&pages))
+		require.NoError(t, tx.QueryRow(ctx, "SELECT count(*) FROM pending_subscriptions").Scan(&pending))
+		require.Equal(t, 1, pages, "tenant A's subscription page survives tenant B's unfiltered DELETE")
+		require.Equal(t, 1, pending, "tenant A's pending subscription survives tenant B's unfiltered DELETE")
+		return nil
+	}))
+}
+
 // boundTx runs fn inside a transaction with app.tenant_id bound to tenantID —
 // the binding every tenant-plane access depends on.
 func boundTx(ctx context.Context, pool *pgxpool.Pool, tenantID string,

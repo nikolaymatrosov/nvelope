@@ -45,10 +45,12 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Audience adapters for the import/export workers.
+	// Audience adapters for the import/export and opt-in workers.
 	jobRepo := audienceadapters.NewJobs(pool)
 	subscribers := audienceadapters.NewSubscribers(pool)
 	memberships := audienceadapters.NewMemberships(pool)
+	subscriptionPages := audienceadapters.NewSubscriptionPages(pool)
+	pendingSubscriptions := audienceadapters.NewPendingSubscriptions(pool)
 
 	// Postbox client shared by the verification and campaign-send workers.
 	postboxClient, err := postbox.New(postbox.Config{
@@ -100,6 +102,8 @@ func main() {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, audienceadapters.NewImportWorker(jobRepo, subscribers, memberships))
 	river.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
+	river.AddWorker(workers, audienceadapters.NewOptinWorker(pendingSubscriptions, subscriptionPages,
+		sendingDomains, messenger, cfg.PublicBaseURL))
 	river.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
 		cfg.SendingDomainVerifyInterval, cfg.SendingDomainVerifyWindow))
 	campaignSuppression := deliverabilityadapters.NewSuppressionChecker(pool)
