@@ -65,31 +65,31 @@ Web application with Go backend (`internal/`, `cmd/`, `internal/db/migrations/`)
 
 ### Template & Campaign aggregate extensions
 
-- [ ] T018 Extend `internal/campaign/domain/template.go`: add `bodyDoc *VisualDoc` and `theme *Theme` fields; add getters `BodyDoc()`, `Theme()`; add new validating constructor `NewVisualTemplate(tenantID, name, kind, subject, doc, theme, renderer Renderer, fields FieldSet) (*Template, error)` that renders, validates placeholders, sanitizes (via renderer warnings), and returns the aggregate with all three pieces populated atomically; update `HydrateTemplate` to accept `bodyDoc` and `theme` (depends on T011, T014, T017)
-- [ ] T019 Extend `internal/campaign/domain/campaign.go` symmetrically with `NewVisualCampaign` (depends on T018's helpers if any are shared)
-- [ ] T020 [P] Extend `internal/campaign/domain/template_test.go` and `campaign_test.go` (or add new files): cover `NewVisualTemplate`/`NewVisualCampaign` happy path, unknown-slug rejection, invalid-media-ref rejection, sanitizer warnings surfaced
+- [X] T018 Extend `internal/campaign/domain/template.go`: add `bodyDoc *VisualDoc` and `theme *Theme` fields; add getters `BodyDoc()`, `Theme()`; add new validating constructor `NewVisualTemplate(tenantID, name, kind, subject, doc, theme, renderer Renderer, fields FieldSet) (*Template, error)` that renders, validates placeholders, sanitizes (via renderer warnings), and returns the aggregate with all three pieces populated atomically; update `HydrateTemplate` to accept `bodyDoc` and `theme` (depends on T011, T014, T017)
+- [X] T019 Extend `internal/campaign/domain/campaign.go` symmetrically with `NewVisualCampaign` (depends on T018's helpers if any are shared)
+- [X] T020 [P] Extend `internal/campaign/domain/template_test.go` and `campaign_test.go` (or add new files): cover `NewVisualTemplate`/`NewVisualCampaign` happy path, unknown-slug rejection, invalid-media-ref rejection, sanitizer warnings surfaced
 
 ### Renderer adapter
 
-- [ ] T021 Create `internal/campaign/adapters/visualrender/render.go`: walk the `VisualDoc` tree and emit inline-styled, table-based HTML per the [research.md § R4](./research.md) block table; emit a parallel plain-text rendering; expose `Renderer` interface implementation
-- [ ] T022 [P] Create `internal/campaign/adapters/visualrender/render_golden_test.go`: one canonical doc per block type (paragraph, heading×3, lists, quote, code, link mark, image, button, divider, columns×{2,3,4}, mergeTag, rawHtml) asserted byte-for-byte against golden HTML + plain text fixtures
-- [ ] T023 Create `internal/campaign/adapters/visualrender/sanitize.go`: bluemonday policy + email-specific deny rules (per [research.md § R5](./research.md)): strip `<script>`, `<style>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`, `<link>`, every `on*=`, every disallowed scheme; non-media-ref `<img>` rejected
-- [ ] T024 [P] Create `internal/campaign/adapters/visualrender/sanitize_test.go`: negative tests for every disallowed construct (must be stripped or refused regardless of placement: inside RawHTML, inside a column, inside a link)
-- [ ] T025 Create `internal/campaign/adapters/visualrender/placeholders.go`: `ExtractPlaceholders(doc *VisualDoc) []Placeholder`, `ValidatePlaceholders(placeholders, FieldSet) (unknown []Placeholder, err error)`; campaign-namespace placeholders validated against the package-level allow-list
-- [ ] T026 [P] Create `internal/campaign/adapters/visualrender/placeholders_test.go`: extraction across nested nodes (columns, list items, inline marks) and validation against a `FieldSet` test double
+- [X] T021 Create `internal/campaign/adapters/visualrender/render.go`: walk the `VisualDoc` tree and emit inline-styled, table-based HTML per the [research.md § R4](./research.md) block table; emit a parallel plain-text rendering; expose `Renderer` interface implementation
+- [X] T022 [P] Create `internal/campaign/adapters/visualrender/render_golden_test.go`: one canonical doc per block type (paragraph, heading×3, lists, quote, code, link mark, image, button, divider, columns×{2,3,4}, mergeTag, rawHtml) asserted byte-for-byte against golden HTML + plain text fixtures
+- [X] T023 Create `internal/campaign/adapters/visualrender/sanitize.go`: bluemonday policy + email-specific deny rules (per [research.md § R5](./research.md)): strip `<script>`, `<style>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`, `<link>`, every `on*=`, every disallowed scheme; non-media-ref `<img>` rejected
+- [X] T024 [P] Create `internal/campaign/adapters/visualrender/sanitize_test.go`: negative tests for every disallowed construct (must be stripped or refused regardless of placement: inside RawHTML, inside a column, inside a link)
+- [X] T025 Create `internal/campaign/adapters/visualrender/placeholders.go`: `ExtractPlaceholders(doc *VisualDoc) []Placeholder`, `ValidatePlaceholders(placeholders, FieldSet) (unknown []Placeholder, err error)`; campaign-namespace placeholders validated against the package-level allow-list
+- [X] T026 [P] Create `internal/campaign/adapters/visualrender/placeholders_test.go`: extraction across nested nodes (columns, list items, inline marks) and validation against a `FieldSet` test double
 
 ### Send-pipeline substitutor
 
-- [ ] T027 Extend the existing send-pipeline substitutor in `internal/sending/domain/substitution.go` (create file if absent) to recognize `{{ subscriber.<slug> }}` and `{{ campaign.<name> }}`; built-in slugs read from the `Subscriber` aggregate, custom slugs from `Subscriber.Attributes`, campaign-namespace from the supplied `CampaignContext` (`unsubscribe_url`, `preference_url`, `archive_url`, `view_in_browser_url`, `tenant_name`, `current_date`)
-- [ ] T028 [P] Create `internal/sending/domain/substitution_test.go`: subscriber-built-in, subscriber-custom, campaign-namespace, whitespace-tolerant parsing, unknown-slug stays literal at send (validation already happened at save)
+- [X] T027 Extend the existing send-pipeline substitutor in `internal/sending/domain/substitution.go` (create file if absent) to recognize `{{ subscriber.<slug> }}` and `{{ campaign.<name> }}`; built-in slugs read from the `Subscriber` aggregate, custom slugs from `Subscriber.Attributes`, campaign-namespace from the supplied `CampaignContext` (`unsubscribe_url`, `preference_url`, `archive_url`, `view_in_browser_url`, `tenant_name`, `current_date`)
+- [X] T028 [P] Create `internal/sending/domain/substitution_test.go`: subscriber-built-in, subscriber-custom, campaign-namespace, whitespace-tolerant parsing, unknown-slug stays literal at send (validation already happened at save)
 
 ### Field-registry adapter and CQRS handlers
 
-- [ ] T029 Create `internal/audience/adapters/fields_postgres.go`: Postgres repository for the registry implementing the command/query interfaces (uses the existing tenant-bound `pgx` transaction adapter)
-- [ ] T030 [P] Create `internal/audience/adapters/fields_postgres_test.go`: integration test that runs against the testcontainer Postgres, covers CRUD + reorder, and asserts tenant-isolation (Constitution I): rows for tenant A are invisible to tenant B even with the application filter omitted
-- [ ] T031 Create command handlers under `internal/audience/app/command/`: `create_field.go`, `update_field.go`, `delete_field.go`, `reorder_fields.go` — each thin, wrapping the repository under the tenant-bound transaction
-- [ ] T032 Create query handler `internal/audience/app/query/list_fields.go`: returns `BuiltInFields` prepended to the tenant's registry rows
-- [ ] T033 Wire new handlers in `internal/audience/app/application.go` (or whatever the existing application-composition file is called for the audience subdomain)
+- [X] T029 Create `internal/audience/adapters/fields_postgres.go`: Postgres repository for the registry implementing the command/query interfaces (uses the existing tenant-bound `pgx` transaction adapter)
+- [X] T030 [P] Create `internal/audience/adapters/fields_postgres_test.go`: integration test that runs against the testcontainer Postgres, covers CRUD + reorder, and asserts tenant-isolation (Constitution I): rows for tenant A are invisible to tenant B even with the application filter omitted
+- [X] T031 Create command handlers under `internal/audience/app/command/`: `create_field.go`, `update_field.go`, `delete_field.go`, `reorder_fields.go` — each thin, wrapping the repository under the tenant-bound transaction
+- [X] T032 Create query handler `internal/audience/app/query/list_fields.go`: returns `BuiltInFields` prepended to the tenant's registry rows
+- [X] T033 Wire new handlers in `internal/audience/app/application.go` (or whatever the existing application-composition file is called for the audience subdomain)
 
 **Checkpoint**: Foundation ready — schema migrated, domain + renderer + substitutor compile and tests pass. User story phases can now begin in priority order or in parallel (US1+US2 first, then US4/US5 in parallel, then US3).
 

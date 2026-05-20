@@ -114,6 +114,34 @@ type JobRepository interface {
 	StageResult(ctx context.Context, tenantID, id, fileName string, data []byte) error
 }
 
+// FieldRepository persists the tenant-scoped subscriber custom-field
+// registry. Every operation runs inside a tenant-bound (app.tenant_id)
+// transaction. Built-in pseudo-rows are never persisted — they are surfaced
+// by the query layer; this repository handles only tenant-defined fields.
+type FieldRepository interface {
+	// Add persists a new field and returns its database-assigned id.
+	// Returns ErrFieldSlugTaken when the tenant already has a field with
+	// that slug, and ErrFieldBuiltinSlug when the slug collides with a
+	// built-in pseudo-row.
+	Add(ctx context.Context, tenantID string, f *Field) (string, error)
+	// Update loads the field, runs fn, and persists the result. Returns
+	// ErrFieldNotFound when absent.
+	Update(ctx context.Context, tenantID, id string, fn func(*Field) (*Field, error)) error
+	// Delete removes the field. Returns ErrFieldNotFound when absent.
+	Delete(ctx context.Context, tenantID, id string) error
+	// Get returns the field, or ErrFieldNotFound.
+	Get(ctx context.Context, tenantID, id string) (*Field, error)
+	// All returns every field for the tenant in display-order (position
+	// ascending). Used by the merge-tag picker and the subscription-page
+	// "visible profile fields" picker.
+	All(ctx context.Context, tenantID string) ([]*Field, error)
+	// Reorder atomically updates the positions of every field by id. The
+	// supplied map must cover every non-built-in field id exactly once
+	// (the command handler enforces this); the repository updates rows
+	// inside a single transaction so partial updates cannot happen.
+	Reorder(ctx context.Context, tenantID string, positions map[string]int) error
+}
+
 // MembershipRepository persists the link between subscribers and lists. Every
 // operation runs inside a tenant-bound transaction.
 type MembershipRepository interface {

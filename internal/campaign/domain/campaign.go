@@ -29,6 +29,12 @@ var localPartPattern = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+$`)
 // through a draft → running → finished lifecycle, carrying its send progress.
 // It is reached only through the RLS-bound transaction owned by its repository
 // adapter.
+//
+// A campaign may also carry a structured visual document and an explicit
+// theme override (populated by NewVisualCampaign). When bodyDoc is nil the
+// row is either a legacy raw-HTML campaign or one the operator opted out of
+// the visual editor on. When theme is nil the renderer inherits the tenant's
+// Phase 6 branding defaults at render time.
 type Campaign struct {
 	id              string
 	tenantID        string
@@ -36,6 +42,9 @@ type Campaign struct {
 	subject         string
 	bodyHTML        string
 	bodyText        string
+	bodyDoc         *VisualDoc
+	theme           *Theme
+	warnings        []RenderWarning
 	fromName        string
 	fromLocalPart   string
 	sendingDomainID string
@@ -84,16 +93,20 @@ func NewCampaign(tenantID, name, subject, bodyHTML, bodyText, fromName, fromLoca
 }
 
 // HydrateCampaign reconstructs a campaign from a persisted row. Persistence
-// only — it performs no validation.
+// only — it performs no validation. bodyDoc and theme are nil for legacy
+// raw-HTML rows that predate Phase 7 or for rows the operator opted out of
+// the visual editor on.
 func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, fromLocalPart,
 	sendingDomainID, templateID string, status CampaignStatus,
 	maxSendErrors, sentCount, failedCount, recipientCount int,
+	bodyDoc *VisualDoc, theme *Theme,
 	createdAt, updatedAt time.Time, startedAt, finishedAt *time.Time,
 	archiveVisible bool, archivedAt *time.Time) *Campaign {
 
 	return &Campaign{
 		id: id, tenantID: tenantID, name: name, subject: subject,
 		bodyHTML: bodyHTML, bodyText: bodyText,
+		bodyDoc: bodyDoc, theme: theme,
 		fromName: fromName, fromLocalPart: fromLocalPart,
 		sendingDomainID: sendingDomainID, templateID: templateID,
 		status: status, maxSendErrors: maxSendErrors,
@@ -102,6 +115,59 @@ func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, 
 		startedAt: startedAt, finishedAt: finishedAt,
 		archiveVisible: archiveVisible, archivedAt: archivedAt,
 	}
+}
+
+// NewVisualCampaign builds a draft campaign authored visually. It validates
+// the document against the supplied registry and media-ref rules, renders it
+// to HTML and plain text, and returns the populated aggregate together with
+// any non-fatal renderer warnings (e.g. content the sanitizer stripped).
+//
+// pinnedTheme is the operator's explicit override and may be nil; the row
+// then persists a NULL theme and inherits tenant branding at future render
+// time. effectiveTheme is the value the renderer uses NOW (callers resolve
+// nil pinnedTheme to DefaultsFromBranding before invoking).
+func NewVisualCampaign(
+	tenantID, name, subject string,
+	doc *VisualDoc, pinnedTheme *Theme, effectiveTheme Theme,
+	fromName, fromLocalPart, sendingDomainID, templateID string, maxSendErrors int,
+	renderer Renderer, fields FieldSet, mediaRefs MediaRefValidator,
+) (*Campaign, []RenderWarning, error) {
+	if tenantID == "" {
+		return nil, nil, ErrCampaignInvalid.WithMessage("a tenant is required")
+	}
+	name = strings.TrimSpace(name)
+	subject = strings.TrimSpace(subject)
+	fromLocalPart = strings.TrimSpace(fromLocalPart)
+	if name == "" {
+		return nil, nil, ErrCampaignInvalid.WithMessage("campaign name is required")
+	}
+	if fromLocalPart != "" && !localPartPattern.MatchString(fromLocalPart) {
+		return nil, nil, ErrCampaignInvalid.WithMessage("the From address local part is not valid")
+	}
+	if doc == nil {
+		return nil, nil, ErrVisualDocInvalid.WithMessage("document is required")
+	}
+	if renderer == nil {
+		return nil, nil, ErrCampaignInvalid.WithMessage("renderer is required")
+	}
+	if err := Validate(doc, ValidateContext{Fields: fields, MediaRefs: mediaRefs}); err != nil {
+		return nil, nil, err
+	}
+	html, text, warnings, err := renderer.Render(doc, effectiveTheme)
+	if err != nil {
+		return nil, nil, err
+	}
+	if maxSendErrors <= 0 {
+		maxSendErrors = 100
+	}
+	return &Campaign{
+		tenantID: tenantID, name: name, subject: subject,
+		bodyHTML: html, bodyText: text,
+		bodyDoc: doc, theme: pinnedTheme, warnings: warnings,
+		fromName: strings.TrimSpace(fromName), fromLocalPart: fromLocalPart,
+		sendingDomainID: sendingDomainID, templateID: templateID,
+		status: CampaignDraft, maxSendErrors: maxSendErrors,
+	}, warnings, nil
 }
 
 // ID returns the database-assigned id.
@@ -121,6 +187,18 @@ func (c *Campaign) BodyHTML() string { return c.bodyHTML }
 
 // BodyText returns the plain-text body.
 func (c *Campaign) BodyText() string { return c.bodyText }
+
+// BodyDoc returns the structured visual document, or nil for legacy
+// raw-HTML / code-only campaigns.
+func (c *Campaign) BodyDoc() *VisualDoc { return c.bodyDoc }
+
+// Theme returns the explicit theme override, or nil when the row inherits
+// tenant Phase 6 branding defaults at render time.
+func (c *Campaign) Theme() *Theme { return c.theme }
+
+// RenderWarnings returns the non-fatal warnings emitted by the most recent
+// NewVisualCampaign construction. Empty for hydrated rows.
+func (c *Campaign) RenderWarnings() []RenderWarning { return c.warnings }
 
 // FromName returns the sender display name.
 func (c *Campaign) FromName() string { return c.fromName }

@@ -41,7 +41,7 @@ func scanTemplateRow(row pgx.Row) (*domain.Template, error) {
 		return nil, err
 	}
 	return domain.HydrateTemplate(id, tenantID, name, domain.Kind(kind), subject,
-		bodyHTML, bodyText, createdAt, updatedAt), nil
+		bodyHTML, bodyText, nil, nil, createdAt, updatedAt), nil
 }
 
 // Add persists a new template and returns its database-assigned id.

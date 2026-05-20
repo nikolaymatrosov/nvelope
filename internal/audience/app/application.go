@@ -34,6 +34,11 @@ type Commands struct {
 	ResendConfirmation       decorator.CommandHandler[command.ResendConfirmation]
 	UpdatePreferences        decorator.CommandHandler[command.UpdatePreferences]
 	PublicUnsubscribe        decorator.CommandHandler[command.PublicUnsubscribe]
+
+	CreateField   decorator.ResultCommandHandler[command.CreateField, command.CreateFieldResult]
+	UpdateField   decorator.CommandHandler[command.UpdateField]
+	DeleteField   decorator.CommandHandler[command.DeleteField]
+	ReorderFields decorator.CommandHandler[command.ReorderFields]
 }
 
 // Queries gathers the audience context's read-only handlers.
@@ -50,4 +55,6 @@ type Queries struct {
 	ListSubscriptionPages decorator.QueryHandler[query.ListSubscriptionPages, []query.SubscriptionPageView]
 	GetPendingByToken     decorator.QueryHandler[query.GetPendingByToken, query.PendingSubscriptionView]
 	GetPreferences        decorator.QueryHandler[query.GetPreferences, query.PreferencesView]
+
+	ListFields decorator.QueryHandler[query.ListFields, []query.FieldView]
 }

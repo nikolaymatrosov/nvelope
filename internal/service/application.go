@@ -574,6 +574,7 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 	jobRepo := audienceadapters.NewJobs(pool)
 	subscriptionPages := audienceadapters.NewSubscriptionPages(pool)
 	pendingSubscriptions := audienceadapters.NewPendingSubscriptions(pool)
+	fields := audienceadapters.NewFields(pool)
 
 	// The API service only enqueues jobs; the worker service consumes them.
 	riverClient, err := jobs.NewInsertOnlyClient(pool)
@@ -652,6 +653,14 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 			PublicUnsubscribe: decorator.ApplyCommandDecorators(
 				audiencecommand.NewPublicUnsubscribeHandler(memberships),
 				"PublicUnsubscribe", logger),
+			CreateField: decorator.ApplyResultCommandDecorators(
+				audiencecommand.NewCreateFieldHandler(fields), "CreateField", logger),
+			UpdateField: decorator.ApplyCommandDecorators(
+				audiencecommand.NewUpdateFieldHandler(fields), "UpdateField", logger),
+			DeleteField: decorator.ApplyCommandDecorators(
+				audiencecommand.NewDeleteFieldHandler(fields), "DeleteField", logger),
+			ReorderFields: decorator.ApplyCommandDecorators(
+				audiencecommand.NewReorderFieldsHandler(fields), "ReorderFields", logger),
 		},
 		Queries: audienceapp.Queries{
 			ListLists: decorator.ApplyQueryDecorators(
@@ -680,6 +689,8 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 			GetPreferences: decorator.ApplyQueryDecorators(
 				audiencequery.NewGetPreferencesHandler(subscribers, memberships, lists),
 				"GetPreferences", logger),
+			ListFields: decorator.ApplyQueryDecorators(
+				audiencequery.NewListFieldsHandler(fields), "ListFields", logger),
 		},
 	}
 }

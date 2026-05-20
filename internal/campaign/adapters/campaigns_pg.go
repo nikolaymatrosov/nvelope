@@ -64,6 +64,7 @@ func scanCampaignRow(row pgx.Row) (*domain.Campaign, error) {
 	return domain.HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName,
 		fromLocalPart, deref(sendingDomainID), deref(templateID), domain.CampaignStatus(status),
 		maxSendErrors, sentCount, failedCount, recipientCount,
+		nil, nil,
 		createdAt, updatedAt, startedAt, finishedAt, archiveVisible, archivedAt), nil
 }
 
