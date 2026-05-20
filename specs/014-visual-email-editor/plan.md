@@ -49,14 +49,24 @@ Five user stories ship as five increments:
 
 **Primary Dependencies**:
 
-- **Backend (new)**: `golang.org/x/net/html` (parser used by the sanitizer
-  pass over rendered HTML and the legacy-HTML → blocks conversion in US4),
+- **Backend (new)**: `golang.org/x/net/html` (parser used by the
+  legacy-HTML → blocks conversion in US4),
   `github.com/microcosm-cc/bluemonday` (HTML sanitization profile already
-  used by Phase 6 for custom CSS — reused for visual-editor output).
-  No new email-specific library on the server: the renderer is in-house,
-  table-based, and emits inline-styled HTML directly.
+  used by Phase 6 for custom CSS — reused for the Go-side sanitizer pass
+  over the BFF-rendered HTML before persistence). The Go API does **not**
+  host the email-HTML renderer; rendering moved to the BFF per
+  [research.md § R4](./research.md) (revised 2026-05-20).
 - **Backend (existing, reused)**: chi router, pgx/v5, River (queue),
   testcontainers-go.
+- **BFF (new)**: `@react-email/components` + `@react-email/render`
+  (MIT) — used by the Nitro server routes that intercept the visual
+  save and preview endpoints and produce the canonical email HTML +
+  plain-text. A small TypeScript HTML sanitizer (`isomorphic-dompurify`
+  or `sanitize-html`) for the BFF-side preview-output cleanup (preview
+  warnings come from this; save warnings come from Go's bluemonday).
+- **BFF (existing, reused)**: TanStack Start + Nitro (already the SPA
+  host; today proxies `/api/*` and `/t/{slug}/api/*` to Go at `:8080`);
+  gains two new server routes for visual save and render-preview.
 - **Frontend (new)**: `@tiptap/react`, `@tiptap/starter-kit`,
   `@tiptap/extension-bubble-menu`, `@tiptap/extension-link`,
   `@tiptap/extension-image`, `@tiptap/extension-color`,
@@ -87,49 +97,80 @@ library and S3 prefix scheme as-is.
 
 **Testing**:
 
-- **Backend**: `go test ./...` (existing). New tests:
-  - Golden-output tests in `internal/campaign/adapters/visualrender/` —
-    one canonical structured doc per block type renders to a stable HTML
-    string and a stable plain-text string, asserted byte-for-byte.
-  - Renderer security tests — script tags, data URLs, javascript: URLs,
-    and on*= handlers are stripped/refused regardless of where in the doc
-    they appear.
-  - Placeholder-validation tests against the registry (unknown slug fails
-    save; known slug + built-in pseudo-row both pass).
-  - Tenant-isolation integration tests for `subscriber_fields` CRUD and for
-    visual save/load of templates and campaigns (covers Principle I).
+- **Backend (Go)**: `go test ./...` (existing). New tests:
+  - Sanitizer security tests in
+    `internal/campaign/adapters/visualrender/sanitize_test.go` — script
+    tags, data URLs, javascript:/vbscript: URLs, and on*= handlers are
+    stripped/refused regardless of where in the BFF-supplied HTML they
+    appear. The Go-side sanitizer is the authoritative gate before
+    persistence (FR-014, FR-014a).
+  - Doc-revalidation tests — the Go save handler re-validates the doc
+    (defense in depth) and re-runs placeholder extraction against the
+    registry; tests cover the case where the BFF and Go validators
+    might drift (which should never happen but is recovered if so).
+  - Tenant-isolation integration tests for `subscriber_fields` CRUD and
+    for visual save/load of templates and campaigns (covers Principle I).
   - Send-pipeline integration test: a campaign authored visually with
-    placeholders is sent to two recipients with different field values and
-    each receives the correctly-substituted HTML and plain text.
+    placeholders is sent to two recipients with different field values
+    and each receives the correctly-substituted HTML and plain text.
+  - **REMOVED** vs prior plan: the byte-for-byte renderer golden tests
+    move from Go to TypeScript (now run against react-email's output).
+- **BFF (new TypeScript test surface)**: `vitest` (existing harness).
+  New tests:
+  - Render golden tests in `frontend/src/server/render/` — one canonical
+    doc per block type plus every mark combination, asserted
+    byte-for-byte against fixture files. react-email + react-email
+    versions are exact-pinned so fixture stability is achievable;
+    fixture-update PRs are the expected churn vector on minor upgrades.
+  - Validator unit tests in `frontend/src/server/validate/` — envelope,
+    block shape, columns count, mediaRef host, link scheme, namespace,
+    slug membership, campaign-key allow-list, RawHTML size.
+  - **Cross-stack drift-catcher** in
+    `frontend/src/server/validate/campaign-keys.test.ts` — reads
+    `internal/campaign/domain/visualdoc.go`, parses the
+    `AllowedCampaignMergeTags` map literal, asserts deep equality with
+    the TS const. Fails the frontend test suite if Go adds a key
+    without a matching TS update.
+  - Route-level tests in `frontend/src/server/routes/` — msw mocks for
+    Go's `GET /subscriber-fields`, `GET /branding`, and
+    `PUT /campaigns/{id}/visual`. Assert the BFF (a) fails closed with
+    `502 bad_gateway` when Go is unreachable, (b) fetches branding when
+    `theme` is null, (c) forwards rendered html+text and the session
+    cookie to Go.
 - **Frontend**: `vitest` (existing). New tests:
   - Component tests for `<VisualEmailEditor />` — slash command opens,
-    insertion of each block type, drag-handle reorder, bubble-menu format,
-    merge-tag chip insertion + serialization, image picker invocation,
-    drag-and-drop image upload via the existing `api.media.upload` mock.
+    insertion of each block type, drag-handle reorder, bubble-menu
+    format, merge-tag chip insertion + serialization, image picker
+    invocation, drag-and-drop image upload via the existing
+    `api.media.upload` mock.
   - Route tests for template/campaign editor — switching between visual
-    and code view preserves content; opening a legacy row (no `body_doc`)
-    lands in code-only mode; opt-in conversion surfaces RawHTML blocks for
-    unconvertible regions.
-  - Component tests for the merge-tag picker — lists the tenant's registry
-    rows + built-in pseudo-rows + campaign-level allow-list; respects
-    typing-to-filter behavior.
+    and code view preserves content; opening a legacy row (no
+    `body_doc`) lands in code-only mode; opt-in conversion surfaces
+    RawHTML blocks for unconvertible regions.
+  - Component tests for the merge-tag picker — lists the tenant's
+    registry rows + built-in pseudo-rows + campaign-level allow-list;
+    respects typing-to-filter behavior.
 
 **Target Platform**: Modern desktop browsers for the authoring surfaces.
 The produced HTML targets Gmail (web/mobile), Apple Mail (desktop/iOS), and
 Outlook (desktop/web). Multi-column layouts use table-based primitives so
 Outlook desktop renders them correctly (per FR-015).
 
-**Project Type**: Web application — Go backend extended with new commands,
-queries, adapters, and a renderer; React SPA extended with the visual editor
-component, a code-view editor, the subscriber-field-registry settings page,
-and inline changes to the existing template/campaign editor routes.
+**Project Type**: Web application — Go backend extended with new
+commands, queries, adapters, and a sanitization pass over BFF-rendered
+HTML; TanStack Start + Nitro BFF gains two server routes that host
+visual save + render-preview using react-email; React SPA extended
+with the visual editor component, a code-view editor, the
+subscriber-field-registry settings page, and inline changes to the
+existing template/campaign editor routes.
 
-**Performance Goals**: Interactive. Save (structured doc → HTML + text +
-persist) is synchronous on the API; the renderer is pure CPU work over a
-bounded document size and is expected to complete in well under 500 ms p95
-for typical campaigns (≤ ~50 blocks). The send hot path is unchanged —
-`cmd/worker` reads `body_html` + `body_text` and applies the existing
-placeholder substitutor per recipient.
+**Performance Goals**: Interactive. Save (structured doc → render →
+validate → sanitize → persist) traverses BFF then Go; the BFF render
+via react-email plus Go's bluemonday pass is expected to complete in
+well under 500 ms p95 end-to-end for typical campaigns (≤ ~50 blocks).
+The send hot path is unchanged — `cmd/worker` reads `body_html` +
+`body_text` and applies the existing placeholder substitutor per
+recipient.
 
 **Constraints**:
 
@@ -137,11 +178,18 @@ placeholder substitutor per recipient.
   must be implementable on TipTap MIT core + StarterKit, possibly with
   in-house extensions. The custom drag handle is in-house, not the paid
   `@tiptap/extension-drag-handle-pro`.
-- **No client-side rendering of email HTML.** The browser shows the visual
-  surface and a desktop/mobile preview iframe that loads the *server-rendered*
-  HTML — the browser never produces the canonical HTML. This keeps the
-  server as the single source of truth for sanitization (Constitution IV)
-  and makes the send pipeline trivially correct (Constitution VI).
+- **No client-side rendering of email HTML.** The browser shows the
+  visual surface and a desktop/mobile preview iframe that loads the
+  *server-rendered* HTML. "Server" here means the BFF (Nitro) for the
+  render step and Go for the validate/sanitize/persist step; the
+  browser never produces the canonical HTML. This keeps the server
+  tier as the single source of truth for sanitization (Constitution
+  IV) and makes the send pipeline trivially correct (Constitution VI).
+- **BFF failure modes are fail-closed.** When the BFF cannot reach Go
+  for a required side-call (subscriber-fields fetch or branding
+  fetch), the save returns `502 bad_gateway` and the operator retries.
+  No silent fallback to platform defaults, no partial state (FR
+  clarification 2026-05-20).
 - **No new send path.** `cmd/worker` continues to consume `body_html` /
   `body_text` exactly as today; only the placeholder substitutor is
   extended to accept the new namespaced syntax and to validate against the
@@ -162,20 +210,31 @@ placeholder substitutor per recipient.
 - ~1 new bounded context inside `internal/audience/` (the field registry):
   `domain/field.go`, `app/command/{create,update,delete,reorder}_field.go`,
   `app/query/list_fields.go`, `adapters/fields_postgres.go`.
-- ~1 new package in `internal/campaign/adapters/visualrender/` — the
-  structured-doc → HTML + plain-text renderer plus the
-  HTML → structured-doc converter (US4 opt-in).
+- ~1 trimmed package in `internal/campaign/adapters/visualrender/` —
+  the bluemonday sanitizer (`sanitize.go`), the placeholder extractor
+  (`placeholders.go`) used by Go's revalidation pass, and the
+  HTML → structured-doc converter (US4 opt-in). The structured-doc →
+  HTML renderer moved out of Go and into the BFF (per
+  [research.md § R4](./research.md)).
 - ~2 extended commands in `internal/campaign/app/command/` —
-  `save_visual_template.go` and `save_visual_campaign.go` that accept the
-  structured doc, validate placeholders against the registry, render, and
-  persist the three pieces atomically.
+  `save_visual_template.go` and `save_visual_campaign.go` that accept
+  the structured doc *plus the BFF-rendered html and text*, re-validate
+  the doc against the registry, sanitize, and persist the three pieces
+  atomically.
+- ~1 new BFF render surface under `frontend/src/server/` —
+  `render/` (react-email rendering), `validate/` (TS doc validator
+  with a Go-source drift-catcher), `clients/go-api.ts` (cookie-
+  forwarding HTTP client), and two Nitro routes for visual save and
+  render-preview.
 - ~1 extended substitutor at send time (extends the existing Phase 3 send
   pipeline) supporting the namespaced `{{ subscriber.<slug> }}` and
   `{{ campaign.<name> }}` syntax and a fixed allow-list of campaign
   values.
-- ~8 new HTTP endpoints (registry CRUD ×4, visual save for templates ×1,
-  visual save for campaigns ×1, sample-data render preview ×1, theme
-  read/write folded into the campaign/template PATCH where natural).
+- ~8 new HTTP endpoints. The split: registry CRUD ×4 + merge-tags GET
+  ×1 are Go-hosted; visual save for templates ×1 and campaigns ×1 are
+  BFF-hosted (forward to Go after render); the render-preview endpoint
+  ×1 is BFF-only (never reaches Go). Theme read/write folds into the
+  campaign/template PATCH where natural.
 - ~1 new SPA route (`t/$slug/settings/fields/index.tsx`) and ~2 inline
   changes to existing routes (`t/$slug/templates/$id.tsx`,
   `t/$slug/campaigns/$id.tsx`) plus the visual editor component tree under
@@ -204,15 +263,26 @@ placeholder substitutor per recipient.
 
 - **II. Test-Backed Delivery** — PASS.
   - Renderer has golden-output tests per block type with byte-for-byte
-    assertions on emitted HTML and plain text.
+    assertions on emitted HTML and plain text. The goldens now live in
+    `frontend/src/server/render/` (TypeScript / `vitest`) since the
+    renderer moved to the BFF; react-email is exact-pinned so fixtures
+    stay stable across builds.
   - Sanitization has dedicated negative tests for each disallowed
-    construct (script, data URLs, javascript: URLs, on*= handlers).
+    construct (script, data URLs, javascript: URLs, on*= handlers) on
+    the Go side, which remains the authoritative sanitizer before
+    persistence.
+  - Cross-stack drift-catcher test in
+    `frontend/src/server/validate/campaign-keys.test.ts` reads
+    `internal/campaign/domain/visualdoc.go` and asserts the campaign-
+    namespace allow-list stays in sync between Go and TypeScript.
   - Placeholder validation is covered with integration tests across the
     save-and-send path (unknown slug rejected at save; known slug
     substituted correctly per recipient at send).
   - Frontend routes ship with colocated `*.test.tsx` covering primary
     flows, empty states, error states, and the visual ↔ code-view
-    round-trip.
+    round-trip. BFF Nitro routes ship with msw-mocked route-level
+    tests covering fail-closed behavior, branding-fetch on null theme,
+    and cookie forwarding to Go.
 
 - **III. Incremental, Shippable Phases** — PASS.
   - The five user stories are independently demonstrable. The order of
@@ -225,30 +295,53 @@ placeholder substitutor per recipient.
     HTML, and code-only mode remains a first-class authoring choice.
 
 - **IV. Security & Consent by Design** — PASS.
-  - Server-side sanitization is authoritative (bluemonday profile +
-    additional email-specific deny rules). The frontend renderer is
-    advisory; the canonical HTML is always the one the server emits.
+  - Server-side sanitization is authoritative. The Go API's
+    bluemonday pass runs over the BFF-rendered HTML before
+    persistence; it remains the single source of truth for what
+    reaches the database. The BFF emits its own sanitizer pass over
+    preview-only HTML so the preview iframe is never asked to render
+    `<script>` even transiently.
+  - Both server tiers run the doc validator (BFF for fast feedback,
+    Go for authoritative re-check before persist) — defense in
+    depth.
   - Placeholder substitution is server-side at send time only — the
     editor never executes or evaluates `{{ ... }}` against real
-    subscriber data.
+    subscriber data. The BFF's render-preview endpoint substitutes
+    sample data only when the caller explicitly supplies it.
   - Registry CRUD is gated by `subscriber_fields:manage` and audited
     through the existing audit-log path used by other tenant-plane
     mutations.
   - Image URLs in the produced HTML are required to be tenant-scoped
-    media-library references; any other src in a visual doc is rejected
-    at render time (per FR-021).
+    media-library references; both BFF and Go enforce this check
+    against the same `ObjectStoragePublicBaseURL` env var (per FR-021).
+  - BFF authentication: the user's session cookie is forwarded on
+    every BFF→Go call; there is no service account or impersonation
+    path.
 
-- **V. Operable & Observable Services** — PASS.
-  - All new code is stateless. The renderer is pure CPU work inside the
-    `cmd/api` request lifecycle; no new queue, no new long-running work.
+- **V. Operable & Observable Services** — PASS (with explicit
+  trade-off below).
+  - All new code is stateless. Render is pure CPU work inside the BFF
+    request lifecycle; sanitization + persistence is pure CPU work
+    inside `cmd/api`'s request lifecycle; no new queue, no new
+    long-running work.
   - The send pipeline in `cmd/worker` is unchanged — it continues to
-    consume `body_html` + `body_text` from the row. The only worker-side
-    change is extending the existing placeholder substitutor's regex /
-    parser to recognize the namespaced syntax.
-  - Structured logging covers the new endpoints with the standard
-    `tenant_id`, `actor_id`, `request_id` fields; metrics tag the new
-    save endpoints with the same labels as existing template/campaign
-    save metrics.
+    consume `body_html` + `body_text` from the row. The only
+    worker-side change is extending the existing placeholder
+    substitutor's regex / parser to recognize the namespaced syntax.
+  - **Accepted trade-off**: the TanStack Start + Nitro BFF becomes
+    load-bearing for visual saves and previews. It was already
+    load-bearing as the SPA host (browser bootstrap, static assets);
+    granting it the render responsibility does not add a new
+    deployable service or a new operational alert surface — the
+    existing health check + deploy pipeline already cover it.
+  - Structured logging covers the new endpoints on both tiers with
+    the standard `tenant_id`, `actor_id`, `request_id` fields. The BFF
+    generates `request_id` if absent and propagates it via
+    `X-Request-Id` header to Go, so one user trace correlates across
+    BFF and Go logs.
+  - Audit events (`campaign.save_visual`, `template.save_visual`) are
+    emitted Go-side after persistence with the original payload shape
+    `{ id, warnings_count }`. The BFF does not write audit rows.
 
 - **VI. Layered Architecture & Domain Integrity** — PASS.
   - The new field registry lives in `internal/audience/`
@@ -256,26 +349,36 @@ placeholder substitutor per recipient.
     "persistence only" hydration helper; `app/command/...` and
     `app/query/...` for CQRS; `adapters/fields_postgres.go` for the
     Postgres repo that implements the command/query-owned interfaces).
-  - The visual-document type and the renderer are split correctly: the
-    document type lives in `internal/campaign/domain/visualdoc.go` (pure,
-    no transport, no DB); the renderer lives in
-    `internal/campaign/adapters/visualrender/` because it depends on the
-    `golang.org/x/net/html` and `bluemonday` adapters.
+  - The visual-document type lives in
+    `internal/campaign/domain/visualdoc.go` (pure, no transport, no
+    DB). The sanitizer and placeholder extractor live in
+    `internal/campaign/adapters/visualrender/` because they depend on
+    the `golang.org/x/net/html` and `bluemonday` adapters. The
+    renderer no longer exists in Go — it moved to the BFF
+    (`frontend/src/server/render/`).
   - Errors crossing domain boundaries carry typed kinds
     (`ErrInvalidPlaceholder`, `ErrUnknownSlug`, `ErrUnsupportedNode`,
     `ErrSanitizationStripped`) and are mapped to HTTP status codes in
     one place (`internal/api/...`), consistent with the existing pattern.
-  - No new DI framework, no global state — composition stays in
-    `cmd/api/main.go`.
+  - No new DI framework, no global state — Go composition stays in
+    `cmd/api/main.go`; BFF composition is the existing TanStack Start
+    + Nitro entry point.
 
 **Result**: PASS — no violations, Complexity Tracking not required.
 
 *Post-design re-check after Phase 1*: see the bottom of [data-model.md](./data-model.md)
-and [contracts/](./contracts/) — design stays within the dependency rule,
-introduces one new bounded context (`subscriber_fields` in
+and [contracts/](./contracts/) — design stays within the dependency
+rule, introduces one new bounded context (`subscriber_fields` in
 `internal/audience`), reuses the existing campaign/template aggregates
-with two new typed fields, and adds one adapter package (the renderer).
-Still PASS.
+with two new typed fields, and adds one adapter package on the Go
+side (sanitizer + placeholder extractor) plus a server-side render
+surface on the BFF. Still PASS.
+
+*Post-clarification re-check 2026-05-20 (BFF + react-email)*: the
+render step relocated from Go to the BFF; see
+[brainstorm-bff-render.md](./brainstorm-bff-render.md) for the
+delta. All six constitutional gates still PASS — see the updated
+notes inline above (II, IV, V, VI).
 
 ## Project Structure
 
@@ -317,15 +420,14 @@ internal/
 │   │   └── campaign.go                  # EXTENDED — accept body_doc + theme; new constructor NewVisualCampaign
 │   ├── app/
 │   │   └── command/
-│   │       ├── save_visual_template.go  # NEW — validate placeholders, render, persist three pieces
-│   │       ├── save_visual_campaign.go  # NEW
-│   │       └── render_preview.go        # NEW — server renders a doc with sample subscriber data
+│   │       ├── save_visual_template.go  # NEW — accept BFF-rendered html+text, revalidate doc, sanitize, persist three pieces
+│   │       └── save_visual_campaign.go  # NEW — same shape as save_visual_template
+│   │                                    # NOTE: render_preview lives in the BFF, not Go
 │   └── adapters/
 │       └── visualrender/
-│           ├── render.go                # NEW — VisualDoc → email-ready HTML + plain text (in-house, table-based)
-│           ├── sanitize.go              # NEW — bluemonday-based + email-specific deny rules
+│           ├── sanitize.go              # NEW — bluemonday-based + email-specific deny rules; runs over the BFF-rendered HTML before persist
 │           ├── convert.go               # NEW — best-effort raw-HTML → VisualDoc (US4 opt-in)
-│           └── placeholders.go          # NEW — extract + validate `{{ … }}` placeholders against the registry
+│           └── placeholders.go          # NEW — extract + validate `{{ … }}` placeholders against the registry (Go-side defense-in-depth pass)
 ├── sending/
 │   └── domain/
 │       └── substitution.go              # EXTENDED — recognize `{{ subscriber.<slug> }}` and `{{ campaign.<name> }}`
@@ -375,26 +477,52 @@ frontend/
 │   │       └── campaigns/
 │   │           ├── $id.tsx                      # EXTENDED — VisualEmailEditor swap-in
 │   │           └── $id.test.tsx                 # EXTENDED
-│   └── lib/
-│       ├── api.ts                               # EXTENDED — new endpoints: subscriberFields.* , templates.saveVisual, campaigns.saveVisual, campaigns.renderPreview
-│       ├── api-types.ts                         # EXTENDED — VisualDoc, Theme, Field, FieldType, MergeTagPickerItem
-│       └── permissions.ts                       # EXTENDED — `subscriber_fields:manage`
+│   ├── lib/
+│   │   ├── api.ts                               # EXTENDED — new endpoints: subscriberFields.* , templates.saveVisual, campaigns.saveVisual, campaigns.renderPreview
+│   │   ├── api-types.ts                         # EXTENDED — VisualDoc, Theme, Field, FieldType, MergeTagPickerItem
+│   │   └── permissions.ts                       # EXTENDED — `subscriber_fields:manage`
+│   └── server/                                  # NEW — Nitro server-side surface (TanStack Start + Nitro BFF)
+│       ├── render/
+│       │   ├── index.ts                         # NEW — public `renderVisualDoc(doc, theme) → { html, text, warnings }`
+│       │   ├── components.tsx                   # NEW — VisualBlock → react-email component mapping
+│       │   ├── render.test.ts                   # NEW — golden tests for every block type + mark combination
+│       │   └── render-marks.test.ts             # NEW — bold/italic/underline/strike/color/link combinations
+│       ├── validate/
+│       │   ├── index.ts                         # NEW — public `validateVisualDoc(doc, ctx)`
+│       │   ├── envelope.ts                      # NEW — version + type check
+│       │   ├── blocks.ts                        # NEW — per-block-type rule enforcement
+│       │   ├── link.ts                          # NEW — scheme allow-list
+│       │   ├── campaign-keys.ts                 # NEW — static mirror of Go's AllowedCampaignMergeTags
+│       │   ├── campaign-keys.test.ts            # NEW — drift-catcher: parses Go source + asserts deep-equal
+│       │   └── *.test.ts                        # NEW — per-rule unit tests
+│       ├── clients/
+│       │   └── go-api.ts                        # NEW — typed Go-API client with cookie + X-Request-Id forwarding
+│       └── routes/
+│           ├── visual-save.ts                   # NEW — Nitro route: PUT /t/:slug/api/campaigns/:id/visual (+ templates equivalent)
+│           ├── render-preview.ts                # NEW — Nitro route: POST /t/:slug/api/campaigns/:id/render-preview
+│           └── *.test.ts                        # NEW — route-level tests with msw mocks of Go's subscriber-fields/branding/save endpoints
 ```
 
-**Structure Decision**: Web application — extend the existing Go services
-(`cmd/api`, `cmd/worker`) and the existing React SPA. The visual editor is
-a new component tree inside `frontend/src/components/visual-editor/`
-embedded into the existing template and campaign editor routes; it is not
-a separate app. The backend gains one new bounded context (the
-`subscriber_fields` registry inside `internal/audience/`) and one new
-adapter package (the structured-doc renderer inside
-`internal/campaign/adapters/visualrender/`); the existing `Template` and
-`Campaign` aggregates are extended with two new typed fields (`bodyDoc`
-and `theme`) and matching validating constructors. The send pipeline in
-`cmd/worker` is **unchanged** except for extending its placeholder
-substitutor to recognize the namespaced syntax — this preserves
-Constitution V (no new queue or stateful service) and Principle VI (the
-worker keeps depending on `body_html` + `body_text` only).
+**Structure Decision**: Web application — extend the existing Go
+services (`cmd/api`, `cmd/worker`), the existing TanStack Start + Nitro
+BFF, and the existing React SPA. The visual editor is a new component
+tree inside `frontend/src/components/visual-editor/` embedded into the
+existing template and campaign editor routes; it is not a separate
+app. The backend gains one new bounded context (the
+`subscriber_fields` registry inside `internal/audience/`) and a
+slimmed-down adapter package (the sanitizer + placeholder extractor
+inside `internal/campaign/adapters/visualrender/`); the existing
+`Template` and `Campaign` aggregates are extended with two new typed
+fields (`bodyDoc` and `theme`) and matching validating constructors.
+The BFF gains a new server surface under `frontend/src/server/`
+(render, validate, routes, clients) that intercepts the visual save
+and preview endpoints before the catch-all proxy to Go and uses
+`@react-email/components` to produce the canonical email HTML. The
+send pipeline in `cmd/worker` is **unchanged** except for extending
+its placeholder substitutor to recognize the namespaced syntax — this
+preserves Constitution V (no new queue or stateful service) and
+Principle VI (the worker keeps depending on `body_html` + `body_text`
+only).
 
 ## Complexity Tracking
 

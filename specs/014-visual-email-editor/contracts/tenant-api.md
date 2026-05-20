@@ -4,10 +4,26 @@
 **Branch**: `014-visual-email-editor`
 **Date**: 2026-05-20
 
-All endpoints are tenant-plane (mounted under `/api/v1/t/{slug}/…`) and
-require an authenticated session with the relevant permission. Errors
-follow the existing platform error envelope; new typed kinds are listed
-under each endpoint.
+All endpoints are tenant-plane (mounted under `/t/{slug}/api/…` in the
+actual route tree; the path prefix shown below uses `/api/v1/t/{slug}/`
+as documentation shorthand) and require an authenticated session with
+the relevant permission. Errors follow the existing platform error
+envelope; new typed kinds are listed under each endpoint.
+
+**Hosting tier note** (revised 2026-05-20 — see
+[../brainstorm-bff-render.md](../brainstorm-bff-render.md) and
+[../research.md § R4](../research.md)): the two visual-editor
+endpoints — `PUT /campaigns/{id}/visual`, `PUT /templates/{id}/visual`,
+and `POST /campaigns/{id}/render-preview` — are **hosted by the
+TanStack Start + Nitro BFF**, not by `cmd/api`. The BFF intercepts
+those paths before the catch-all proxy, renders the structured document
+to email-ready HTML via `@react-email/components`, and (for the save
+endpoints) forwards the rendered HTML + plain-text alongside the
+document to the Go API for validation, sanitization, and persistence.
+Every other endpoint below is Go-hosted and the BFF transparently
+proxies to it. The browser sees a single uniform URL space and
+authenticates via the same session cookie regardless of which tier
+ultimately serves the request.
 
 ---
 
@@ -138,14 +154,23 @@ allow-list.
 
 ### `PUT /api/v1/t/{slug}/templates/{id}/visual`
 
-**Permission**: `templates:manage`.
+**Hosted by**: BFF (Nitro). Intercepted before the catch-all proxy to
+Go. The BFF renders, then forwards to the Go-internal endpoint of the
+same path with an augmented body (see § Internal BFF→Go body shape
+below).
 
-**Purpose**: persist a visual-editor template. The body carries the
-**structured document only**; the server renders to HTML and plain
-text, sanitizes, validates placeholders against the registry, and
-persists all three pieces atomically (per FR-013b).
+**Permission**: `templates:manage`. The BFF reads the session cookie,
+forwards it to Go on the side-call to `GET /subscriber-fields` (for
+placeholder validation) and on the eventual save call. Go enforces the
+permission.
 
-**Body**:
+**Purpose**: persist a visual-editor template. The browser body carries
+the **structured document only**; the BFF renders to HTML and plain
+text, then the Go API revalidates placeholders against the registry,
+sanitizes the rendered HTML, and persists all three pieces atomically
+(per FR-013b).
+
+**Browser → BFF body** (no change from the previous contract):
 
 ```json
 {
@@ -158,7 +183,29 @@ persists all three pieces atomically (per FR-013b).
 ```
 
 `theme` may be omitted or null ⇒ row's theme stays NULL ⇒ render
-inherits tenant branding (per FR-022).
+inherits tenant branding (per FR-022). When `theme` is null the BFF
+fetches `GET /branding` from Go (cookie-forwarded) to resolve the
+effective theme for rendering only; the persisted theme column stays
+NULL so future branding changes propagate to the row on next save.
+
+**Internal BFF → Go body** (server-internal shape, not exposed to the
+browser):
+
+```json
+{
+  "name":     "Welcome series — week 1",
+  "kind":     "campaign",
+  "subject":  "Welcome, {{ subscriber.first_name }}",
+  "bodyDoc":  { "version": 1, "type": "doc", "content": [ /* blocks */ ] },
+  "bodyHtml": "<table role=\"presentation\" …>…</table>",
+  "bodyText": "Welcome, {{ subscriber.first_name }}\n…",
+  "theme":    { /* echoed or null */ }
+}
+```
+
+Go rejects this internal-shape request with `400 invalid_body` if
+either `bodyHtml` or `bodyText` is empty — the BFF is the only
+legitimate caller and must always supply both.
 
 **Response** `200 OK`:
 
@@ -208,9 +255,12 @@ Still accepts a raw-HTML body for code-only authoring; clears
 
 ### `PUT /api/v1/t/{slug}/campaigns/{id}/visual`
 
+**Hosted by**: BFF (Nitro). Same orchestration shape as the template
+save endpoint above.
+
 **Permission**: `campaigns:manage`.
 
-**Body**:
+**Browser → BFF body**:
 
 ```json
 {
@@ -220,9 +270,17 @@ Still accepts a raw-HTML body for code-only authoring; clears
 }
 ```
 
+**Internal BFF → Go body** adds the rendered `bodyHtml` and `bodyText`
+fields (same shape as the templates internal body above).
+
 **Response**: same shape as the templates response above.
 
-**Errors**: same set of typed kinds.
+**Errors**: same set of typed kinds. New BFF-emitted code:
+
+- `502 bad_gateway` — BFF cannot reach Go for the
+  `GET /subscriber-fields` or `GET /branding` side-call required to
+  validate or render. Fail-closed semantics per the 2026-05-20
+  clarification.
 
 ### `PUT /api/v1/t/{slug}/campaigns/{id}` (existing, unchanged)
 
@@ -233,6 +291,14 @@ Still accepts a raw-HTML body for code-only authoring.
 ## Render preview
 
 ### `POST /api/v1/t/{slug}/campaigns/{id}/render-preview`
+
+**Hosted by**: BFF (Nitro). **Never reaches Go.** The BFF validates
+the doc, fetches branding from Go if `theme` is null, renders with
+`@react-email/components`, optionally substitutes sample data, and
+returns the rendered HTML + plain-text. The BFF runs its own
+sanitization pass over the previewed HTML (preview-only — never
+persisted) and emits its own warnings for content that would be
+stripped (per FR-014a).
 
 **Permission**: `campaigns:manage` (caller is the campaign author).
 
@@ -381,4 +447,8 @@ above:
 - `template.save_visual` — `{ template_id, warnings_count }`.
 - `campaign.save_visual` — `{ campaign_id, warnings_count }`.
 
-(Visual-save events do not include the body; the row already holds it.)
+All audit events are emitted by the Go API after persistence — the
+BFF does not write audit rows. `warnings_count` reflects the count of
+items stripped by Go's bluemonday pass (per the 2026-05-20
+clarification). Visual-save events do not include the body; the row
+already holds it.

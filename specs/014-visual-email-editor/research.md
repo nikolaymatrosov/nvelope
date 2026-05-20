@@ -73,17 +73,22 @@ and as the textarea replacement on legacy raw-HTML rows.
 
 ## R3. Where structured-doc → HTML rendering runs
 
-**Decision (resolved by clarification Q2)**: **Server-side at save
-time**. The frontend POSTs only the structured document on save; the
-API renders the email-ready HTML and plain-text alternative, sanitizes,
-and persists all three pieces atomically. The send worker
-(`cmd/worker`) does no rendering and continues to read `body_html` /
-`body_text` from the row.
+**Decision (resolved by clarification Q2 and revised 2026-05-20 to
+narrow "server" from `cmd/api` to the workspace BFF — see § R4)**:
+**Server-side at save time**. The frontend POSTs only the structured
+document on save; the *server tier* renders the email-ready HTML and
+plain-text alternative, sanitizes, and persists all three pieces
+atomically within the same logical save. The server tier is split: the
+TanStack Start + Nitro BFF performs the render (§ R4); the Go API
+performs validation, sanitization, and persistence. The browser never
+produces the canonical HTML. The send worker (`cmd/worker`) does no
+rendering and continues to read `body_html` / `body_text` from the row.
 
 **Rationale**:
 
 - Single source of truth for sanitization (Constitution IV). The
-  browser cannot bypass server-side rules.
+  authoritative sanitizer (bluemonday) remains in Go; the BFF's render
+  output passes through it before persistence.
 - Determinism — no per-browser variance in produced HTML.
 - The send hot path stays cheap. Workers don't pull in a JS runtime
   or repeat the render per recipient.
@@ -93,63 +98,103 @@ and persists all three pieces atomically. The send worker
 **Alternatives considered**:
 
 - **Client-side render at save** (the React Email Editor pattern):
-  rejected — would require duplicating sanitization on both client and
-  server (since the server cannot trust client output).
+  rejected — would require trusting client output and either skipping
+  the server sanitizer (unsafe) or running a separate Go renderer to
+  re-derive the canonical HTML (defeats the point of client render).
 - **Lazy render on send**: rejected — adds a JS runtime or a Go
   renderer dependency to `cmd/worker` and re-runs the same work for
   every recipient.
 
-## R4. In-house structured-doc → email-HTML renderer (Go)
+## R4. Structured-doc → email-HTML renderer in the BFF (react-email)
 
-**Decision**: Build a Go renderer in `internal/campaign/adapters/visualrender/`
-that walks the typed `domain.VisualDoc` AST and emits inline-styled,
-table-based HTML and a parallel plain-text rendering. The renderer is
-synchronous, pure CPU, and unit-testable with golden outputs.
+**Decision (revised 2026-05-20 from "in-house Go renderer" to "BFF +
+react-email" — supersedes the previous text; see
+[brainstorm-bff-render.md](./brainstorm-bff-render.md) for the
+full justification)**: Render in the TanStack Start + Nitro BFF using
+`@react-email/components` and `@react-email/render`. The BFF
+intercepts the visual save and preview endpoints before the catch-all
+proxy to Go, walks the typed VisualDoc tree, renders to email-ready
+HTML + plain-text via react-email, and (for save) forwards the
+rendered HTML alongside the structured document to the Go API for
+validation, sanitization, and persistence. The render is synchronous,
+pure CPU (no React server-side hydration cost beyond `renderToString`),
+and unit-testable with golden outputs.
 
-**Block-by-block HTML strategy** (the part email clients actually need):
+**Block-by-block component mapping** (VisualDoc → react-email):
 
-| Block            | HTML primitive                                                                 | Plain-text primitive                                  |
-|------------------|--------------------------------------------------------------------------------|-------------------------------------------------------|
-| Paragraph        | `<p style="margin:0 0 16px 0; …">…</p>`                                       | text + blank line                                      |
-| Heading          | `<h{1..3} style="…">…</h{1..3}>`                                              | text uppercased OR prefixed with `# ` / `## `         |
-| Bulleted list    | `<ul style="…"><li>…</li></ul>`                                                | `- item\n`                                            |
-| Numbered list    | `<ol style="…"><li>…</li></ol>`                                                | `1. item\n`                                           |
-| Quote            | `<blockquote style="…">…</blockquote>`                                         | `> text`                                              |
-| Code             | `<pre style="…"><code>…</code></pre>`                                          | text                                                  |
-| Link mark        | `<a href="…" style="…">…</a>`                                                  | text + ` (url)`                                       |
-| Image            | `<img src="…" alt="…" style="…">`                                              | `[image: alt]`                                        |
-| Button           | `<table role="presentation" …><tr><td><a …>…</a></td></tr></table>`           | `[ label ] (url)`                                     |
-| Divider          | `<hr style="…">`                                                               | `----`                                                |
-| 2/3/4-column row | `<table role="presentation"><tr><td>col1</td><td>col2</td>…</tr></table>`     | each column rendered then concatenated with `\n\n`    |
-| MergeTag         | literal `{{ subscriber.<slug> }}` / `{{ campaign.<name> }}`                    | same literal                                          |
-| RawHTML          | passthrough after sanitization                                                 | crude HTML-to-text fallback                            |
+| Block            | react-email component / primitive                                 | Plain-text primitive                                  |
+|------------------|-------------------------------------------------------------------|-------------------------------------------------------|
+| Paragraph        | `<Text>`                                                          | text + blank line                                      |
+| Heading          | `<Heading as="h{1..3}">`                                          | text prefixed with `# ` / `## ` / `### `              |
+| Bulleted list    | inline-styled raw `<ul>` + `<li>` (no react-email primitive)      | `- item\n`                                            |
+| Numbered list    | inline-styled raw `<ol>` + `<li>`                                 | `1. item\n`                                           |
+| Quote            | inline-styled raw `<blockquote>`                                  | `> text`                                              |
+| Code             | `<CodeBlock>`                                                     | text                                                  |
+| Link mark        | `<Link>`                                                          | text + ` (url)`                                       |
+| Image            | `<Img>`                                                           | `[image: alt]`                                        |
+| Button           | `<Button>` (renders with Outlook VML fallback)                    | `[ label ] (url)`                                     |
+| Divider          | `<Hr>`                                                            | `----`                                                |
+| 2/3/4-column row | `<Row>` + N × `<Column>` (MSO conditional comments built-in)      | each column rendered then concatenated with `\n\n`    |
+| MergeTag         | literal `{{ subscriber.<slug> }}` / `{{ campaign.<name> }}` text  | same literal                                          |
+| RawHTML          | `dangerouslySetInnerHTML` passthrough; sanitized later by Go      | crude HTML-to-text fallback                            |
 
-Inline styles are computed from the row's theme (resolved from the
-explicit override or the tenant Phase 6 branding) before emit so we
-don't depend on `<style>` blocks the way Gmail clipping rules sometimes
-strip them.
+react-email computes inline styles from the row's theme (resolved from
+the explicit override or fetched from `GET /branding` when the
+override is null) before emit, so we don't depend on `<style>` blocks
+the way Gmail clipping rules sometimes strip them.
 
 **Rationale**:
 
-- Table-based multi-column primitives render correctly in Outlook
-  desktop (per FR-015).
-- Inline styles survive Gmail's clipping, Yahoo's <head> rewrites, and
-  Outlook desktop's quirky CSS support.
-- Keeping the renderer in Go avoids shelling out to a JS runtime from
-  the API and avoids two-language maintenance.
+- react-email is the most battle-tested email-rendering library in the
+  JS ecosystem. Outlook VML fallbacks for buttons, MSO conditional
+  comments around column tables, pixel-vs-percent sizing, and the
+  inline-style invariant are all encoded in the library — we get them
+  for free instead of porting each quirk into Go.
+- The repository already runs a Node tier next to the Go API: TanStack
+  Start + Nitro is the SPA host. Giving it the render responsibility
+  costs no new operational surface beyond what already exists.
+- The browser still does not produce the canonical HTML — the *server*
+  in "server-side at save time" is the BFF, satisfying the R3 intent
+  (Constitution IV).
+- The Go API stays single-purpose: validate, sanitize, persist. No JS
+  runtime in `cmd/api`.
+
+**Implementation surface**:
+
+- `frontend/src/server/render/` — render module (VisualBlock →
+  react-email component mapping)
+- `frontend/src/server/validate/` — TypeScript port of the doc
+  validator with a drift-catcher test that reads
+  `internal/campaign/domain/visualdoc.go`'s
+  `AllowedCampaignMergeTags` map literal to keep the BFF and Go
+  campaign-namespace allow-lists in sync
+- `frontend/src/server/routes/visual-save.ts` and
+  `frontend/src/server/routes/render-preview.ts` — Nitro route
+  handlers that intercept the visual-editor endpoints before the
+  catch-all proxy to Go
+- Go-side: the renderer (`internal/campaign/adapters/visualrender/render.go`)
+  is removed; the sanitizer (`sanitize.go`) and placeholder extractor
+  (`placeholders.go`) remain — they support the Go-side revalidation
+  and sanitization pass
 
 **Alternatives considered**:
 
+- **In-house Go renderer** (the previous decision): rejected because
+  porting react-email's email-client quirks (Outlook VML, MSO
+  conditional comments) into Go is a maintenance burden we can avoid;
+  we shipped this approach in T021 and Phase 2 but reversed before
+  US1 lands.
 - **MJML server-side** (`mjml-go`): rejected because it imposes its
   own block vocabulary that doesn't match the in-editor block model
   one-to-one; we'd end up maintaining a translation layer between our
   blocks and MJML's components, plus the MJML transformation itself.
-- **`@react-email/render` via a JS runtime call**: rejected because it
-  pulls a Node/Bun runtime into the API service and adds cross-language
-  failure modes.
-- **`@react-email/components` consumed at build time**: rejected
-  because we'd need a render step in CI for every block change, and we
-  still wouldn't have a runtime path for user-saved content.
+- **Spawning a separate Node `cmd/render-worker` service**: rejected
+  because the BFF already provides the JS runtime; standing up an
+  additional service is unnecessary operational cost.
+- **Embedding a JS runtime in the Go API (`goja` / `v8go`)**: rejected
+  because react-email isn't designed for that environment, React SSR
+  semantics in `goja` are brittle, and we'd lose the operational
+  observability the BFF already has.
 
 ## R5. HTML sanitization profile
 

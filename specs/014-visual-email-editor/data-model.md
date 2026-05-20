@@ -244,37 +244,40 @@ func (t *Template) Theme() *Theme
 and a new validating constructor:
 
 ```go
-// NewVisualTemplate builds a template authored visually. Renders body_doc
-// using the supplied renderer, validates placeholders against the supplied
-// fieldset, sanitizes, and returns the populated aggregate ready to persist.
+// NewVisualTemplate builds a template authored visually. The caller (the
+// save command, downstream of the BFF's render step) supplies the
+// already-rendered HTML and plain-text; this constructor revalidates
+// the doc against the supplied fieldset (defense in depth) and returns
+// the populated aggregate ready to persist.
 //
-// All three pieces of content (body_doc, body_html, body_text) end up on
-// the aggregate together — there is no path that produces fewer than three.
+// All three pieces of content (body_doc, body_html, body_text) end up
+// on the aggregate together — there is no path that produces fewer
+// than three. The renderer itself lives in the BFF
+// (frontend/src/server/render/) — see research.md § R4.
 func NewVisualTemplate(
     tenantID, name string, kind Kind, subject string,
     doc *VisualDoc, theme *Theme,
-    renderer Renderer, fields FieldSet,
+    bodyHTML, bodyText string,
+    fields FieldSet,
 ) (*Template, error)
 ```
 
 and an equivalent `NewVisualCampaign(...)`.
 
-`Renderer` and `FieldSet` are *consumer-owned interfaces*
-(Constitution VI):
+`FieldSet` is a *consumer-owned interface* (Constitution VI):
 
 ```go
 // in internal/campaign/domain/
-
-type Renderer interface {
-    Render(doc *VisualDoc, theme Theme) (html string, text string, warnings []string, err error)
-}
 
 type FieldSet interface {
     HasSlug(slug string) bool
 }
 ```
 
-The Postgres adapter and the `visualrender` adapter implement these.
+The audience-side fields adapter implements `FieldSet`. The Go side no
+longer declares a `Renderer` interface — rendering happens in the BFF
+and the rendered HTML/text reach the save command as plain string
+fields on the command struct.
 
 ### `sending.Substitution` (EXTENDED)
 
@@ -410,18 +413,25 @@ substitution gap at send time.
 - I. Tenant Isolation — PASS. New table carries `tenant_id` from
   migration 1; RLS policy active; existing tenant-bound transaction
   adapter routes every query.
-- II. Test-Backed — PASS. Renderer (golden), sanitizer (negative),
-  placeholder validation (positive + negative), tenant-isolation
-  integration tests all in scope.
+- II. Test-Backed — PASS. Renderer goldens (now in TypeScript /
+  vitest on the BFF), sanitizer (negative, on the Go side),
+  placeholder validation (positive + negative, on both sides with a
+  drift-catcher), tenant-isolation integration tests all in scope.
 - III. Incremental — PASS. Migration adds columns + table; existing
   rows stay valid (NULL columns). Each US ships standalone.
-- IV. Security & Consent — PASS. Server-side sanitization +
-  save-time validation + RLS on the new table.
-- V. Operable & Observable — PASS. Renderer is synchronous CPU work
-  in `cmd/api`; no new queue, no worker change beyond extending the
-  substitutor's regex.
-- VI. Layered Architecture — PASS. Domain types are pure; renderer
-  is an adapter; consumer-owned `Renderer` / `FieldSet` interfaces;
-  typed errors mapped to HTTP in one place.
+- IV. Security & Consent — PASS. Server-side sanitization on the Go
+  side is authoritative; BFF runs an additional preview-output
+  sanitization for FR-014a; save-time validation is enforced on both
+  tiers; RLS on the new table.
+- V. Operable & Observable — PASS. Render is synchronous CPU work on
+  the BFF; sanitization + persistence is synchronous CPU work in
+  `cmd/api`; no new queue, no worker change beyond extending the
+  substitutor's regex. BFF and Go share `request_id` for correlated
+  tracing.
+- VI. Layered Architecture — PASS. Domain types are pure; the
+  sanitizer and the placeholder extractor are Go adapters; the
+  renderer is a BFF adapter; the consumer-owned `FieldSet` interface
+  stays Go-side and is implemented by the audience adapter; typed
+  errors mapped to HTTP in one place.
 
 Design ready for contracts and quickstart.
