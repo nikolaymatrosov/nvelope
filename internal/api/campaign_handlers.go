@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -267,6 +269,81 @@ func (s *Server) handleCancelCampaign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "cancelled"})
+}
+
+// handleSaveVisualCampaign persists a visually-authored campaign. This
+// endpoint is the Go tail of the BFF-hosted PUT /campaigns/{id}/visual route
+// (see specs/014-visual-email-editor/contracts/tenant-api.md). The BFF has
+// already rendered the structured document to HTML and plain text via
+// @react-email/components; this handler validates the doc (defense in
+// depth), sanitizes the rendered HTML, enforces the FR-009 optimistic-
+// concurrency gate, and persists all three pieces atomically.
+//
+// The Go-internal body requires bodyHtml, bodyText, and ifUnmodifiedSince;
+// any missing piece is rejected with 400 invalid_body before the command
+// runs (the BFF is the only legitimate caller and must always supply them).
+func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	var req struct {
+		Subject           string                    `json:"subject"`
+		BodyDoc           *campaigndomain.VisualDoc `json:"bodyDoc"`
+		BodyHTML          string                    `json:"bodyHtml"`
+		BodyText          string                    `json:"bodyText"`
+		Theme             *campaigndomain.Theme     `json:"theme"`
+		IfUnmodifiedSince time.Time                 `json:"ifUnmodifiedSince"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	if req.BodyDoc == nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "bodyDoc is required")
+		return
+	}
+	if req.BodyHTML == "" || req.BodyText == "" {
+		writeError(w, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
+		return
+	}
+	if req.IfUnmodifiedSince.IsZero() {
+		writeError(w, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
+		return
+	}
+	res, err := s.campaign.Commands.SaveVisualCampaign.Handle(r.Context(), campaigncommand.SaveVisualCampaign{
+		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
+		Subject:           req.Subject,
+		Doc:               req.BodyDoc,
+		BodyHTML:          req.BodyHTML,
+		BodyText:          req.BodyText,
+		PinnedTheme:       req.Theme,
+		IfUnmodifiedSince: req.IfUnmodifiedSince,
+	})
+	if err != nil {
+		if errors.Is(err, campaigndomain.ErrStaleRow) {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":            "stale_row",
+				"kind":             "stale_row",
+				"currentUpdatedAt": res.CurrentUpdatedAt,
+			})
+			return
+		}
+		s.fail(w, "save visual campaign", err)
+		return
+	}
+	view, err := s.campaign.Queries.GetCampaign.Handle(r.Context(), campaignquery.GetCampaign{
+		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
+	})
+	if err != nil {
+		s.fail(w, "save visual campaign", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"campaign":  view,
+		"warnings":  res.Warnings,
+		"updatedAt": res.UpdatedAt,
+	})
 }
 
 // respondCampaign fetches and writes a campaign view.

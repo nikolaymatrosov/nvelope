@@ -176,6 +176,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/campaigns", s.handleListCampaigns)
 			r.Get("/campaigns/{id}", s.handleGetCampaign)
 			r.Put("/campaigns/{id}", s.handleUpdateCampaign)
+			r.Put("/campaigns/{id}/visual", s.handleSaveVisualCampaign)
 			r.Post("/campaigns/{id}/start", s.handleStartCampaign)
 			r.Post("/campaigns/{id}/pause", s.handlePauseCampaign)
 			r.Post("/campaigns/{id}/resume", s.handleResumeCampaign)

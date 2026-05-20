@@ -5,7 +5,31 @@ import (
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
+
+	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 )
+
+// Sanitize is the authoritative save-time gate over BFF-rendered HTML. It
+// applies the email-safe bluemonday policy plus the explicit deny rules from
+// research.md § R5 (script/style/iframe/object/embed/form/input/link
+// elements, on*= event handlers, dangerous URL schemes) and returns the
+// sanitized HTML plus a single sanitizer_stripped warning when the input
+// contained any visible disallowed construct. Returns no warnings when the
+// input is empty or already clean.
+//
+// The save_visual_{campaign,template} commands call Sanitize on the
+// BFF-supplied bodyHTML before constructing the aggregate; the warnings
+// surface to the operator in the save response.
+func Sanitize(bodyHTML string) (sanitized string, warnings []domain.RenderWarning) {
+	out, stripped := sanitizeHTML(bodyHTML)
+	if stripped {
+		warnings = append(warnings, domain.RenderWarning{
+			Kind:   "sanitizer_stripped",
+			Detail: "removed disallowed HTML (script/style/iframe/handlers or dangerous URL schemes)",
+		})
+	}
+	return out, warnings
+}
 
 // emailPolicy is the bluemonday policy applied to RawHTML blocks before they
 // are passed through into the rendered output. It is constructed once at

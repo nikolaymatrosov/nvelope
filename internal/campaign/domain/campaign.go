@@ -267,6 +267,44 @@ func (c *Campaign) Recompose(name, subject, bodyHTML, bodyText, fromName, fromLo
 	return nil
 }
 
+// ApplyVisualSave replaces a draft campaign's editable visual content with a
+// validated, pre-rendered, and sanitized snapshot. The caller (the
+// SaveVisualCampaign command) supplies the BFF-rendered HTML/text that
+// has already been run through the Go-side sanitizer, plus any warnings
+// the sanitizer emitted; this method revalidates the doc against the
+// registry and media-ref rules as defense in depth and applies all
+// pieces atomically.
+//
+// Only a draft campaign may be edited; the method is a no-op rejection
+// (ErrCampaignNotEditable) otherwise. Subject is required; the campaign's
+// name, From-address, sending domain, and targets are preserved.
+func (c *Campaign) ApplyVisualSave(
+	subject string, doc *VisualDoc, pinnedTheme *Theme,
+	bodyHTML, bodyText string, warnings []RenderWarning,
+	fields FieldSet, mediaRefs MediaRefValidator,
+) error {
+	if c.status != CampaignDraft {
+		return ErrCampaignNotEditable
+	}
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return ErrCampaignInvalid.WithMessage("campaign subject is required")
+	}
+	if doc == nil {
+		return ErrVisualDocInvalid.WithMessage("document is required")
+	}
+	if err := Validate(doc, ValidateContext{Fields: fields, MediaRefs: mediaRefs}); err != nil {
+		return err
+	}
+	c.subject = subject
+	c.bodyDoc = doc
+	c.theme = pinnedTheme
+	c.bodyHTML = bodyHTML
+	c.bodyText = bodyText
+	c.warnings = warnings
+	return nil
+}
+
 // Start transitions a draft campaign to running. It requires the campaign's
 // content to be complete and a selected sending domain; the caller is
 // responsible for confirming the domain is verified and that targets exist.

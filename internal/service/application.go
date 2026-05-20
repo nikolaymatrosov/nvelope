@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"encoding/hex"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -342,6 +344,41 @@ func buildDeliverability(pool *pgxpool.Pool, cfg config.Config,
 	}
 }
 
+// fieldsProvider adapts the audience FieldRepository plus the package-level
+// built-in pseudo-rows to the consumer-owned FieldsProvider interface the
+// save_visual_{campaign,template} commands depend on.
+type fieldsProvider struct {
+	repo audiencedomain.FieldRepository
+}
+
+func (p fieldsProvider) AllSlugs(ctx context.Context, tenantID string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, b := range audiencedomain.BuiltinFields() {
+		out[b.Slug()] = true
+	}
+	custom, err := p.repo.All(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range custom {
+		out[f.Slug()] = true
+	}
+	return out, nil
+}
+
+// tenantMediaRefValidator answers the FR-021 media-ref check by prefix
+// match against the platform's media base URL. The save command builds one
+// per request from the tenant id so each tenant's images must live under
+// /tenants/<their tenant id>/.
+type tenantMediaRefValidator struct{ prefix string }
+
+func (v tenantMediaRefValidator) IsTenantMediaRef(ref string) bool {
+	if v.prefix == "" || ref == "" {
+		return false
+	}
+	return strings.HasPrefix(ref, v.prefix)
+}
+
 // buildCampaign wires the campaign context's command and query handlers — the
 // surface the API service uses — with logging decorators applied. It also
 // returns the tracking repository, used directly by the public tracking
@@ -354,6 +391,12 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 	tracking := campaignadapters.NewTracking(pool)
 	txMessages := campaignadapters.NewTransactionalMessages(pool)
 	lookup := NewSendingDomainLookup(sendingadapters.NewSendingDomains(pool))
+
+	// Visual-editor save dependencies — the BFF posts pre-rendered HTML/text
+	// to PUT /campaigns/{id}/visual and the save command revalidates the doc
+	// against the merged subscriber-field slug set before sanitizing + persisting.
+	fields := fieldsProvider{repo: audienceadapters.NewFields(pool)}
+	mediaRefs := tenantMediaRefValidator{prefix: cfg.ObjectStoragePublicBaseURL}
 
 	riverClient, err := jobs.NewInsertOnlyClient(pool)
 	if err != nil {
@@ -426,6 +469,9 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 			SetArchiveVisibility: decorator.ApplyCommandDecorators(
 				campaigncommand.NewSetArchiveVisibilityHandler(campaigns),
 				"SetArchiveVisibility", logger),
+			SaveVisualCampaign: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewSaveVisualCampaignHandler(campaigns, fields, mediaRefs),
+				"SaveVisualCampaign", logger),
 		},
 		Queries: campaignapp.Queries{
 			ListTemplates: decorator.ApplyQueryDecorators(
