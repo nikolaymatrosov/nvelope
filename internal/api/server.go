@@ -208,6 +208,23 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/media", s.handleUploadMedia)
 			r.Delete("/media/{id}", s.handleDeleteMedia)
 
+			// Visual-editor subscriber-field registry + merge-tag picker
+			// (Phase 7 US1). The /order route is registered before the
+			// /{id} route so chi's radix tree treats "order" as a literal
+			// segment rather than a path parameter.
+			r.Get("/subscriber-fields", s.handleListSubscriberFields)
+			r.Post("/subscriber-fields", s.handleCreateSubscriberField)
+			r.Patch("/subscriber-fields/order", s.handleReorderSubscriberFields)
+			r.Patch("/subscriber-fields/{id}", s.handleUpdateSubscriberField)
+			r.Delete("/subscriber-fields/{id}", s.handleDeleteSubscriberField)
+			r.Get("/merge-tags", s.handleListMergeTags)
+
+			// BFF→Go helper for sample-data placeholder substitution
+			// (Phase 7 US1). Reached only by the BFF's render-preview
+			// route; routes through the canonical send-pipeline
+			// substituter so preview matches inbox.
+			r.Post("/substitute-sample", s.handleSubstituteSample)
+
 			// Billing — plans, subscription, invoices (Phase 5).
 			r.Get("/plans", s.handleListPlans)
 			r.Post("/subscription", s.handleSubscribe)

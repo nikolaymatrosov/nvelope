@@ -57,4 +57,5 @@ type Queries struct {
 	GetPreferences        decorator.QueryHandler[query.GetPreferences, query.PreferencesView]
 
 	ListFields decorator.QueryHandler[query.ListFields, []query.FieldView]
+	GetField   decorator.QueryHandler[query.GetField, query.FieldView]
 }

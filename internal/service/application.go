@@ -737,6 +737,8 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 				"GetPreferences", logger),
 			ListFields: decorator.ApplyQueryDecorators(
 				audiencequery.NewListFieldsHandler(fields), "ListFields", logger),
+			GetField: decorator.ApplyQueryDecorators(
+				audiencequery.NewGetFieldHandler(fields), "GetField", logger),
 		},
 	}
 }

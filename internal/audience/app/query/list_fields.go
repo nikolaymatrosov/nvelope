@@ -8,17 +8,19 @@ import (
 )
 
 // FieldView is the read model for one subscriber custom field (or built-in
-// pseudo-row).
+// pseudo-row). JSON tags follow the Phase 7 visual-editor contracts
+// (specs/014-visual-email-editor/contracts/tenant-api.md), which use
+// camelCase for newly-introduced endpoints.
 type FieldView struct {
-	ID           string
-	Slug         string
-	DisplayName  string
-	Type         string
-	DefaultValue string
-	Position     int
-	BuiltIn      bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string    `json:"id"`
+	Slug         string    `json:"slug"`
+	DisplayName  string    `json:"displayName"`
+	Type         string    `json:"type"`
+	DefaultValue string    `json:"defaultValue"`
+	Position     int       `json:"position"`
+	BuiltIn      bool      `json:"builtIn"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 func fieldView(f *domain.Field) FieldView {
