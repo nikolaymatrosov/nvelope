@@ -380,6 +380,74 @@ render step relocated from Go to the BFF; see
 delta. All six constitutional gates still PASS — see the updated
 notes inline above (II, IV, V, VI).
 
+*Post-clarification re-check 2026-05-20 (autosave / concurrency /
+substituter side-call / FR-002 wording)*: four further clarifications
+landed (see [spec.md § Clarifications](./spec.md)):
+
+1. **Autosave is deferred to Phase 7.1.** FR-008/SC-008 are out of
+   scope for Phase 7. The editor's only persistence-loss guard in
+   Phase 7 is the "unsaved changes" navigate-away prompt — a small
+   piece of state inside the editor route. No new plumbing, no
+   localStorage write paths, no Phase 7 work in the offline / session-
+   expired recovery edge cases (they all defer with FR-008). This
+   removes a planned-but-uncoded scope item; no constitutional impact.
+
+2. **FR-009 multi-tab conflict uses optimistic concurrency on the
+   row's `updated_at`.** Save bodies (browser→BFF and BFF→Go) carry
+   `ifUnmodifiedSince: <ISO timestamp>`; Go's save handler compares
+   against the row's current `updated_at` inside the same write
+   transaction and returns the new typed `ErrStaleRow → 409
+   stale_row`. No schema migration (per [research.md § R12a](./research.md)).
+   Constitution II coverage extends to a stale-row integration test.
+   Constitution VI coverage: the new error kind maps to HTTP in the
+   single error-mapping point.
+
+3. **Sample-data preview substitution side-calls Go.** The BFF's
+   render-preview route POSTs to a new Go endpoint
+   `POST /substitute-sample` instead of reimplementing substitution
+   in TypeScript (per [research.md § R12b](./research.md)). Plan
+   replaces the "TS reimplementation" entry under § R4
+   Implementation surface; the new Go handler is one thin transport
+   wrapper over `internal/sending/domain/substitution.go`. No
+   constitutional impact — strengthens Principle VI by keeping
+   business logic in exactly one place.
+
+4. **FR-002 wording: "link" is a mark, not a block.** Pure spec
+   wording; no plan-level impact (the renderer mapping table in R4
+   already treats Link as a mark).
+
+All six constitutional gates remain PASS after these amendments.
+Tasks.md and contracts/tenant-api.md and data-model.md are updated
+inline; research.md gains R12a and R12b.
+
+*Post-clarification re-check 2026-05-20 (round 3 — preview endpoint
+scope + analyze cleanups)*: one further clarification landed (N4)
+plus a small inline-fix batch from /speckit-analyze round 2:
+
+1. **Render-preview endpoint is tenant-scoped, not row-scoped.** The
+   former `POST /campaigns/{id}/render-preview` is renamed to
+   `POST /render-preview` and shared by both the campaign editor and
+   the template editor (per [spec.md § Clarifications](./spec.md)).
+   The endpoint's body was already doc-only (`bodyDoc`, `theme`,
+   `sample`); the row id was never read. One Nitro route, one
+   golden-fixture set, one access gate (`campaigns:manage` OR
+   `templates:manage`). Templates inherit FR-007 preview without
+   any new endpoint or task. Plan's "~8 new HTTP endpoints" count
+   stays accurate: the rename does not add an endpoint.
+2. **Inline cleanups from /speckit-analyze round 2**: T073
+   (templates handler) mirrors T034's `ifUnmodifiedSince` body
+   requirement; T075 covers `stale_row`; T038 asserts subscriber
+   `attributes` survive `delete_field` (FR-016e); T070 asserts
+   `<VisualEmailEditor />` is hidden for users without
+   `campaigns:manage` (FR-034); T128 vs T037 boundary clarified;
+   the addendum-intro dependency direction is flipped (T048
+   depends on T126, not vice versa); FR-007 pins concrete preview
+   widths (600 px desktop / 375 px mobile).
+
+All six constitutional gates remain PASS — the rename strengthens
+Principle V (one operational surface for preview) and Principle VI
+(no row-scoped path for a row-agnostic operation).
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -435,7 +503,7 @@ internal/
 │   └── handlers/
 │       ├── subscriber_fields.go         # NEW — GET, POST, PATCH, DELETE, PATCH reorder
 │       ├── templates.go                 # EXTENDED — PUT /templates/{id}/visual
-│       └── campaigns.go                 # EXTENDED — PUT /campaigns/{id}/visual, POST /campaigns/{id}/render-preview
+│       └── campaigns.go                 # EXTENDED — PUT /campaigns/{id}/visual (BFF-hosted; Go owns the validate+persist tail); render-preview is BFF-only and is NOT mounted on the Go side
 └── db/
     └── migrations/
         ├── 000020_visual_editor_and_subscriber_fields.up.sql    # NEW
@@ -499,7 +567,7 @@ frontend/
 │       │   └── go-api.ts                        # NEW — typed Go-API client with cookie + X-Request-Id forwarding
 │       └── routes/
 │           ├── visual-save.ts                   # NEW — Nitro route: PUT /t/:slug/api/campaigns/:id/visual (+ templates equivalent)
-│           ├── render-preview.ts                # NEW — Nitro route: POST /t/:slug/api/campaigns/:id/render-preview
+│           ├── render-preview.ts                # NEW — Nitro route: POST /t/:slug/api/render-preview (tenant-scoped, shared by campaign + template editors)
 │           └── *.test.ts                        # NEW — route-level tests with msw mocks of Go's subscriber-fields/branding/save endpoints
 ```
 

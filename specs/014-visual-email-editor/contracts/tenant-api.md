@@ -12,9 +12,10 @@ envelope; new typed kinds are listed under each endpoint.
 
 **Hosting tier note** (revised 2026-05-20 — see
 [../brainstorm-bff-render.md](../brainstorm-bff-render.md) and
-[../research.md § R4](../research.md)): the two visual-editor
+[../research.md § R4](../research.md)): the three visual-editor
 endpoints — `PUT /campaigns/{id}/visual`, `PUT /templates/{id}/visual`,
-and `POST /campaigns/{id}/render-preview` — are **hosted by the
+and `POST /render-preview` (tenant-scoped, shared by both editors per
+the 2026-05-20 N4 clarification) — are **hosted by the
 TanStack Start + Nitro BFF**, not by `cmd/api`. The BFF intercepts
 those paths before the catch-all proxy, renders the structured document
 to email-ready HTML via `@react-email/components`, and (for the save
@@ -170,15 +171,16 @@ text, then the Go API revalidates placeholders against the registry,
 sanitizes the rendered HTML, and persists all three pieces atomically
 (per FR-013b).
 
-**Browser → BFF body** (no change from the previous contract):
+**Browser → BFF body**:
 
 ```json
 {
-  "name":    "Welcome series — week 1",
-  "kind":    "campaign",
-  "subject": "Welcome, {{ subscriber.first_name }}",
-  "bodyDoc": { "version": 1, "type": "doc", "content": [ /* blocks */ ] },
-  "theme":   { "textColor": "#222222", "linkColor": "#0066cc", "buttonColor": "#0066cc", "buttonTextColor": "#ffffff", "fontFamily": "'Inter', sans-serif", "containerWidth": 600 }
+  "name":              "Welcome series — week 1",
+  "kind":              "campaign",
+  "subject":           "Welcome, {{ subscriber.first_name }}",
+  "bodyDoc":           { "version": 1, "type": "doc", "content": [ /* blocks */ ] },
+  "theme":             { "textColor": "#222222", "linkColor": "#0066cc", "buttonColor": "#0066cc", "buttonTextColor": "#ffffff", "fontFamily": "'Inter', sans-serif", "containerWidth": 600 },
+  "ifUnmodifiedSince": "2026-05-20T12:34:56.123456Z"
 }
 ```
 
@@ -188,24 +190,33 @@ fetches `GET /branding` from Go (cookie-forwarded) to resolve the
 effective theme for rendering only; the persisted theme column stays
 NULL so future branding changes propagate to the row on next save.
 
+`ifUnmodifiedSince` is the row's `updated_at` at the time the editor
+loaded it (per FR-009). The SPA reads it from the row's GET response
+and echoes it back on every save. After `409 stale_row` the SPA
+re-fetches and copies the new `updated_at` into the next save (the
+"Force overwrite" affordance does this).
+
 **Internal BFF → Go body** (server-internal shape, not exposed to the
 browser):
 
 ```json
 {
-  "name":     "Welcome series — week 1",
-  "kind":     "campaign",
-  "subject":  "Welcome, {{ subscriber.first_name }}",
-  "bodyDoc":  { "version": 1, "type": "doc", "content": [ /* blocks */ ] },
-  "bodyHtml": "<table role=\"presentation\" …>…</table>",
-  "bodyText": "Welcome, {{ subscriber.first_name }}\n…",
-  "theme":    { /* echoed or null */ }
+  "name":              "Welcome series — week 1",
+  "kind":              "campaign",
+  "subject":           "Welcome, {{ subscriber.first_name }}",
+  "bodyDoc":           { "version": 1, "type": "doc", "content": [ /* blocks */ ] },
+  "bodyHtml":          "<table role=\"presentation\" …>…</table>",
+  "bodyText":          "Welcome, {{ subscriber.first_name }}\n…",
+  "theme":             { /* echoed or null */ },
+  "ifUnmodifiedSince": "2026-05-20T12:34:56.123456Z"
 }
 ```
 
 Go rejects this internal-shape request with `400 invalid_body` if
 either `bodyHtml` or `bodyText` is empty — the BFF is the only
-legitimate caller and must always supply both.
+legitimate caller and must always supply both. `ifUnmodifiedSince` is
+mandatory; if absent Go also returns `400 invalid_body` (the BFF MUST
+forward what the SPA sent).
 
 **Response** `200 OK`:
 
@@ -237,8 +248,16 @@ Constitution VI):
 - `400 invalid_media_ref` — an image block's `mediaRef` is not a
   tenant media URL.
 - `400 invalid_subject` — empty or > 998 chars.
+- `400 invalid_body` — missing `bodyHtml`, `bodyText`, or
+  `ifUnmodifiedSince` on the BFF→Go internal body.
 - `403 forbidden` — caller lacks `templates:manage`.
 - `404 not_found` — template id does not belong to the tenant.
+- `409 stale_row` — `ifUnmodifiedSince` does not match the row's
+  current `updated_at`; the template was changed in another
+  tab/session since the editor loaded it (per FR-009). Response
+  payload: `{ "kind": "stale_row", "currentUpdatedAt":
+  "2026-05-20T12:35:01.987654Z" }` so the SPA can show the "Reload /
+  Force overwrite" affordance.
 - `422 sanitization_blocked` — the sanitizer would have stripped so
   much from the rendered output that the result is empty or
   ill-formed (rare; typically caused by a RawHTML block that is
@@ -264,18 +283,21 @@ save endpoint above.
 
 ```json
 {
-  "subject": "Subject line, may include {{ subscriber.first_name }}",
-  "bodyDoc": { "version": 1, "type": "doc", "content": [ /* blocks */ ] },
-  "theme":   { /* optional override */ }
+  "subject":           "Subject line, may include {{ subscriber.first_name }}",
+  "bodyDoc":           { "version": 1, "type": "doc", "content": [ /* blocks */ ] },
+  "theme":             { /* optional override */ },
+  "ifUnmodifiedSince": "2026-05-20T12:34:56.123456Z"
 }
 ```
 
 **Internal BFF → Go body** adds the rendered `bodyHtml` and `bodyText`
-fields (same shape as the templates internal body above).
+fields and forwards `ifUnmodifiedSince` (same shape as the templates
+internal body above).
 
 **Response**: same shape as the templates response above.
 
-**Errors**: same set of typed kinds. New BFF-emitted code:
+**Errors**: same set of typed kinds as the templates endpoint
+(including `409 stale_row` per FR-009). New BFF-emitted code:
 
 - `502 bad_gateway` — BFF cannot reach Go for the
   `GET /subscriber-fields` or `GET /branding` side-call required to
@@ -288,24 +310,37 @@ Still accepts a raw-HTML body for code-only authoring.
 
 ---
 
-## Render preview
+## Render preview (shared by campaign + template editors)
 
-### `POST /api/v1/t/{slug}/campaigns/{id}/render-preview`
+### `POST /api/v1/t/{slug}/render-preview`
 
-**Hosted by**: BFF (Nitro). **Never reaches Go.** The BFF validates
-the doc, fetches branding from Go if `theme` is null, renders with
-`@react-email/components`, optionally substitutes sample data, and
-returns the rendered HTML + plain-text. The BFF runs its own
-sanitization pass over the previewed HTML (preview-only — never
-persisted) and emits its own warnings for content that would be
-stripped (per FR-014a).
+**Hosted by**: BFF (Nitro). Tenant-scoped, **not** row-scoped — the
+endpoint accepts a `bodyDoc` directly and never reads a campaign or
+template row, so one route serves both editors per the 2026-05-20
+N4 clarification. The render step never reaches Go. When the caller
+supplies a `sample` object, the BFF side-calls Go's
+`POST /substitute-sample` endpoint (see below) for placeholder
+resolution — the BFF MUST NOT reimplement substitution rules in
+TypeScript (FR-016 / [research.md § R12b](../research.md)). Flow:
+validate the doc → fetch `GET /branding` from Go if `theme` is null
+→ render the doc with `@react-email/components` → if `sample` is
+supplied, POST `{ html, text, sampleSubscriber, sampleCampaign }` to
+Go's `POST /substitute-sample` and use the response — finally
+sanitize the resulting HTML (BFF preview-only sanitizer) and return.
+The BFF runs its own sanitization pass over the previewed HTML
+(preview-only — never persisted) and emits its own warnings for
+content that would be stripped (per FR-014a).
 
-**Permission**: `campaigns:manage` (caller is the campaign author).
+**Permission**: any tenant member who can edit campaigns or templates
+— effectively `campaigns:manage` OR `templates:manage`. The BFF
+forwards the cookie and Go applies the gate (either permission
+grants access).
 
 **Purpose**: render the supplied (unsaved) structured document on the
-server for the editor's desktop/mobile preview iframe. Optionally
-substitutes a caller-supplied sample subscriber so the operator sees
-placeholders resolved with realistic values.
+server for the editor's desktop/mobile preview iframe (600 px / 375 px
+per FR-007). Optionally substitutes a caller-supplied sample
+subscriber so the operator sees placeholders resolved with realistic
+values.
 
 **Body**:
 
@@ -336,7 +371,66 @@ literal `{{ … }}` strings for an "unsubstituted" preview.
 This endpoint **does not persist anything**.
 
 **Errors**: same as the save endpoints (`invalid_doc`,
-`unknown_placeholder`, `invalid_media_ref`).
+`unknown_placeholder`, `invalid_media_ref`). New BFF-emitted code:
+
+- `502 bad_gateway` — BFF cannot reach Go for the
+  `GET /subscriber-fields`, `GET /branding`, or
+  `POST /substitute-sample` side-call. Fail-closed.
+
+---
+
+## Sample-data placeholder substitution (Go-side helper for the BFF)
+
+### `POST /api/v1/t/{slug}/substitute-sample`
+
+**Hosted by**: Go (`cmd/api`). Reached only by the BFF's
+render-preview route; not exposed to the SPA directly. The route is
+tenant-scoped and reuses the same session-cookie authentication as
+every other tenant-plane endpoint.
+
+**Permission**: `campaigns:manage` OR `templates:manage` (the BFF
+forwards the cookie of the user authoring the preview; Go enforces
+the same gate that `POST /render-preview` applies — either permission
+grants access since the endpoint is shared by both editors).
+
+**Purpose**: resolve `{{ subscriber.<slug> }}` and `{{ campaign.<name> }}`
+placeholders in already-rendered HTML/text by feeding the supplied
+sample values through the canonical send-pipeline substituter
+(`internal/sending/domain/substitution.go`). Single substituter
+implementation; preview matches inbox.
+
+**Body**:
+
+```json
+{
+  "html": "<table …>… {{ subscriber.first_name }} …</table>",
+  "text": "… {{ subscriber.first_name }} …",
+  "sample": {
+    "subscriber": { "first_name": "Sam", "last_name": "Rivers", "email": "sam@example.test", "country": "GB" },
+    "campaign":   { "unsubscribe_url": "https://example.test/u/abc", "preference_url": "https://example.test/p/abc", "archive_url": "…", "view_in_browser_url": "…", "tenant_name": "Acme", "current_date": "2026-05-20" }
+  }
+}
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "html": "<table …>… Sam …</table>",
+  "text": "… Sam …"
+}
+```
+
+This endpoint **does not persist anything** and does not write audit
+rows. It is a pure transformation. Unknown subscriber slugs in
+`sample` are ignored on this path (the doc itself was already
+validated by the BFF before render; this endpoint only resolves
+known placeholders against the supplied sample values).
+
+**Errors**:
+
+- `400 invalid_body` — `html`/`text` missing or `sample` malformed.
+- `403 forbidden` — caller lacks `campaigns:manage`.
 
 ---
 

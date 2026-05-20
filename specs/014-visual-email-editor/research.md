@@ -306,7 +306,8 @@ keys keep working but don't appear in the picker, per FR-016e).
 **When substituted**: at send time, server-side, per recipient, in the
 existing Phase 3 send pipeline (`internal/sending/`). The editor
 preserves placeholders verbatim through save → reload. The
-`POST /campaigns/{id}/render-preview` endpoint substitutes against a
+`POST /render-preview` endpoint (tenant-scoped, shared by both
+editors per the 2026-05-20 N4 clarification) substitutes against a
 caller-supplied sample subscriber for editor preview only.
 
 **When validated**: at *save* time. The save handler walks the rendered
@@ -389,6 +390,89 @@ just because the editor changed.
 audit entry includes the `warnings: []` summary from sanitization but
 NOT the full body — the body lives on the row already and audit log
 size is bounded.
+
+## R12a. Optimistic concurrency for visual saves (resolved 2026-05-20 clarify)
+
+**Decision**: Use the existing `updated_at` timestamp on `templates` and
+`campaigns` as the concurrency token. Every visual save (`PUT
+/campaigns/{id}/visual`, `PUT /templates/{id}/visual`) carries
+`ifUnmodifiedSince: <ISO timestamp>` populated from the value the editor
+saw when it loaded the row. The Go save handler compares it against the
+row's current `updated_at` under the same transaction that performs the
+write; mismatch returns a typed `ErrStaleRow → 409 stale_row` and the
+write does not happen. The BFF passes the field through transparently
+(it is part of the browser→BFF body and is appended to the BFF→Go
+internal body). The SPA, on receiving `409 stale_row`, surfaces a
+"Changed in another tab/session — Reload or Force overwrite"
+affordance; "Force overwrite" re-fetches the row, copies the new
+`updated_at` into the next save, and re-issues.
+
+**Rationale**:
+
+- No schema migration. `updated_at` already exists on both rows from
+  Phase 1 / Phase 3 schemas.
+- Catches cross-tab, cross-device, and cross-browser cases uniformly —
+  unlike a `BroadcastChannel`-only approach that would miss other
+  devices.
+- Aligns with the rest of the workspace's existing optimistic-concurrency
+  pattern (matches how the Phase 3 UI handles concurrent template
+  edits).
+- The check and the write happen inside the same transaction in
+  `internal/campaign/adapters/...`, so a concurrent save between the
+  check and the write cannot win.
+
+**Alternatives considered**:
+
+- **Dedicated `version int` column** (bumped on every save): more
+  precise than timestamp comparison (no clock-granularity issues) but
+  requires migration 000021 and a backfill for existing rows. Rejected
+  on YAGNI grounds — `updated_at` already has microsecond precision
+  in Postgres and is sufficient.
+- **`BroadcastChannel` only**: limited to a single browser; doesn't
+  catch other devices or other browsers. Rejected as not satisfying
+  FR-009.
+
+## R12b. Sample-data placeholder substitution for render-preview (resolved 2026-05-20 clarify)
+
+**Decision**: The BFF preview route — `POST /api/v1/t/{slug}/render-preview`,
+tenant-scoped and shared by the campaign and template editors per
+the 2026-05-20 N4 clarification — side-calls a new Go endpoint
+`POST /api/v1/t/{slug}/substitute-sample` to resolve sample
+placeholders into the rendered HTML/text. Body: `{ html, text,
+sampleSubscriber, sampleCampaign }`. Go reuses the existing
+send-pipeline substituter in `internal/sending/domain/substitution.go`
+and returns the substituted html/text. The BFF then runs its
+preview-output sanitizer over the result and returns to the SPA. The
+BFF MUST NOT reimplement substitution rules in TypeScript.
+
+**Rationale**:
+
+- Single substituter implementation across preview and send. Zero
+  drift surface — operators see exactly what recipients will see for
+  any combination of subscriber/campaign sample values.
+- The send-time substituter (`internal/sending/domain/substitution.go`)
+  is already covered by Constitution II integration tests (T026); no
+  duplicate test surface needed.
+- Preview is not a hot path. The extra BFF→Go hop adds a few
+  milliseconds to a UX that already crosses the BFF render step. Save
+  is unaffected (save does not substitute).
+- Aligns with Constitution VI: there is one canonical place where
+  business logic for placeholder substitution lives, in the
+  `internal/sending/domain/` package; transport (the new HTTP handler)
+  is a thin adapter over it.
+
+**Alternatives considered**:
+
+- **TypeScript reimplementation of substitution rules in the BFF**
+  (the previous tasks.md T048 draft): rejected — two implementations
+  of one security-sensitive rule set with no automated drift check.
+  Even with a drift-catcher test, the maintenance cost is real
+  whenever the substituter learns new formatting rules (e.g.
+  type-aware date formatting per `FieldType`).
+- **No sample substitution; preview always shows literal `{{ … }}`
+  text**: rejected — the editor's preview becomes much less
+  representative; operators have to mentally substitute, which is
+  exactly what they'd ask the picker to avoid.
 
 ## R13. Open question — HTML file upload
 

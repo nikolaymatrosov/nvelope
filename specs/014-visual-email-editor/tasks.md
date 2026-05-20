@@ -12,6 +12,8 @@ description: "Task list for Phase 7 — Visual Email Editor"
 
 **Organization**: Tasks are grouped by user story so each story can be implemented, tested, and demoed independently.
 
+**Topology**: Email-HTML rendering runs in the TanStack Start + Nitro BFF using `@react-email/components`. The Go API stays single-purpose: validate, sanitize, persist. See [research.md § R4](./research.md) and [brainstorm-bff-render.md](./brainstorm-bff-render.md).
+
 ## Format: `[ID] [P?] [Story?] Description`
 
 - **[P]**: parallelizable (different files, no incomplete-task dependencies).
@@ -20,7 +22,7 @@ description: "Task list for Phase 7 — Visual Email Editor"
 
 ## Path conventions
 
-Web application with Go backend (`internal/`, `cmd/`, `internal/db/migrations/`) and React SPA (`frontend/src/`). All paths in this file are repository-relative.
+Web application with Go backend (`internal/`, `cmd/`, `internal/db/migrations/`), TanStack Start + Nitro BFF (`frontend/src/server/`), and React SPA (`frontend/src/`). All paths in this file are repository-relative.
 
 ---
 
@@ -30,14 +32,14 @@ Web application with Go backend (`internal/`, `cmd/`, `internal/db/migrations/`)
 
 - [X] T001 Add Go dependency `github.com/microcosm-cc/bluemonday` to `go.mod`; verify `golang.org/x/net/html` is already present (transitive); run `go mod tidy`
 - [X] T002 [P] Add frontend dependencies to `frontend/package.json`: `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-bubble-menu`, `@tiptap/extension-link`, `@tiptap/extension-image`, `@tiptap/extension-color`, `@tiptap/extension-text-style`, `@tiptap/suggestion`, `@uiw/react-codemirror`, `@codemirror/lang-html`; run `pnpm --filter ./frontend install`
-- [X] T003 [P] Create empty package directories: `internal/campaign/adapters/visualrender/`, `internal/audience/adapters/` (already exists; verify), `frontend/src/components/visual-editor/`, `frontend/src/components/visual-editor/extensions/`, `frontend/src/components/visual-editor/ui/`, `frontend/src/components/visual-editor/plugins/`, `frontend/src/components/code-editor/`
+- [X] T003 [P] Create empty package directories: `internal/campaign/adapters/visualrender/`, `internal/audience/adapters/`, `frontend/src/components/visual-editor/`, `frontend/src/components/visual-editor/extensions/`, `frontend/src/components/visual-editor/ui/`, `frontend/src/components/visual-editor/plugins/`, `frontend/src/components/code-editor/`
 - [X] T004 [P] Add new permission constant `subscriber_fields:manage` to `internal/iam/domain/permission.go` and to the `Permission` union in `frontend/src/lib/permissions.ts`
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: data model, domain types, server-side renderer, and substitutor extensions — everything that MUST exist before any user story can be implemented.
+**Purpose**: data model, domain types, sanitizer, placeholder extractor, substitutor extension, and the subscriber-field registry — everything that MUST exist before any user story can be implemented.
 
 **⚠️ CRITICAL**: No user-story work begins until this phase is complete.
 
@@ -45,7 +47,7 @@ Web application with Go backend (`internal/`, `cmd/`, `internal/db/migrations/`)
 
 - [X] T005 Write `internal/db/migrations/000020_visual_editor_and_subscriber_fields.up.sql` per [data-model.md § Schema delta](./data-model.md): `subscriber_fields` table with RLS, `templates.body_doc`/`templates.theme` columns, `campaigns.body_doc`/`campaigns.theme` columns
 - [X] T006 Write `internal/db/migrations/000020_visual_editor_and_subscriber_fields.down.sql` reversing T005 cleanly (DROP COLUMN, DROP TABLE, DROP POLICY)
-- [X] T007 [P] Seed the new `subscriber_fields:manage` permission into the existing roles-and-permissions seed flow (whatever migration / fixture path Phase 2 / 005 uses — check `internal/iam/...` for the existing seed pattern)
+- [X] T007 [P] Seed the new `subscriber_fields:manage` permission into the existing roles-and-permissions seed flow (`internal/iam/...` seed pattern)
 
 ### Subscriber-field domain
 
@@ -55,112 +57,122 @@ Web application with Go backend (`internal/`, `cmd/`, `internal/db/migrations/`)
 
 ### Visual-document domain
 
-- [X] T011 [P] Create `internal/campaign/domain/visualdoc.go`: `VisualDoc`, `Node`/`Inline` sealed interfaces (`visualNode()`/`visualInline()`), block types (`Paragraph`, `Heading`, `BulletList`, `OrderedList`, `ListItem`, `Quote`, `Code`, `Image`, `Button`, `Divider`, `Columns`, `RawHTML`), inline types (`Text`, `MergeTag`), `Marks` struct
+- [X] T011 [P] Create `internal/campaign/domain/visualdoc.go`: `VisualDoc`, `Node`/`Inline` sealed interfaces (`visualNode()`/`visualInline()`), block types (`Paragraph`, `Heading`, `BulletList`, `OrderedList`, `ListItem`, `Quote`, `Code`, `Image`, `Button`, `Divider`, `Columns`, `RawHTML`), inline types (`Text`, `MergeTag`), `Marks` struct, package-level `AllowedCampaignMergeTags` map
 - [X] T012 [P] Create `internal/campaign/domain/visualdoc_validate.go`: `Validate(*VisualDoc, ValidateContext) error` enforcing heading-level range, `Columns.Cols` length matches `count` (2/3/4), `Image.MediaRef` matches the tenant media URL pattern, `MergeTag.Namespace ∈ {subscriber,campaign}`, mark validity
 - [X] T013 [P] Create `internal/campaign/domain/visualdoc_test.go`: positive validation cases + negative cases for every invariant above
 - [X] T014 [P] Create `internal/campaign/domain/theme.go`: `Theme` value object, `NewTheme` validating constructor (CSS-color check, `containerWidth ∈ [320,800]`), `HydrateTheme`, `DefaultsFromBranding(branding.Branding) Theme`
-- [X] T015 [P] Create `internal/campaign/domain/theme_test.go`: NewTheme positive + negative; DefaultsFromBranding maps Phase 6 branding correctly
-- [X] T016 [P] Create `internal/campaign/domain/typed_errors.go` (or extend the existing `errors.go`): `ErrInvalidPlaceholder`, `ErrUnknownSlug`, `ErrUnsupportedNode`, `ErrSanitizationStripped`, `ErrInvalidMediaRef` typed kinds matching the contracts in [tenant-api.md](./contracts/tenant-api.md)
-- [X] T017 [P] **AMENDED (2026-05-20 BFF pivot)** — Create `internal/campaign/domain/renderer.go` with the `FieldSet` consumer-owned interface only (`HasSlug(slug string) bool`). The `Renderer` interface is **removed** — rendering moved to the BFF per [research.md § R4](./research.md) and [brainstorm-bff-render.md](./brainstorm-bff-render.md). Drop the Renderer type and any code that depends on it.
+- [X] T015 [P] Create `internal/campaign/domain/theme_test.go`: `NewTheme` positive + negative; `DefaultsFromBranding` maps Phase 6 branding correctly
+- [X] T016 [P] Add typed-error kinds to `internal/campaign/domain/errors.go` (or `visualdoc_errors.go`): `ErrInvalidPlaceholder`, `ErrUnknownSlug`, `ErrUnsupportedNode`, `ErrSanitizationStripped`, `ErrInvalidMediaRef` matching the contracts in [tenant-api.md](./contracts/tenant-api.md)
+- [X] T017 [P] Create `internal/campaign/domain/renderer.go` with the consumer-owned `FieldSet` interface only (`HasSlug(slug string) bool`). No `Renderer` interface — rendering is BFF-side.
 
 ### Template & Campaign aggregate extensions
 
-- [X] T018 **AMENDED (2026-05-20 BFF pivot)** — Extend `internal/campaign/domain/template.go`: add `bodyDoc *VisualDoc` and `theme *Theme` fields; add getters `BodyDoc()`, `Theme()`; add new validating constructor `NewVisualTemplate(tenantID, name string, kind Kind, subject string, doc *VisualDoc, theme *Theme, bodyHTML, bodyText string, fields FieldSet) (*Template, error)` — **no renderer parameter**; the caller (the save command) supplies the BFF-rendered HTML/text. The constructor revalidates the doc against the supplied fieldset (defense in depth) and returns the populated aggregate with all three pieces atomically. Update `HydrateTemplate` to accept `bodyDoc` and `theme`.
-- [X] T019 **AMENDED (2026-05-20 BFF pivot)** — Extend `internal/campaign/domain/campaign.go` symmetrically with `NewVisualCampaign` carrying the same signature shape (no renderer param; accepts pre-rendered html/text).
-- [X] T020 [P] **AMENDED (2026-05-20 BFF pivot)** — Extend `template_test.go` and `campaign_test.go` (or add new files): cover `NewVisualTemplate`/`NewVisualCampaign` happy path, unknown-slug rejection (defense-in-depth revalidation), invalid-media-ref rejection. **Drop the `fakeRenderer` double** — there is no renderer to mock; assert that the supplied html/text pass through unchanged.
+- [X] T018 Extend `internal/campaign/domain/template.go`: add `bodyDoc *VisualDoc` and `theme *Theme` fields; getters `BodyDoc()`, `Theme()`; validating constructor `NewVisualTemplate(tenantID, name string, kind Kind, subject string, doc *VisualDoc, theme *Theme, bodyHTML, bodyText string, fields FieldSet) (*Template, error)` — the caller (the save command) supplies the BFF-rendered HTML/text; the constructor revalidates the doc against `fields` (defense in depth) and returns the populated aggregate with all three pieces atomically. Update `HydrateTemplate` to accept `bodyDoc` and `theme`.
+- [X] T019 Extend `internal/campaign/domain/campaign.go` symmetrically with `NewVisualCampaign` carrying the same signature shape (accepts pre-rendered html/text; no renderer param).
+- [X] T020 [P] Extend `template_test.go` and `campaign_test.go` (or add new files): cover `NewVisualTemplate`/`NewVisualCampaign` happy path, unknown-slug rejection (defense-in-depth revalidation), invalid-media-ref rejection. Assert the supplied html/text pass through unchanged.
 
-### Renderer adapter (Go-side trimmed to sanitizer + extractor)
+### Sanitizer + placeholder extractor (Go-side authoritative gate)
 
-- [REMOVED] T021 **REMOVED (2026-05-20 BFF pivot)** — `internal/campaign/adapters/visualrender/render.go` is deleted. The renderer is now in the BFF (new task **TB2**, **TB3**). The Phase 2 implementation that landed in commit `6824db0` is reversed under this plan: when the new task block lands, delete `render.go`.
-- [REMOVED] T022 **REMOVED (2026-05-20 BFF pivot)** — `render_golden_test.go` is deleted alongside `render.go`. The byte-for-byte goldens move to the BFF (`frontend/src/server/render/render.test.ts`, new task **TB4**).
-- [X] T023 Create `internal/campaign/adapters/visualrender/sanitize.go`: bluemonday policy + email-specific deny rules (per [research.md § R5](./research.md)): strip `<script>`, `<style>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`, `<link>`, every `on*=`, every disallowed scheme; non-media-ref `<img>` rejected. **Unchanged by the BFF pivot** — Go's sanitizer is still the authoritative pass over BFF-rendered HTML before persistence.
-- [X] T024 [P] Create `internal/campaign/adapters/visualrender/sanitize_test.go`: negative tests for every disallowed construct (must be stripped or refused regardless of placement: inside RawHTML, inside a column, inside a link). **Unchanged by the BFF pivot.**
-- [X] T025 Create `internal/campaign/adapters/visualrender/placeholders.go`: `ExtractPlaceholders(doc *VisualDoc) []Placeholder`, `ValidatePlaceholders(placeholders, FieldSet) (unknown []Placeholder, err error)`; campaign-namespace placeholders validated against the package-level allow-list. **Unchanged by the BFF pivot** — used by the Go-side defense-in-depth revalidation pass.
-- [X] T026 [P] Create `internal/campaign/adapters/visualrender/placeholders_test.go`: extraction across nested nodes (columns, list items, inline marks) and validation against a `FieldSet` test double. **Unchanged by the BFF pivot.**
+- [X] T021 Create `internal/campaign/adapters/visualrender/sanitize.go`: bluemonday policy + email-specific deny rules (per [research.md § R5](./research.md)): strip `<script>`, `<style>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`, `<link>`, every `on*=`, every disallowed scheme; non-media-ref `<img>` rejected. Runs over BFF-rendered HTML before persistence — single source of truth for save-time warnings.
+- [X] T022 [P] Create `internal/campaign/adapters/visualrender/sanitize_test.go`: negative tests for every disallowed construct (must be stripped or refused regardless of placement: inside RawHTML, inside a column, inside a link)
+- [X] T023 Create `internal/campaign/adapters/visualrender/placeholders.go`: `ExtractPlaceholders(doc *VisualDoc) []Placeholder`, `ValidatePlaceholders(placeholders, FieldSet) (unknown []Placeholder, err error)`; campaign-namespace placeholders validated against the package-level allow-list. Used by the Go-side defense-in-depth revalidation pass.
+- [X] T024 [P] Create `internal/campaign/adapters/visualrender/placeholders_test.go`: extraction across nested nodes (columns, list items, inline marks) and validation against a `FieldSet` test double
 
 ### Send-pipeline substitutor
 
-- [X] T027 Extend the existing send-pipeline substitutor in `internal/sending/domain/substitution.go` (create file if absent) to recognize `{{ subscriber.<slug> }}` and `{{ campaign.<name> }}`; built-in slugs read from the `Subscriber` aggregate, custom slugs from `Subscriber.Attributes`, campaign-namespace from the supplied `CampaignContext` (`unsubscribe_url`, `preference_url`, `archive_url`, `view_in_browser_url`, `tenant_name`, `current_date`)
-- [X] T028 [P] Create `internal/sending/domain/substitution_test.go`: subscriber-built-in, subscriber-custom, campaign-namespace, whitespace-tolerant parsing, unknown-slug stays literal at send (validation already happened at save)
+- [X] T025 Extend the existing send-pipeline substitutor in `internal/sending/domain/substitution.go` to recognize `{{ subscriber.<slug> }}` and `{{ campaign.<name> }}`; built-in slugs read from the `Subscriber` aggregate, custom slugs from `Subscriber.Attributes`, campaign-namespace from the supplied `CampaignContext` (`unsubscribe_url`, `preference_url`, `archive_url`, `view_in_browser_url`, `tenant_name`, `current_date`)
+- [X] T026 [P] Create `internal/sending/domain/substitution_test.go`: subscriber-built-in, subscriber-custom, campaign-namespace, whitespace-tolerant parsing, unknown-slug stays literal at send (validation already happened at save)
 
 ### Field-registry adapter and CQRS handlers
 
-- [X] T029 Create `internal/audience/adapters/fields_postgres.go`: Postgres repository for the registry implementing the command/query interfaces (uses the existing tenant-bound `pgx` transaction adapter)
-- [X] T030 [P] Create `internal/audience/adapters/fields_postgres_test.go`: integration test that runs against the testcontainer Postgres, covers CRUD + reorder, and asserts tenant-isolation (Constitution I): rows for tenant A are invisible to tenant B even with the application filter omitted
-- [X] T031 Create command handlers under `internal/audience/app/command/`: `create_field.go`, `update_field.go`, `delete_field.go`, `reorder_fields.go` — each thin, wrapping the repository under the tenant-bound transaction
-- [X] T032 Create query handler `internal/audience/app/query/list_fields.go`: returns `BuiltInFields` prepended to the tenant's registry rows
-- [X] T033 Wire new handlers in `internal/audience/app/application.go` (or whatever the existing application-composition file is called for the audience subdomain)
+- [X] T027 Create `internal/audience/adapters/fields_postgres.go`: Postgres repository for the registry implementing the command/query interfaces (uses the existing tenant-bound `pgx` transaction adapter)
+- [X] T028 [P] Create `internal/audience/adapters/fields_postgres_test.go`: integration test against the testcontainer Postgres covering CRUD + reorder; asserts tenant-isolation (Constitution I) — rows for tenant A are invisible to tenant B even with the application filter omitted
+- [X] T029 Create command handlers under `internal/audience/app/command/`: `create_field.go`, `update_field.go`, `delete_field.go`, `reorder_fields.go` — each thin, wrapping the repository under the tenant-bound transaction
+- [X] T030 Create query handler `internal/audience/app/query/list_fields.go`: returns `BuiltInFields` prepended to the tenant's registry rows
+- [X] T031 Wire new handlers in `internal/audience/app/application.go`
 
-**Checkpoint**: Foundation ready — schema migrated, domain + renderer + substitutor compile and tests pass. User story phases can now begin in priority order or in parallel (US1+US2 first, then US4/US5 in parallel, then US3).
+### Reverse the previous Go-renderer commit
+
+- [ ] T032 Delete `internal/campaign/adapters/visualrender/render.go` and `internal/campaign/adapters/visualrender/render_golden_test.go` from commit `6824db0`. The renderer moved to the BFF (Phase 3 BFF tasks); these files are obsolete. Remove any code that imports `visualrender.Renderer` (the interface was already dropped in T017 alongside this cleanup).
+
+**Checkpoint**: Foundation ready — schema migrated, domain types + sanitizer + extractor + substitutor + registry compile and tests pass. User-story phases can now begin.
 
 ---
 
 ## Phase 3: User Story 1 — Author a campaign visually (Priority: P1) 🎯 MVP
 
-**Goal**: An operator can open the campaign editor on a new campaign, author content with paragraphs/headings/lists, multi-column layouts, images from the media library, a button, formatted text via the bubble menu, and merge tags via chips; preview desktop/mobile; save; send a test that arrives in the inbox matching the preview.
+**Goal**: An operator opens the campaign editor on a new campaign, authors content with paragraphs/headings/lists, multi-column layouts, images from the media library, a button, formatted text via the bubble menu, and merge tags via chips; previews desktop/mobile; saves; sends a test that arrives in the inbox matching the preview.
 
 **Independent Test**: per [spec.md US1 Independent Test](./spec.md) — author a campaign, send a test, confirm the inbox-rendered email matches the preview in layout, image, button, and styling.
 
-### Backend (HTTP + commands)
+### Go API — save command and HTTP handlers
 
-- [ ] T034 [US1] **AMENDED (2026-05-20 BFF pivot)** — Create save command `internal/campaign/app/command/save_visual_campaign.go`: accepts `(tenantID, campaignID, subject, doc, bodyHTML, bodyText, theme)` — the BFF supplies the rendered html/text. The handler loads the campaign, invokes `NewVisualCampaign` (which revalidates the doc against the field registry as defense in depth), runs the Go sanitizer over `bodyHTML`, and persists `body_doc`, `body_html`, `body_text`, `theme` atomically through the existing campaign repository. **No `Renderer` dependency**; `FieldsLister` / `BrandingResolver` dependencies are also dropped (the BFF owns both fetches).
-- [REMOVED] T035 **REMOVED (2026-05-20 BFF pivot)** — `internal/campaign/app/command/render_preview.go` is deleted. The preview endpoint moves entirely to the BFF (new task **TB9**); Go is never asked to preview-render. The placeholder substitution that this command performed lives in [internal/sending/domain/substitution.go](../../internal/sending/domain/substitution.go) and is reused by the BFF preview route via an HTTP call back, OR re-implemented in TypeScript (decided in TB9).
-- [ ] T036 [US1] **AMENDED (2026-05-20 BFF pivot)** — Extend `internal/api/handlers/campaigns.go` with `PUT /campaigns/{id}/visual` per [tenant-api.md](./contracts/tenant-api.md): the Go-internal request body now requires `bodyHtml` and `bodyText` (in addition to `bodyDoc`, `subject`, `theme`). Reject with `400 invalid_body` if either is empty — the BFF is the only legitimate caller. Error-kind → HTTP status mapping centralized in `internal/api/...` (Constitution VI).
-- [REMOVED] T037 **REMOVED (2026-05-20 BFF pivot)** — `POST /campaigns/{id}/render-preview` is no longer a Go endpoint; the BFF hosts it (new task **TB9**).
-- [ ] T038 [US1] Create `internal/api/handlers/subscriber_fields.go` with `GET`, `POST`, `PATCH /:id`, `DELETE /:id`, `PATCH /order` per [tenant-api.md](./contracts/tenant-api.md); `subscriber_fields:manage` permission gate on mutating routes
-- [ ] T039 [US1] Create `GET /api/v1/t/{slug}/merge-tags` handler in `internal/api/handlers/merge_tags.go`: returns the merged subscriber + campaign-namespace list
-- [ ] T040 [P] [US1] API integration tests for `PUT /campaigns/{id}/visual` and `POST /campaigns/{id}/render-preview`: happy path, `unknown_placeholder`, `invalid_doc`, `invalid_media_ref`, `forbidden` (caller without `campaigns:manage`); tests live under `internal/api/handlers/campaigns_test.go` (or the existing pattern for that package)
-- [ ] T041 [P] [US1] API integration tests for the subscriber-fields CRUD endpoints (slug conflicts, builtin-slug rejection, reorder validation, tenant-isolation)
-- [ ] T042 [P] [US1] API integration test for `GET /merge-tags`
+- [ ] T033 [US1] Create save command `internal/campaign/app/command/save_visual_campaign.go`: accepts `(tenantID, campaignID, subject, doc, bodyHTML, bodyText, theme)` — the BFF supplies the rendered html/text. Loads the campaign, invokes `NewVisualCampaign` (which revalidates the doc against the field registry as defense in depth), runs the Go sanitizer over `bodyHTML`, and persists `body_doc`, `body_html`, `body_text`, `theme` atomically through the existing campaign repository. No `Renderer`/`BrandingResolver` dependency.
+- [ ] T034 [US1] Extend `internal/api/handlers/campaigns.go` (or current handler file) with `PUT /campaigns/{id}/visual` per [tenant-api.md](./contracts/tenant-api.md): the Go-internal request body requires `bodyHtml`, `bodyText`, and `ifUnmodifiedSince` (alongside `bodyDoc`, `subject`, `theme`). Reject with `400 invalid_body` if any is empty. Inside the save command's transaction, `SELECT … FOR UPDATE` the row's current `updated_at`, compare against `ifUnmodifiedSince`, and return the new typed error `ErrStaleRow → 409 stale_row` (payload `{ "kind": "stale_row", "currentUpdatedAt": "<iso>" }`) on mismatch — defers to [research.md § R12a](./research.md). Error-kind → HTTP status mapping centralized in `internal/api/...` (Constitution VI). Emit audit event `campaign.save_visual` `{ campaign_id, warnings_count }` after persistence.
+- [ ] T035 [US1] Create `internal/api/handlers/subscriber_fields.go` with `GET`, `POST`, `PATCH /:id`, `DELETE /:id`, `PATCH /order` per [tenant-api.md](./contracts/tenant-api.md); `subscriber_fields:manage` permission gate on mutating routes; emit audit events `subscriber_field.{create,update,delete,reorder}`
+- [ ] T036 [US1] Create `GET /api/v1/t/{slug}/merge-tags` handler in `internal/api/handlers/merge_tags.go`: returns the merged subscriber + campaign-namespace list (built-in pseudo-rows + tenant registry rows + `AllowedCampaignMergeTags`)
+- [ ] T037 [P] [US1] API integration tests for `PUT /campaigns/{id}/visual` (Go-internal body): happy path, `unknown_placeholder`, `invalid_doc`, `invalid_media_ref`, `invalid_body` (missing bodyHtml/bodyText/ifUnmodifiedSince), `forbidden` (caller without `campaigns:manage`), and `stale_row` (mismatched `ifUnmodifiedSince` vs row's `updated_at`); under `internal/api/handlers/campaigns_test.go`
+- [ ] T038 [P] [US1] API integration tests for the subscriber-fields CRUD endpoints (slug conflicts, builtin-slug rejection, reorder validation, tenant-isolation). Include an assertion for FR-016e: seed a subscriber with `attributes = { "country": "DE" }`, delete the `country` registry entry, re-read the subscriber, assert `attributes.country` still equals `"DE"` (deleting a registry definition MUST NOT delete underlying attribute data).
+- [ ] T039 [P] [US1] API integration test for `GET /merge-tags`
 
-### BFF render path (NEW — 2026-05-20 BFF pivot)
+### BFF render path (Nitro routes hosting visual save + preview)
 
-These tasks replace the removed T021/T022/T035/T037 with a BFF-hosted render pipeline. See [brainstorm-bff-render.md § 6](./brainstorm-bff-render.md) for the full task delta rationale. They depend on T011–T016 (typed VisualDoc + Theme types, since the BFF mirrors those shapes), T038–T039 (Go-side subscriber-fields and merge-tags endpoints — BFF calls into them), and T036 (the Go save endpoint's `bodyHtml`+`bodyText` body shape).
+These tasks deliver the render+orchestration tier. They depend on T011–T016 (typed VisualDoc + Theme shapes — the BFF mirrors them) and T034–T036 (Go-side endpoints the BFF calls into and forwards to).
 
-- [ ] TB1 [US1] Add `@react-email/components` and `@react-email/render` to `frontend/package.json`; exact-pin versions; run `pnpm --filter ./frontend install`. Also add `isomorphic-dompurify` (or equivalent — picked in TB2) for the BFF-side preview-output sanitization (per FR-014a).
-- [ ] TB2 [P] [US1] Create `frontend/src/server/render/components.tsx`: VisualBlock → react-email component mapping (Paragraph→`<Text>`, Heading→`<Heading>`, BulletList/OrderedList→inline-styled `<ul>`/`<ol>` + `<li>`, Quote→inline-styled `<blockquote>`, Code→`<CodeBlock>`, Image→`<Img>`, Button→`<Button>`, Divider→`<Hr>`, Columns→`<Row>`+`<Column>`×N, RawHTML→`dangerouslySetInnerHTML` passthrough, MergeTag→literal text). Marks (bold/italic/underline/strike/color/link) applied via standard inline tags + `<Link>`.
-- [ ] TB3 [US1] Create `frontend/src/server/render/index.ts`: public `renderVisualDoc(doc: VisualDoc, theme: Theme) → Promise<{ bodyHtml: string; bodyText: string; warnings: RenderWarning[] }>` using `@react-email/render`. Produces canonical HTML + plain-text in one call.
-- [ ] TB4 [P] [US1] Create `frontend/src/server/render/render.test.ts` and `render-marks.test.ts`: golden tests, one canonical doc per block type + mark combination, asserted byte-for-byte against fixture files committed under `frontend/src/server/render/__fixtures__/`. react-email versions are exact-pinned so fixtures stay stable; fixture-update PRs are the expected churn vector on minor upgrades.
-- [ ] TB5 [US1] Create `frontend/src/server/validate/` — TypeScript port of doc validation: `envelope.ts` (version + type check), `blocks.ts` (per-block-type rules: heading level ∈ {1,2,3}, columns count ∈ {2,3,4} matches content length, mediaRef matches `process.env.OBJECT_STORAGE_PUBLIC_BASE_URL` prefix), `link.ts` (scheme allow-list `{http, https, mailto, tel}`), `campaign-keys.ts` (static mirror of Go's `AllowedCampaignMergeTags`), `index.ts` (public `validateVisualDoc(doc, ctx)` with `ctx.knownSlugs: Set<string>`).
-- [ ] TB6 [P] [US1] Create `frontend/src/server/validate/*.test.ts` per-rule unit tests, plus the **cross-stack drift-catcher** `campaign-keys.test.ts` that reads `internal/campaign/domain/visualdoc.go`, parses the `AllowedCampaignMergeTags` map literal, and asserts deep-equality with the TS const. Fails the frontend test suite if Go adds a key without a matching TS update.
-- [ ] TB7 [US1] Create `frontend/src/server/clients/go-api.ts`: typed Go-API client with cookie + `X-Request-Id` forwarding. Methods used by the BFF routes: `listSubscriberFields(cookie, slug)`, `getBranding(cookie, slug)`, `putCampaignVisual(cookie, slug, id, payload)`, `putTemplateVisual(cookie, slug, id, payload)`. All calls bubble Go's response codes verbatim (so a `403` from Go becomes a `403` from the BFF).
-- [ ] TB8 [US1] Create `frontend/src/server/routes/visual-save.ts`: Nitro route handler for `PUT /t/:slug/api/campaigns/:id/visual` (and the templates equivalent — see TB13 for US2). Orchestration: fetch fields → validate → fetch branding if theme is null → render → forward to Go with cookie + request-id. Fail closed with `502 bad_gateway` if any side-call to Go fails (per 2026-05-20 clarification). Emit structured logs with `tenant_id`, `actor_id`, `request_id` mirroring Go's format.
-- [ ] TB9 [US1] Create `frontend/src/server/routes/render-preview.ts`: Nitro route handler for `POST /t/:slug/api/campaigns/:id/render-preview`. Same as TB8 minus the Go forward — fetch fields, validate, fetch branding if needed, render, sanitize the output via the TB1 sanitizer (preview-output FR-014a), optionally substitute sample data (re-implementing `internal/sending/domain/substitution.go` in TS OR calling a new Go-side `POST /substitute-sample` endpoint — pick one in TB9 sub-design). Returns `{ bodyHtml, bodyText, warnings }`. Never persists.
-- [ ] TB10 [P] [US1] Create `frontend/src/server/routes/*.test.ts`: route-level vitest tests using msw mocks of Go's `GET /subscriber-fields`, `GET /branding`, `PUT /campaigns/{id}/visual`. Assert (a) `502 bad_gateway` when any side-call fails, (b) branding fetched when theme is null, (c) cookie and `X-Request-Id` forwarded to Go, (d) unknown-placeholder rejected before render, (e) render-preview never calls Go's save endpoint.
-- [ ] TB11 [US1] Update `frontend/vite.config.ts` proxy rules so Nitro owns `PUT /t/:slug/api/campaigns/:id/visual`, `PUT /t/:slug/api/templates/:id/visual`, and `POST /t/:slug/api/campaigns/:id/render-preview`. Everything else still transparently proxies to Go at `:8080`. Document the carve-out inline with a comment pointing at [research.md § R4](./research.md).
-- [ ] TB12 [P] [US1] Update `CLAUDE.md` and `MEMORY.md` (if needed) to document the BFF's render responsibility so future agents know about the two-tier split. Add a one-paragraph note in the project layout describing what lives where.
+- [ ] T040 [US1] Add `@react-email/components` and `@react-email/render` to `frontend/package.json` (exact-pinned versions so render fixtures stay stable); add `isomorphic-dompurify` (or `sanitize-html`) for the BFF-side preview-output sanitizer (per FR-014a); run `pnpm --filter ./frontend install`
+- [ ] T041 [P] [US1] Create `frontend/src/server/render/components.tsx`: VisualBlock → react-email component mapping per [research.md § R4](./research.md) table (Paragraph→`<Text>`, Heading→`<Heading>`, Bullet/Ordered list → inline-styled `<ul>`/`<ol>`+`<li>`, Quote → inline `<blockquote>`, Code→`<CodeBlock>`, Image→`<Img>`, Button→`<Button>` (Outlook VML fallback), Divider→`<Hr>`, Columns→`<Row>`+`<Column>`×N with MSO conditional comments, RawHTML → `dangerouslySetInnerHTML` passthrough, MergeTag → literal text). Marks (bold/italic/underline/strike/color/link) applied via inline tags + `<Link>`.
+- [ ] T042 [US1] Create `frontend/src/server/render/index.ts`: public `renderVisualDoc(doc: VisualDoc, theme: Theme) → Promise<{ bodyHtml, bodyText, warnings }>` using `@react-email/render`
+- [ ] T043 [P] [US1] Create `frontend/src/server/render/render.test.ts` and `render-marks.test.ts`: golden tests, one canonical doc per block type + mark combination, asserted byte-for-byte against fixture files under `frontend/src/server/render/__fixtures__/`. Fixture-update PRs are the expected churn vector on minor react-email upgrades.
+- [ ] T044 [US1] Create `frontend/src/server/validate/`: TypeScript port of doc validation — `envelope.ts` (version + type check), `blocks.ts` (per-block rules: heading level ∈ {1,2,3}, columns count ∈ {2,3,4} matches content length, mediaRef matches `process.env.OBJECT_STORAGE_PUBLIC_BASE_URL` prefix), `link.ts` (scheme allow-list `{http, https, mailto, tel}`), `campaign-keys.ts` (static mirror of Go's `AllowedCampaignMergeTags`), `index.ts` (public `validateVisualDoc(doc, ctx)` with `ctx.knownSlugs: Set<string>`)
+- [ ] T045 [P] [US1] Create `frontend/src/server/validate/*.test.ts` per-rule unit tests, plus the **cross-stack drift-catcher** `campaign-keys.test.ts` that reads `internal/campaign/domain/visualdoc.go`, parses the `AllowedCampaignMergeTags` map literal, and asserts deep-equality with the TS const. Fails the frontend test suite if Go adds a key without a matching TS update.
+- [ ] T046 [US1] Create `frontend/src/server/clients/go-api.ts`: typed Go-API client with cookie + `X-Request-Id` forwarding. Methods: `listSubscriberFields(cookie, slug)`, `getBranding(cookie, slug)`, `putCampaignVisual(cookie, slug, id, payload)`, `putTemplateVisual(cookie, slug, id, payload)`, `substituteSample(cookie, slug, { html, text, sample })`. All calls bubble Go's response codes verbatim (a `403` from Go becomes a `403` from the BFF).
+- [ ] T047 [US1] Create `frontend/src/server/routes/visual-save.ts`: Nitro route handler for `PUT /t/:slug/api/campaigns/:id/visual` (templates equivalent in T071). Orchestration: fetch fields → validate → fetch branding if theme is null → render → forward Go-internal body to Go with cookie + request-id. Fail closed with `502 bad_gateway` if any side-call to Go fails (per 2026-05-20 clarification). Structured logs with `tenant_id`, `actor_id`, `request_id` mirroring Go's format.
+- [ ] T048 [US1] Create `frontend/src/server/routes/render-preview.ts`: Nitro route handler for `POST /t/:slug/api/render-preview` (tenant-scoped — shared by campaign and template editors per the 2026-05-20 N4 clarification; the endpoint does not read a row, only the supplied `bodyDoc`). Flow: validate the doc → fetch branding if theme is null → render via T042's `renderVisualDoc` → if `sample` was supplied, **side-call Go `POST /substitute-sample`** with the rendered html/text + sample values (per [research.md § R12b](./research.md)) — the BFF MUST NOT reimplement substitution in TS — → sanitize the resulting HTML via the T040 sanitizer (preview-output FR-014a) → return `{ bodyHtml, bodyText, warnings }`. Fail closed with `502 bad_gateway` if any Go side-call fails. Never persists. Permission: caller must hold `campaigns:manage` OR `templates:manage`.
+- [ ] T049 [P] [US1] Create `frontend/src/server/routes/*.test.ts`: route-level vitest tests using msw mocks of Go's `GET /subscriber-fields`, `GET /branding`, `PUT /campaigns/{id}/visual`, `POST /substitute-sample`. Assert (a) `502 bad_gateway` when any side-call fails, (b) branding fetched when theme is null, (c) cookie and `X-Request-Id` forwarded to Go, (d) unknown-placeholder rejected before render, (e) render-preview never calls Go's save endpoint, (f) render-preview side-calls `POST /substitute-sample` when `sample` is supplied and skips it when `sample` is absent, (g) `409 stale_row` from Go's save endpoint is forwarded verbatim to the SPA
+- [ ] T050 [US1] Update `frontend/vite.config.ts` proxy rules so Nitro owns `PUT /t/:slug/api/campaigns/:id/visual`, `PUT /t/:slug/api/templates/:id/visual`, and `POST /t/:slug/api/render-preview` (tenant-scoped, not row-scoped). Everything else still transparently proxies to Go at `:8080`. Inline comment pointing at [research.md § R4](./research.md).
+- [ ] T051 [P] [US1] Update `CLAUDE.md` to document the BFF's render responsibility (one paragraph in the project layout) so future agents know where the render tier lives.
 
-### Frontend (API client + types)
+### Frontend SPA — API client + types
 
-- [ ] T043 [P] [US1] Add type definitions in `frontend/src/lib/api-types.ts`: `VisualDoc`, `VisualBlock` discriminated union, `Theme`, `Field`, `FieldType`, `MergeTagPickerItem`, `RenderWarning`
-- [ ] T044 [P] [US1] Extend `frontend/src/lib/api.ts`: `tp(slug).subscriberFields.{list,create,update,delete,reorder}`, `tp(slug).mergeTags.list`, `tp(slug).campaigns.saveVisual`, `tp(slug).campaigns.renderPreview` — keep them inside the existing tenant-scoped `tp(slug, …)` wrapper so `slug` cannot be omitted (Constitution I)
-- [ ] T045 [P] [US1] Extend `frontend/src/lib/api.test.ts` with tests for the new client methods (URL shape, error envelope decoding)
+- [ ] T052 [P] [US1] Add type definitions in `frontend/src/lib/api-types.ts`: `VisualDoc`, `VisualBlock` discriminated union, `Theme`, `Field`, `FieldType`, `MergeTagPickerItem`, `RenderWarning`
+- [ ] T053 [P] [US1] Extend `frontend/src/lib/api.ts`: `tp(slug).subscriberFields.{list,create,update,delete,reorder}`, `tp(slug).mergeTags.list`, `tp(slug).campaigns.saveVisual`, `tp(slug).templates.saveVisual`, `tp(slug).renderPreview` (tenant-scoped; takes `bodyDoc`/`theme`/`sample` only — no row id) — inside the existing tenant-scoped `tp(slug, …)` wrapper so `slug` cannot be omitted (Constitution I)
+- [ ] T054 [P] [US1] Extend `frontend/src/lib/api.test.ts` with tests for the new client methods (URL shape, error envelope decoding)
 
-### Frontend (visual editor component tree)
+### Frontend SPA — visual editor component tree
 
-- [ ] T046 [US1] Build the `<VisualEmailEditor />` shell in `frontend/src/components/visual-editor/VisualEmailEditor.tsx`: TipTap `useEditor` setup with StarterKit (paragraph, heading levels 1-3, bullet/ordered list, blockquote, code, bold, italic, strike, history), `@tiptap/extension-link`, `@tiptap/extension-color`, `@tiptap/extension-text-style`; exposes controlled `value`/`onChange` over the `VisualDoc` JSON
-- [ ] T047 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/Columns.tsx`: TipTap node with `count: 2|3|4` attribute, `Column` child node, custom NodeView rendering a CSS grid in the editor, serializes to the `columns/column` JSON shape (table-based output is the SERVER renderer's job)
-- [ ] T048 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/Button.tsx`: TipTap node with `label` and `href` attributes; styled chip in editor
-- [ ] T049 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/Divider.tsx`: TipTap node, renders `<hr>` in editor view
-- [ ] T050 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/ImageBlock.tsx`: TipTap node with `mediaRef`, `alt`, `href` attrs; renders an editor view that includes "From media library" button — wires to the existing Phase 6 media picker (`<MediaPicker />`)
-- [ ] T051 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/MergeTag.tsx`: TipTap inline node with `namespace` and `key` attrs; renders styled pill carrying the display name as text and the raw `{{ … }}` in `title=`; HTML serialization emits the literal placeholder text
-- [ ] T052 [US1] Implement `frontend/src/components/visual-editor/ui/DragHandle.tsx`: in-house ProseMirror plugin attaching a hover-revealed handle to the left of every top-level block; supports drag (uses ProseMirror's drop-cursor) and exposes a quick-add affordance that opens the slash-command menu anchored at the block (depends on T046)
-- [ ] T053 [P] [US1] Implement `frontend/src/components/visual-editor/ui/SlashCommandMenu.tsx`: uses `@tiptap/suggestion`; lists insertable blocks (paragraph, heading, list, quote, code, image, button, divider, two/three/four columns, merge tag); filters as the operator types
-- [ ] T054 [P] [US1] Implement `frontend/src/components/visual-editor/ui/BubbleMenu.tsx`: uses `@tiptap/extension-bubble-menu`; offers bold/italic/link/color + heading-level controls when the selection is inside a heading + "insert merge tag"
-- [ ] T055 [P] [US1] Implement `frontend/src/components/visual-editor/ui/MergeTagPicker.tsx`: TanStack Query against `tp(slug).mergeTags.list` under key `["merge-tags", tenantSlug]`; renders grouped list (subscriber/campaign) with type-to-filter
-- [ ] T056 [P] [US1] Implement `frontend/src/components/visual-editor/ui/PreviewIframe.tsx`: desktop (600 px) / mobile (375 px) toggle; calls `tp(slug).campaigns.renderPreview` with a sample subscriber and loads the returned HTML into an iframe
+- [ ] T055 [US1] Build the `<VisualEmailEditor />` shell in `frontend/src/components/visual-editor/VisualEmailEditor.tsx`: TipTap `useEditor` setup with StarterKit (paragraph, heading levels 1-3, bullet/ordered list, blockquote, code, bold, italic, strike, history), `@tiptap/extension-link`, `@tiptap/extension-color`, `@tiptap/extension-text-style`; controlled `value`/`onChange` over `VisualDoc` JSON
+- [ ] T056 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/Columns.tsx`: TipTap node with `count: 2|3|4` attribute, `Column` child node, custom NodeView rendering a CSS grid in the editor, serializes to the `columns/column` JSON shape (table-based output is the BFF renderer's job)
+- [ ] T057 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/Button.tsx`: TipTap node with `label` and `href` attributes; styled chip in editor
+- [ ] T058 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/Divider.tsx`: TipTap node, renders `<hr>` in editor view
+- [ ] T059 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/ImageBlock.tsx`: TipTap node with `mediaRef`, `alt`, `href` attrs; editor view includes "From media library" button wired to the existing Phase 6 `<MediaPicker />`
+- [ ] T060 [P] [US1] Implement `frontend/src/components/visual-editor/extensions/MergeTag.tsx`: TipTap inline node with `namespace` and `key` attrs; renders styled pill carrying the display name as text and the raw `{{ … }}` in `title=`; JSON serialization keeps the structured `mergeTag` node (the BFF renderer emits the literal placeholder string in HTML output)
+- [ ] T061 [US1] Implement `frontend/src/components/visual-editor/ui/DragHandle.tsx`: in-house ProseMirror plugin attaching a hover-revealed handle to the left of every top-level block; supports drag (uses ProseMirror's drop-cursor) and exposes a quick-add affordance that opens the slash-command menu anchored at the block (depends on T055)
+- [ ] T062 [P] [US1] Implement `frontend/src/components/visual-editor/ui/SlashCommandMenu.tsx`: uses `@tiptap/suggestion`; lists insertable blocks (paragraph, heading, list, quote, code, image, button, divider, two/three/four columns, merge tag); filters as the operator types
+- [ ] T063 [P] [US1] Implement `frontend/src/components/visual-editor/ui/BubbleMenu.tsx`: uses `@tiptap/extension-bubble-menu`; offers bold/italic/link/color + heading-level controls when the selection is inside a heading + "insert merge tag"
+- [ ] T064 [P] [US1] Implement `frontend/src/components/visual-editor/ui/MergeTagPicker.tsx`: TanStack Query against `tp(slug).mergeTags.list` under key `["merge-tags", tenantSlug]`; renders grouped list (subscriber/campaign) with type-to-filter
+- [ ] T065 [P] [US1] Implement `frontend/src/components/visual-editor/ui/PreviewIframe.tsx`: desktop (600 px) / mobile (375 px) toggle per FR-007; calls `tp(slug).renderPreview` (tenant-scoped, shared by campaign and template editors) with the current `bodyDoc`, optional `theme`, and a sample subscriber, then loads the returned HTML into an iframe
 
-### Frontend (route integration)
+### Frontend SPA — route integration
 
-- [ ] T057 [US1] Extend `frontend/src/routes/t/$slug/campaigns/$id.tsx`: replace the existing HTML-body field with `<VisualEmailEditor />` when the row's `body_doc` is non-null OR when the campaign is new; keep the legacy textarea when `body_doc` is null and the operator opted out; save button calls `campaigns.saveVisual` instead of the old PUT
-- [ ] T058 [US1] Create route `frontend/src/routes/t/$slug/settings/fields/index.tsx`: subscriber-field registry CRUD UI (table of fields, create/edit dialog, delete with confirm, drag-to-reorder), gated by `subscriber_fields:manage`
+- [ ] T066 [US1] Add visual-editor surface to `frontend/src/routes/t/$slug/campaigns/$id.tsx` (or a sibling `$id.visual.tsx` route): `<VisualEmailEditor />` when the row's `body_doc` is non-null OR the campaign is new; keep the legacy textarea when `body_doc` is null and the operator opted out; save button calls `campaigns.saveVisual` instead of the old PUT
+- [ ] T067 [US1] Create route `frontend/src/routes/t/$slug/settings/fields/index.tsx`: subscriber-field registry CRUD UI (table of fields, create/edit dialog, delete with confirm, drag-to-reorder), gated by `subscriber_fields:manage`
 
-### Frontend tests
+### Frontend SPA — tests
 
-- [ ] T059 [P] [US1] Create `frontend/src/components/visual-editor/VisualEmailEditor.test.tsx`: slash command opens; each StarterKit block inserts; Columns block inserts a 2-column row; drag handle reorders; bubble menu toggles bold; merge-tag picker insert produces a chip that serializes to `{{ subscriber.first_name }}` on save
-- [ ] T060 [P] [US1] Create `frontend/src/components/visual-editor/ui/MergeTagPicker.test.tsx`: lists built-in + custom + campaign-namespace entries; filters as the operator types; picks an entry and dispatches the insert command
-- [ ] T061 [P] [US1] Extend `frontend/src/routes/t/$slug/campaigns/$id.test.tsx`: visual save round-trip (PUT visual, reload, blocks intact); preview iframe loads server-rendered HTML; "send test" path unchanged
-- [ ] T062 [P] [US1] Create `frontend/src/routes/t/$slug/settings/fields/index.test.tsx`: create a field, edit, reorder, delete; built-in pseudo-rows shown but not editable/deletable; permission gating hides the page for operators without `subscriber_fields:manage`
+- [ ] T068 [P] [US1] Create `frontend/src/components/visual-editor/VisualEmailEditor.test.tsx`: slash command opens; each StarterKit block inserts; Columns block inserts a 2-column row; drag handle reorders; bubble menu toggles bold; merge-tag picker insert produces a chip that serializes to the `mergeTag` JSON node
+- [ ] T069 [P] [US1] Create `frontend/src/components/visual-editor/ui/MergeTagPicker.test.tsx`: lists built-in + custom + campaign-namespace entries; filters as the operator types; picks an entry and dispatches the insert command
+- [ ] T070 [P] [US1] Extend the campaign-editor route test: visual save round-trip (PUT visual → BFF → Go → reload, blocks intact); preview iframe loads BFF-rendered HTML; "send test" path unchanged. Add an FR-034 assertion: mount the route with a fake auth context lacking `campaigns:manage` and assert `<VisualEmailEditor />` is not rendered (the forbidden-state component is shown instead).
+- [ ] T071 [P] [US1] Create `frontend/src/routes/t/$slug/settings/fields/index.test.tsx`: create a field, edit, reorder, delete; built-in pseudo-rows shown but not editable/deletable; permission gating hides the page for operators without `subscriber_fields:manage`
+
+### Concurrency + sample-substituter side-call (added 2026-05-20 clarify)
+
+These tasks land the FR-009 stale-row gate and the BFF→Go substitute-sample side-call from the 2026-05-20 clarification round. Dependency direction: T124 + T125 + T126 land first (they create the typed error, the in-transaction check, and the Go handler that T048 calls); T046 and T048 then consume them (T046 adds the `substituteSample` client method, T048's render-preview route side-calls it). T127 and T128 are end-to-end and land last.
+
+- [ ] T124 [US1] Add `ErrStaleRow` to `internal/campaign/domain/errors.go` (or `visualdoc_errors.go`); map it to `409 stale_row` with payload `{ "kind": "stale_row", "currentUpdatedAt": "<iso>" }` in the single error-mapping point under `internal/api/...` per Constitution VI.
+- [ ] T125 [US1] In `save_visual_campaign.go` (T033) and `save_visual_template.go` (T072): inside the save transaction, `SELECT updated_at FROM <table> WHERE id = $1 AND tenant_id = $2 FOR UPDATE` and compare against the inbound `ifUnmodifiedSince`; return `ErrStaleRow` on mismatch. The check + UPDATE share one transaction so a concurrent save between them cannot win. Update the campaign/template repository signatures to accept the timestamp.
+- [ ] T126 [US1] Create Go handler `internal/api/handlers/substitute_sample.go`: `POST /api/v1/t/{slug}/substitute-sample` per [tenant-api.md](./contracts/tenant-api.md). Permission gate `campaigns:manage`. Thin transport wrapper over `internal/sending/domain/substitution.Substitute` (T025) — feeds the supplied html/text and sample subscriber/campaign through the canonical substituter and returns the substituted html/text. No persistence, no audit row. Add integration test `substitute_sample_test.go` covering happy path, missing-body, forbidden.
+- [ ] T127 [US1] In `frontend/src/routes/t/$slug/campaigns/$id.tsx` (T066) and the templates equivalent (T080): read `updated_at` from the row's GET response into editor state at load time and pass it as `ifUnmodifiedSince` on every visual save; on `409 stale_row`, surface a sonner toast "Changed in another tab/session" with two actions — **Reload** (refetch the row, discard local edits) and **Force overwrite** (refetch the row, copy the new `updated_at` into editor state, re-issue the save). Add a vitest covering both paths and an assertion that a successful save updates the in-memory `ifUnmodifiedSince` to the new response value.
+- [ ] T128 [P] [US1] Two-client concurrent-save flow test in `internal/api/handlers/campaigns_test.go` — complements T037's single-call `stale_row` assertion by covering the full sequence: open row R from client 1, open from client 2, save from client 2 (succeeds, `updated_at` advances), save from client 1 with the stale `ifUnmodifiedSince` — assert `409 stale_row` with the new `currentUpdatedAt` in the payload, assert client 1's save did not change the row, then re-issue client 1's save with the response's `currentUpdatedAt` (the Force-overwrite path) and assert success.
 
 **Checkpoint**: US1 is fully functional and demonstrable end-to-end per the [spec.md US1 Independent Test](./spec.md).
 
@@ -172,21 +184,27 @@ These tasks replace the removed T021/T022/T035/T037 with a BFF-hosted render pip
 
 **Independent Test**: per [spec.md US2 Independent Test](./spec.md).
 
-### Backend
+### Go API
 
-- [ ] T063 [US2] Create save command `internal/campaign/app/command/save_visual_template.go`: mirror of `save_visual_campaign` for templates
-- [ ] T064 [US2] Extend `internal/api/handlers/templates.go` with `PUT /api/v1/t/{slug}/templates/{id}/visual` per [tenant-api.md](./contracts/tenant-api.md)
-- [ ] T065 [US2] Update the existing `GET /templates/{id}` response to include `bodyDoc` and `theme` so the frontend can decide to open the visual or code editor without a second request
-- [ ] T066 [P] [US2] API integration tests for visual template save (happy path + every typed error) in `internal/api/handlers/templates_test.go` (or existing equivalent)
-- [ ] T067 [P] [US2] Backend test: creating a campaign from a visually-authored template copies the `body_doc` (not just `body_html`) so the campaign editor opens visually
+- [ ] T072 [US2] Create save command `internal/campaign/app/command/save_visual_template.go`: mirror of `save_visual_campaign` for templates (accepts pre-rendered html/text from the BFF)
+- [ ] T073 [US2] Extend `internal/api/handlers/templates.go` with `PUT /api/v1/t/{slug}/templates/{id}/visual` per [tenant-api.md](./contracts/tenant-api.md): Go-internal body requires `bodyHtml`, `bodyText`, and `ifUnmodifiedSince`; reject `400 invalid_body` if any is empty; the in-transaction stale-row check lives in `save_visual_template` (per T125) and surfaces `ErrStaleRow → 409 stale_row` on mismatch; emit audit event `template.save_visual` `{ template_id, warnings_count }` after persistence
+- [ ] T074 [US2] Update `GET /templates/{id}` response to include `bodyDoc` and `theme` so the frontend can decide visual vs code editor without a second request
+- [ ] T075 [P] [US2] API integration tests for visual template save in `internal/api/handlers/templates_test.go`: happy path, `unknown_placeholder`, `invalid_doc`, `invalid_media_ref`, `invalid_body` (missing bodyHtml/bodyText/ifUnmodifiedSince), `forbidden` (caller without `templates:manage`), and `stale_row` (mismatched `ifUnmodifiedSince` vs row's `updated_at`)
+- [ ] T076 [P] [US2] Backend test: creating a campaign from a visually-authored template copies the `body_doc` (not just `body_html`) so the campaign editor opens visually
 
-### Frontend
+### BFF
 
-- [ ] T068 [US2] Extend `frontend/src/routes/t/$slug/templates/$id.tsx`: same swap-in pattern as campaigns/$id.tsx — `<VisualEmailEditor />` when `body_doc != null` or new template; legacy code editor otherwise; "kind" radio remains; save uses `templates.saveVisual`
-- [ ] T069 [US2] Update the existing "start from template" UX in the campaign editor (`campaigns/$id.tsx` and the template picker component) so picking a template with non-null `body_doc` pre-fills the campaign editor with the template's blocks (campaign's `body_doc` is initialised from the template's, then editable)
-- [ ] T070 [P] [US2] Extend `frontend/src/routes/t/$slug/templates/$id.test.tsx`: visual save + reload round-trip; legacy raw-HTML template (mock GET returns `body_doc: null`) opens in CodeView, not in `<VisualEmailEditor />`
-- [ ] T071 [P] [US2] Add a vitest assertion in the campaign-editor route test that picking a visual template pre-fills `body_doc` and renders the editor visually
-- [ ] T072 [P] [US2] Add a vitest assertion that opening a transactional template still uses the basic/code editor and that `<VisualEmailEditor />` is not mounted
+- [ ] T077 [US2] Extend `frontend/src/server/routes/visual-save.ts` (or add a sibling) to host `PUT /t/:slug/api/templates/:id/visual`: same orchestration as the campaign save route — fetch fields, validate, fetch branding if theme is null, render via T042's `renderVisualDoc`, forward to Go with cookie + request-id, fail-closed `502 bad_gateway` on any side-call failure
+- [ ] T078 [US2] Update `frontend/vite.config.ts` proxy to route templates visual save through Nitro (paired with T050)
+- [ ] T079 [P] [US2] Route-level test for templates visual save mirroring T049's assertions
+
+### Frontend SPA
+
+- [ ] T080 [US2] Extend `frontend/src/routes/t/$slug/templates/$id.tsx`: same swap-in pattern as campaigns — `<VisualEmailEditor />` when `body_doc != null` or new template; legacy code editor otherwise; "kind" radio remains; save uses `templates.saveVisual`
+- [ ] T081 [US2] Update the existing "start from template" UX in the campaign editor so picking a template with non-null `body_doc` pre-fills the campaign editor with the template's blocks
+- [ ] T082 [P] [US2] Extend `frontend/src/routes/t/$slug/templates/$id.test.tsx`: visual save + reload round-trip; legacy raw-HTML template (mock GET returns `body_doc: null`) opens in CodeView, not in `<VisualEmailEditor />`
+- [ ] T083 [P] [US2] Add a vitest assertion in the campaign-editor route test that picking a visual template pre-fills `body_doc` and renders the editor visually
+- [ ] T084 [P] [US2] Add a vitest assertion that opening a transactional template still uses the basic/code editor and that `<VisualEmailEditor />` is not mounted
 
 **Checkpoint**: US2 is independently functional and integrates cleanly with US1.
 
@@ -198,24 +216,24 @@ These tasks replace the removed T021/T022/T035/T037 with a BFF-hosted render pip
 
 **Independent Test**: per [spec.md US4 Independent Test](./spec.md).
 
-### Backend
+### Go API (US4)
 
-- [ ] T073 [US4] Create `internal/campaign/adapters/visualrender/convert.go`: best-effort raw-HTML → `VisualDoc` per [research.md § R6](./research.md); conservative heuristics, `RawHTML` fallback for anything ambiguous
-- [ ] T074 [P] [US4] Create `internal/campaign/adapters/visualrender/convert_test.go`: each heuristic (`<p>`, `<h1..h6>`, lists, links, images, hr, blockquote, table-2/3/4-cols), each fallback (nested tables, colspan, rowspan, unknown tags), and a round-trip test (convert → render → convert again is stable)
-- [ ] T075 [US4] Add HTTP handlers in `internal/api/handlers/templates.go` and `campaigns.go`: `POST /:id/convert-to-visual` and `POST /:id/opt-out-visual` per [tenant-api.md](./contracts/tenant-api.md); convert is non-persisting (returns the candidate doc), opt-out persists `body_doc = NULL`
-- [ ] T076 [P] [US4] API integration tests for the four new endpoints (convert template, convert campaign, opt-out template, opt-out campaign)
+- [ ] T085 [US4] Create `internal/campaign/adapters/visualrender/convert.go`: best-effort raw-HTML → `VisualDoc` per [research.md § R6](./research.md); conservative heuristics, `RawHTML` fallback for anything ambiguous
+- [ ] T086 [P] [US4] Create `internal/campaign/adapters/visualrender/convert_test.go`: each heuristic (`<p>`, `<h1..h6>`, lists, links, images, hr, blockquote, table-2/3/4-cols), each fallback (nested tables, colspan, rowspan, unknown tags), and a round-trip test (convert → render → convert again is stable)
+- [ ] T087 [US4] Add HTTP handlers in `internal/api/handlers/templates.go` and `campaigns.go`: `POST /:id/convert-to-visual` and `POST /:id/opt-out-visual` per [tenant-api.md](./contracts/tenant-api.md); convert is non-persisting (returns the candidate doc), opt-out persists `body_doc = NULL`
+- [ ] T088 [P] [US4] API integration tests for the four new endpoints (convert template, convert campaign, opt-out template, opt-out campaign)
 
-### Frontend
+### Frontend SPA (US4)
 
-- [ ] T077 [US4] Implement `frontend/src/components/visual-editor/extensions/RawHTML.tsx`: TipTap node, opaque content view in the editor (renders sanitized HTML inside a labelled container), exposes an "Edit as HTML" affordance that opens a small modal with a CodeMirror editor for the block's HTML
-- [ ] T078 [US4] Implement `frontend/src/components/code-editor/CodeView.tsx`: `@uiw/react-codemirror` wrapper with `@codemirror/lang-html`, controlled `value`/`onChange`, used both inline (the editor's full-page code view) and inside the RawHTML modal
-- [ ] T079 [US4] Wire a code-view toggle into `<VisualEmailEditor />` chrome: button shows the server-rendered HTML in CodeView; saving from code view sends the edited HTML through the existing PUT (not the visual PUT) and clears `body_doc` IF the operator confirms "edit as HTML only", or keeps `body_doc` and converts back if they save normally
-- [ ] T080 [US4] Wire the "Convert to visual editor" affordance into the campaign and template editor routes for legacy rows (visible when `body_doc == null`); calls `convert-to-visual`, surfaces the conversion warnings, opens the returned doc in `<VisualEmailEditor />` so the operator can review before the next save
-- [ ] T081 [US4] Wire the "Edit as HTML only" affordance (opt-out) into the editor chrome for visual rows; confirmation modal warning that switching loses the structured document
-- [ ] T082 [P] [US4] Vitest tests: code↔visual round-trip preserves edits (either round-tripped or surfaced as a RawHTML block); legacy row (`body_doc: null`) opens in CodeView by default; convert flow shows the warning list and the new doc; opt-out clears `body_doc` and stays sendable
-- [ ] T083 [P] [US4] Vitest test: a RawHTML block in the visual editor shows the "Edit as HTML" affordance and round-trips edits made in the modal back into the same RawHTML block on save
+- [ ] T089 [US4] Implement `frontend/src/components/visual-editor/extensions/RawHTML.tsx`: TipTap node, opaque content view in the editor (renders sanitized HTML inside a labelled container), exposes an "Edit as HTML" affordance that opens a small modal with a CodeMirror editor for the block's HTML
+- [ ] T090 [US4] Implement `frontend/src/components/code-editor/CodeView.tsx`: `@uiw/react-codemirror` wrapper with `@codemirror/lang-html`, controlled `value`/`onChange`, used both inline (the editor's full-page code view) and inside the RawHTML modal
+- [ ] T091 [US4] Wire a code-view toggle into `<VisualEmailEditor />` chrome: button shows the server-rendered HTML in CodeView (loaded from the most recent visual-save response or via a fresh preview call); saving from code view sends the edited HTML through the existing PUT (not the visual PUT) and clears `body_doc` IF the operator confirms "edit as HTML only", or keeps `body_doc` if they save normally
+- [ ] T092 [US4] Wire the "Convert to visual editor" affordance into the campaign and template editor routes for legacy rows (visible when `body_doc == null`); calls `convert-to-visual`, surfaces the conversion warnings, opens the returned doc in `<VisualEmailEditor />` so the operator can review before the next save
+- [ ] T093 [US4] Wire the "Edit as HTML only" affordance (opt-out) into the editor chrome for visual rows; confirmation modal warning that switching loses the structured document
+- [ ] T094 [P] [US4] Vitest tests: code↔visual round-trip preserves edits; legacy row (`body_doc: null`) opens in CodeView by default; convert flow shows the warning list and the new doc; opt-out clears `body_doc` and stays sendable
+- [ ] T095 [P] [US4] Vitest test: a RawHTML block in the visual editor shows the "Edit as HTML" affordance and round-trips edits made in the modal back into the same RawHTML block on save
 
-**Checkpoint**: US4 is functional independent of US1/US2/US5; combined with US1+US2 it covers the full authoring matrix (visual / mixed / code-only / legacy / converted).
+**Checkpoint**: US4 is functional independent of US1/US2/US5; combined with US1+US2 it covers the full authoring matrix.
 
 ---
 
@@ -225,18 +243,18 @@ These tasks replace the removed T021/T022/T035/T037 with a BFF-hosted render pip
 
 **Independent Test**: per [spec.md US5 Independent Test](./spec.md).
 
-### Frontend
+### Frontend SPA (US5)
 
-- [ ] T084 [US5] Implement `frontend/src/components/visual-editor/plugins/imageUpload.ts`: ProseMirror plugin handling `drop` and `paste` of image files — calls the existing `api.media.upload` (multipart) under the current tenant slug, shows inline progress, and on success inserts an `ImageBlock` node referencing the new asset's URL; rejects oversize/disallowed types up front using the limits returned by the media endpoint (re-using whatever Phase 6 already exposes)
-- [ ] T085 [US5] Update `ImageBlock.tsx` (from T050) to also accept the media-library picker — wire the existing Phase 6 `<MediaPicker />` so picking an asset replaces the block's `mediaRef`
-- [ ] T086 [US5] Implement the "no longer available" placeholder in `ImageBlock.tsx`: when the referenced asset returns 404 / not-found from the media endpoint at editor load, render a styled placeholder with a clear message rather than a broken image
-- [ ] T087 [P] [US5] Vitest tests for `imageUpload.ts`: drag a fake `File` → calls `api.media.upload` (mocked) → inserts ImageBlock with the returned URL; oversize rejection inline; disallowed type rejection inline; interrupted upload removes the placeholder
-- [ ] T088 [P] [US5] Vitest test for the deleted-asset placeholder in `ImageBlock.tsx`
+- [ ] T096 [US5] Implement `frontend/src/components/visual-editor/plugins/imageUpload.ts`: ProseMirror plugin handling `drop` and `paste` of image files — calls the existing `api.media.upload` (multipart) under the current tenant slug, shows inline progress, and on success inserts an `ImageBlock` node referencing the new asset's URL; rejects oversize/disallowed types up front using the limits returned by the media endpoint
+- [ ] T097 [US5] Update `ImageBlock.tsx` (from T059) to also accept the media-library picker — wire the existing Phase 6 `<MediaPicker />` so picking an asset replaces the block's `mediaRef`
+- [ ] T098 [US5] Implement the "no longer available" placeholder in `ImageBlock.tsx`: when the referenced asset returns 404 / not-found from the media endpoint at editor load, render a styled placeholder with a clear message rather than a broken image
+- [ ] T099 [P] [US5] Vitest tests for `imageUpload.ts`: drag a fake `File` → calls `api.media.upload` (mocked) → inserts ImageBlock with the returned URL; oversize rejection inline; disallowed type rejection inline; interrupted upload removes the placeholder
+- [ ] T100 [P] [US5] Vitest test for the deleted-asset placeholder in `ImageBlock.tsx`
 
-### Backend
+### Backend / BFF
 
-- [ ] T089 [P] [US5] Backend integration test: save a visual campaign that contains images uploaded via the picker; assert that every `<img src=…>` in the persisted `body_html` matches the tenant media URL pattern (regex check) — no data URLs, no third-party hotlinks
-- [ ] T090 [P] [US5] Backend integration test: save a visual campaign with an `ImageBlock.mediaRef` pointing to a non-media URL; assert the save fails with `invalid_media_ref`
+- [ ] T101 [P] [US5] BFF render integration test: save a visual campaign whose doc contains images uploaded via the picker; assert every `<img src=…>` in the persisted `body_html` matches the tenant media URL pattern (regex check) — no data URLs, no third-party hotlinks
+- [ ] T102 [P] [US5] Go API integration test: save a visual campaign with an `ImageBlock.mediaRef` pointing to a non-media URL; assert the save fails with `invalid_media_ref` (revalidated Go-side as defense in depth even if the BFF accepted it)
 
 **Checkpoint**: US5 is independently demonstrable and the produced-HTML contract from FR-021 is verified end-to-end.
 
@@ -248,18 +266,22 @@ These tasks replace the removed T021/T022/T035/T037 with a BFF-hosted render pip
 
 **Independent Test**: per [spec.md US3 Independent Test](./spec.md).
 
-### Backend
+### BFF (US3)
 
-- [ ] T091 [US3] In the save command (`save_visual_template`, `save_visual_campaign`) accept the `theme` field; persist `null` when the caller passes `null` (inherit-branding state) and the typed `Theme` JSON otherwise; renderer reads the row's theme or invokes `Theme.DefaultsFromBranding` on null
-- [ ] T092 [US3] Wire the branding lookup into the renderer call path: the save handler loads the row's tenant branding once and supplies it to `Renderer.Render(doc, theme)` so the renderer can resolve defaults without reaching into the DB itself (keeps the renderer pure)
-- [ ] T093 [P] [US3] Backend integration test: save a campaign with `theme: null` → render uses branding defaults; change tenant branding → reopen the campaign (GET) → `body_html` re-renders with the new defaults on next save; save with a pinned theme → change branding → reopen → `body_html` still uses the pinned theme
+- [ ] T103 [US3] In `frontend/src/server/routes/visual-save.ts` and `render-preview.ts`: when the incoming `theme` is null, call `clients/go-api.getBranding(cookie, slug)` and resolve the effective theme via a TS port of `Theme.DefaultsFromBranding`; pass the resolved theme to `renderVisualDoc`; the row's persisted `theme` column stays null so future branding changes propagate on next save
+- [ ] T104 [P] [US3] BFF route test: save with `theme: null` mocks branding fetch and renders with branding defaults; save with explicit theme skips the branding fetch entirely
 
-### Frontend
+### Go API (US3)
 
-- [ ] T094 [US3] Implement `frontend/src/components/visual-editor/plugins/theming.ts`: derives the editor's in-canvas style defaults (CSS variables) from the row's tenant branding via the existing branding query (TanStack Query)
-- [ ] T095 [US3] Implement the theme controls panel in `<VisualEmailEditor />` chrome: shows the current resolved values, a clear "Using tenant defaults" indicator when `theme == null`, a "Pin a theme override" button that copies the current resolved values into the row's `theme`, and per-property color/font/width controls when an override is pinned
-- [ ] T096 [US3] Wire the controls to the save command — theme overrides are part of the `PUT /visual` body
-- [ ] T097 [P] [US3] Vitest tests for theme controls: insert a button on a fresh campaign and assert its rendered color matches branding primary; pin an override + change a value + save → preview iframe shows the new value; change branding (mock branding query) → unpinned campaign updates, pinned campaign does not
+- [ ] T105 [US3] In `save_visual_campaign` and `save_visual_template`: persist `null` when the caller passes `null` (inherit-branding state) and the typed `Theme` JSON otherwise; no branding resolution Go-side
+- [ ] T106 [P] [US3] Go integration test: save a campaign with `theme: null` → row stores null; change tenant branding → next save re-renders with the new defaults (asserted through the BFF→Go round-trip); save with a pinned theme → change branding → reopen → `body_html` still uses the pinned theme
+
+### Frontend SPA (US3)
+
+- [ ] T107 [US3] Implement `frontend/src/components/visual-editor/plugins/theming.ts`: derives the editor's in-canvas style defaults (CSS variables) from the row's tenant branding via the existing branding query (TanStack Query)
+- [ ] T108 [US3] Implement the theme controls panel in `<VisualEmailEditor />` chrome: shows the current resolved values, a clear "Using tenant defaults" indicator when `theme == null`, a "Pin a theme override" button that copies the current resolved values into the row's `theme`, and per-property color/font/width controls when an override is pinned
+- [ ] T109 [US3] Wire the controls to the save command — theme overrides are part of the browser → BFF body
+- [ ] T110 [P] [US3] Vitest tests for theme controls: insert a button on a fresh campaign and assert its rendered color matches branding primary; pin an override + change a value + save → preview iframe shows the new value; change branding (mock branding query) → unpinned campaign updates, pinned campaign does not
 
 **Checkpoint**: US3 ships independent of US4/US5; combined with US1+US2 it satisfies the full Phase 7 exit criterion.
 
@@ -271,34 +293,34 @@ These tasks replace the removed T021/T022/T035/T037 with a BFF-hosted render pip
 
 ### Phase 6 alignment (shared registry)
 
-- [ ] T098 [P] Update `internal/audience/domain/subscription_page.go` (and the matching command/query handlers used by Phase 6) so the per-subscription-page "visible profile fields" picker reads from `subscriber_fields` (built-in pseudo-rows + tenant registry rows) — Phase 6 and Phase 7 share one canonical list per FR-016b
-- [ ] T099 [P] Update `frontend/src/routes/t/$slug/public-pages/$id.tsx` (the Phase 6 subscription-page editor) to read the visible-field options from `tp(slug).subscriberFields.list` (the same source the merge-tag picker uses); deprecate any inline field-list source
-- [ ] T100 [P] Backend integration test (cross-context): create a registry entry, verify it appears in BOTH the `/subscriber-fields` response AND the Phase 6 subscription-page's allowed-fields list; delete it, verify it disappears from both
+- [ ] T111 [P] Update `internal/audience/domain/subscription_page.go` (and the matching command/query handlers used by Phase 6) so the per-subscription-page "visible profile fields" picker reads from `subscriber_fields` (built-in pseudo-rows + tenant registry rows) — Phase 6 and Phase 7 share one canonical list per FR-016b
+- [ ] T112 [P] Update `frontend/src/routes/t/$slug/public-pages/$id.tsx` (the Phase 6 subscription-page editor) to read the visible-field options from `tp(slug).subscriberFields.list` (the same source the merge-tag picker uses); deprecate any inline field-list source
+- [ ] T113 [P] Backend integration test (cross-context): create a registry entry, verify it appears in BOTH the `/subscriber-fields` response AND the Phase 6 subscription-page's allowed-fields list; delete it, verify it disappears from both
 
 ### Observability & audit
 
-- [ ] T101 [P] Add structured logging fields (`tenant_id`, `actor_id`, `request_id`, `warnings_count`) to all new endpoints in `internal/api/handlers/` per Constitution V; mirror the existing patterns
-- [ ] T102 [P] Emit audit events from the new handlers (per [tenant-api.md § Audit events](./contracts/tenant-api.md)): `subscriber_field.{create,update,delete,reorder}`, `template.save_visual`, `campaign.save_visual` — body NOT included
-- [ ] T103 [P] Add metrics with the same labels as existing template/campaign save metrics so dashboards split visual vs raw-HTML traffic
+- [ ] T114 [P] Add structured logging fields (`tenant_id`, `actor_id`, `request_id`, `warnings_count`) to all new endpoints in `internal/api/handlers/` and in the BFF Nitro routes (`frontend/src/server/routes/`) per Constitution V; the BFF generates `request_id` if absent and forwards it to Go via `X-Request-Id`
+- [ ] T115 [P] Verify audit events `subscriber_field.{create,update,delete,reorder}`, `template.save_visual`, `campaign.save_visual` are emitted Go-side after persistence with the contract'd payload shape (no body included); the BFF does not write audit rows
+- [ ] T116 [P] Add metrics with the same labels as existing template/campaign save metrics so dashboards split visual vs raw-HTML traffic; add BFF-tier render-latency metric for `renderVisualDoc`
 
 ### Send-pipeline end-to-end verification
 
-- [ ] T104 [P] Backend integration test in `internal/sending/...`: author a campaign visually with `{{ subscriber.first_name }}` + `{{ campaign.unsubscribe_url }}` placeholders; create two subscribers with different first names; run the send pipeline against them; assert each recipient's rendered `body_html` and `body_text` contain the correctly-substituted values; assert tracking-link rewrite and open-pixel injection from existing Phase 3 still happen on top
+- [ ] T117 [P] Backend integration test in `internal/sending/...`: author a campaign visually with `{{ subscriber.first_name }}` + `{{ campaign.unsubscribe_url }}` placeholders; create two subscribers with different first names; run the send pipeline against them; assert each recipient's rendered `body_html` and `body_text` contain the correctly-substituted values; assert tracking-link rewrite and open-pixel injection from existing Phase 3 still happen on top
 
 ### Sanitization end-to-end
 
-- [ ] T105 [P] End-to-end test: POST a `PUT /visual` with a `RawHTML` block containing a `<script>` tag; assert the response includes a `sanitizer_stripped` warning AND the persisted `body_html` contains no `<script>`
+- [ ] T118 [P] End-to-end test (BFF → Go): POST a browser-shape `PUT /visual` with a `RawHTML` block containing a `<script>` tag; assert the BFF renders, Go's bluemonday strips it, the save response includes a `sanitizer_stripped` warning AND the persisted `body_html` contains no `<script>`. Separately POST a `render-preview` with the same content and assert the BFF's preview sanitizer emits the warning (per FR-014a — endpoint-specific warning sources).
 
 ### Documentation & runtime config
 
-- [ ] T106 [P] Update `docs/architecture.md` if it documents the editor surface (likely yes — check the existing file); cross-link to [plan.md](./plan.md) and [research.md](./research.md)
-- [ ] T107 [P] Update `docs/implementation-plan.md` to mark Phase 7 as in-flight / delivered
+- [ ] T119 [P] Update `docs/architecture.md` if it documents the editor surface (likely yes); cross-link to [plan.md](./plan.md) and [research.md](./research.md); document the BFF render tier
+- [ ] T120 [P] Update `docs/implementation-plan.md` to mark Phase 7 as in-flight / delivered
 
 ### Final validation
 
-- [ ] T108 Run the [quickstart.md](./quickstart.md) end-to-end walkthrough manually against a local stack (`make test-db-clean && make migrate-up && go run ./cmd/api & go run ./cmd/worker & pnpm --filter ./frontend dev`); confirm each user story
-- [ ] T109 Run `make test` and `pnpm --filter ./frontend test` — both green
-- [ ] T110 Run `pnpm --filter ./frontend typecheck` and `pnpm --filter ./frontend lint` — clean
+- [ ] T121 Run the [quickstart.md](./quickstart.md) end-to-end walkthrough manually against a local stack (`make test-db-clean && make migrate-up && go run ./cmd/api & go run ./cmd/worker & pnpm --filter ./frontend dev`); confirm each user story
+- [ ] T122 Run `make test` and `pnpm --filter ./frontend test` — both green
+- [ ] T123 Run `pnpm --filter ./frontend typecheck` and `pnpm --filter ./frontend lint` — clean
 
 ---
 
@@ -307,32 +329,33 @@ These tasks replace the removed T021/T022/T035/T037 with a BFF-hosted render pip
 ### Phase dependencies
 
 - **Phase 1 — Setup**: no dependencies; can start immediately.
-- **Phase 2 — Foundational**: depends on Phase 1; BLOCKS all user-story phases.
-- **Phase 3 (US1, P1)**: depends on Phase 2; the recommended MVP slice.
-- **Phase 4 (US2, P1)**: depends on Phase 2; can start in parallel with Phase 3 once Phase 2 is done (different routes/handlers).
-- **Phase 5 (US4, P2)**: depends on Phase 2 and on Phase 3 having delivered the visual editor surface (the code-view toggle lives in `<VisualEmailEditor />` chrome). May be developed in parallel with Phase 6 (US5) and Phase 7 (US3) once US1 is integrated.
-- **Phase 6 (US5, P2)**: depends on Phase 2 and on Phase 3 (specifically `ImageBlock.tsx` from T050).
-- **Phase 7 (US3, P2)**: depends on Phase 2 and on Phase 3 (theme controls live in editor chrome; backend renderer needs the `theme` plumbing from T091/T092 layered on the foundation).
+- **Phase 2 — Foundational**: depends on Phase 1; BLOCKS all user-story phases. T032 (reverse the Go-renderer commit) is the last task of Phase 2 and unblocks the BFF render path.
+- **Phase 3 (US1, P1)**: depends on Phase 2; the recommended MVP slice. The BFF render path (T040–T051) and the Go save handler (T033–T034) can be developed in parallel since the contract between them is fixed by [tenant-api.md](./contracts/tenant-api.md).
+- **Phase 4 (US2, P1)**: depends on Phase 2 and on Phase 3's BFF render module (T041–T042) being reusable for templates. Can run in parallel with Phase 3 once the BFF render core is stable.
+- **Phase 5 (US4, P2)**: depends on Phase 2 and on Phase 3 having delivered the visual editor surface (the code-view toggle lives in `<VisualEmailEditor />` chrome).
+- **Phase 6 (US5, P2)**: depends on Phase 2 and on Phase 3 (specifically `ImageBlock.tsx` from T059).
+- **Phase 7 (US3, P2)**: depends on Phase 2 and on Phase 3 (BFF branding fetch in the render route + frontend theme controls in editor chrome).
 - **Phase 8 — Polish & cross-cutting**: depends on whichever user stories are in scope.
 
 ### Within each user-story phase
 
 - Domain types and adapters before API handlers.
+- Go save endpoint contract (T034) before the BFF route that forwards into it (T047).
+- BFF render core (T041–T043) before the Nitro routes that consume it (T047–T048).
 - API handlers before frontend wiring.
-- Component tests + route tests run after their target compiles; vitest does not need a backend to be up.
 - Backend integration tests run against the testcontainer Postgres and require Docker.
 
 ### Parallel opportunities
 
 - All Setup tasks marked [P] run in parallel.
-- All Foundational tasks marked [P] run in parallel; the renderer (T021) is the only ordering constraint inside Phase 2 (it depends on the domain types it traverses).
-- Once Phase 2 is done, US1 (Phase 3) and US2 (Phase 4) can be worked on by two developers in parallel — they touch disjoint routes/handlers and share only the foundational layer.
+- All Foundational tasks marked [P] run in parallel; no in-Phase-2 cross-task constraint after T011–T016 land.
+- Inside Phase 3, the Go save command/handler (T033–T036) and the BFF render path (T040–T051) can be developed by two pairs in parallel; the contract between them is frozen by [tenant-api.md](./contracts/tenant-api.md).
 - US4, US5, and US3 can be worked on in parallel by three developers once US1 has merged the editor shell.
 - All `[P]` test tasks run in parallel.
 
 ---
 
-## Parallel Example: foundational renderer + frontend setup
+## Parallel Example: foundational types + BFF render core
 
 ```bash
 # Once Phase 1 setup is done, kick off Phase 2 in parallel:
@@ -340,13 +363,33 @@ Task: "Write migration 000020 — internal/db/migrations/000020_visual_editor_an
 Task: "Create Field entity — internal/audience/domain/field.go"
 Task: "Create VisualDoc types — internal/campaign/domain/visualdoc.go"
 Task: "Create Theme value object — internal/campaign/domain/theme.go"
-Task: "Configure visual-editor folder structure — frontend/src/components/visual-editor/"
+Task: "Create sanitizer — internal/campaign/adapters/visualrender/sanitize.go"
+```
+
+## Parallel Example: US1 BFF render + Go save in parallel
+
+```bash
+# Inside Phase 3 (US1), once Phase 2 is done:
+# Pair A — Go API:
+Task: "Implement save_visual_campaign — internal/campaign/app/command/save_visual_campaign.go"
+Task: "Add PUT /campaigns/{id}/visual handler accepting bodyHtml+bodyText"
+Task: "Add subscriber-fields CRUD handlers"
+Task: "Add merge-tags handler"
+
+# Pair B — BFF render path:
+Task: "Add react-email deps to frontend/package.json"
+Task: "Implement components mapping — frontend/src/server/render/components.tsx"
+Task: "Implement renderVisualDoc — frontend/src/server/render/index.ts"
+Task: "Implement TS doc validator — frontend/src/server/validate/"
+Task: "Implement Go-API client with cookie forwarding — frontend/src/server/clients/go-api.ts"
+Task: "Implement visual-save Nitro route — frontend/src/server/routes/visual-save.ts"
+Task: "Implement render-preview Nitro route — frontend/src/server/routes/render-preview.ts"
 ```
 
 ## Parallel Example: US1 frontend component tree
 
 ```bash
-# Inside Phase 3 (US1), once T046 (VisualEmailEditor shell) is done:
+# Inside Phase 3 (US1), once T055 (VisualEmailEditor shell) is done:
 Task: "Implement Columns extension — frontend/src/components/visual-editor/extensions/Columns.tsx"
 Task: "Implement Button extension — frontend/src/components/visual-editor/extensions/Button.tsx"
 Task: "Implement Divider extension — frontend/src/components/visual-editor/extensions/Divider.tsx"
@@ -364,9 +407,9 @@ Task: "Implement PreviewIframe — frontend/src/components/visual-editor/ui/Prev
 
 ### MVP first (US1 only)
 
-1. Phase 1 — Setup (T001–T004).
-2. Phase 2 — Foundational (T005–T033), including the field registry, the renderer, and the sanitizer.
-3. Phase 3 — US1 (T034–T062).
+1. Phase 1 — Setup (T001–T004) — **DONE**.
+2. Phase 2 — Foundational (T005–T032), including the field registry, the sanitizer, the substitutor, and the reversal of the obsolete Go renderer.
+3. Phase 3 — US1 (T033–T071 plus T124–T128): Go save endpoint, BFF render tier, frontend editor tree, route integration, and the FR-009 stale-row gate + Go substitute-sample side-call from the 2026-05-20 clarify round.
 4. **STOP & validate**: spec.md US1 Independent Test (author visually, send a test, confirm inbox).
 5. Demo / ship.
 
@@ -374,7 +417,7 @@ Task: "Implement PreviewIframe — frontend/src/components/visual-editor/ui/Prev
 
 After MVP:
 
-- Ship **US2** (Phase 4): visual templates.
+- Ship **US2** (Phase 4): visual templates — reuses the BFF render core.
 - Ship **US4** (Phase 5): code view, opt-out, raw-HTML conversion — enables migration of any legacy raw-HTML campaigns to the visual editor.
 - Ship **US5** (Phase 6): drag/paste image upload + deleted-asset placeholder — extends US1's picker-only image story.
 - Ship **US3** (Phase 7): theming.
@@ -384,9 +427,9 @@ After MVP:
 
 With three developers after Phase 2:
 
-- Dev A: US1 (Phase 3) → US3 (Phase 7).
-- Dev B: US2 (Phase 4) → US4 (Phase 5).
-- Dev C: cross-cutting Phase 8 alignment (T098–T100) as soon as US1's `/subscriber-fields` endpoint is up → US5 (Phase 6).
+- Dev A: US1 Go save side (T033–T039) → US3 (Phase 7) Go-side.
+- Dev B: US1 BFF render path (T040–T051) → US2 (Phase 4) BFF-side.
+- Dev C: US1 frontend editor tree (T052–T071) → cross-cutting Phase 8 alignment (T111–T113) as soon as US1's `/subscriber-fields` endpoint is up → US5 (Phase 6).
 
 ---
 
@@ -398,4 +441,4 @@ With three developers after Phase 2:
 - Constitution II requires test-backed delivery; every implementation task has at least one accompanying `*_test.go` or `*.test.tsx` task in the same phase.
 - Commit after each logical group (typically the implementation task + its `[P]` test peer).
 - Stop at any phase checkpoint to validate the story independently.
-- Avoid: vague tasks, cross-story dependencies that break independence, and any task that touches the file another in-flight task is editing.
+- The render tier split (BFF for render, Go for validate/sanitize/persist) is fixed by [tenant-api.md](./contracts/tenant-api.md) and [research.md § R4](./research.md). Don't re-introduce a Go renderer.

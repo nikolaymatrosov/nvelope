@@ -393,6 +393,35 @@ substitution gap at send time.
 [legacy NULL body_doc] --opt in "convert to visual"--> [convert html → doc, surface unconvertible regions as RawHTML; user then PUT visuals as normal]
 ```
 
+## Optimistic concurrency (FR-009, resolved 2026-05-20 clarify)
+
+The save handlers (`PUT /campaigns/{id}/visual`, `PUT /templates/{id}/visual`)
+treat the row's existing `updated_at` as the concurrency token. The
+browser→BFF body and the BFF→Go internal body both carry:
+
+```json
+{ "ifUnmodifiedSince": "2026-05-20T12:34:56.123456Z", ... }
+```
+
+The Go handler runs the check and the write inside the same transaction
+in the campaign/template repository:
+
+```text
+BEGIN
+  SELECT updated_at FROM campaigns WHERE id = $1 AND tenant_id = $2 FOR UPDATE;
+  IF row.updated_at != $ifUnmodifiedSince THEN
+      ROLLBACK; RETURN ErrStaleRow
+  END IF
+  UPDATE campaigns SET body_doc = $3, body_html = $4, body_text = $5, theme = $6, updated_at = now() WHERE id = $1;
+COMMIT
+```
+
+`ErrStaleRow` is mapped to HTTP `409 stale_row` by the single
+error-mapping point in `internal/api/...`. The BFF passes the field
+through transparently and surfaces Go's `409` to the SPA verbatim. No
+schema migration required — `updated_at` is microsecond precision in
+Postgres and already exists on both rows.
+
 ## Constraints summary (referenced from FRs)
 
 | Constraint                                                                 | Enforced by                                                                                      |
@@ -407,6 +436,8 @@ substitution gap at send time.
 | Free-form attributes preserved (FR-016e)                                   | No change to subscriber `attributes` JSONB; picker derives from registry only.                   |
 | Theming inheritance (FR-022, FR-024)                                       | NULL `theme` ⇒ `Theme.DefaultsFromBranding`; non-NULL ⇒ pinned override.                         |
 | Code-only legacy compatibility (FR-030)                                    | NULL `body_doc` ⇒ frontend renders CodeView; visual editor never auto-converts.                  |
+| Multi-tab conflict (FR-009)                                                | `ifUnmodifiedSince` vs `updated_at` checked under transaction; `ErrStaleRow → 409 stale_row`.    |
+| Sample substitution in preview (FR-016)                                    | BFF render-preview side-calls Go `POST /substitute-sample`; one substituter implementation.       |
 
 ## Post-design constitution re-check
 
