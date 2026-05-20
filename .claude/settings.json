@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(./**)",
+      "Read(//Users/nikthespirit/Documents/experiment/nvelope/**)",
+      "Edit(./**)",
+      "Write(./**)",
+      "Bash(ls:*)",
+      "Bash(pwd)",
+      "Bash(cat ./**)",
+      "Bash(rmdir ./**)",
+      "Bash(rm ./**)",
+      "Bash(mkdir ./**)",
+      "Bash(mv ./**)",
+      "Bash(cp ./**)",
+      "Bash(find . *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm lint)",
+      "Bash(go vet *)",
+      "Bash(ast-index *)",
+      "Bash(trivy *)"
+    ]
+  }
+}

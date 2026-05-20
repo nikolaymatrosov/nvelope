@@ -1,10 +1,16 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan at
-`specs/013-phase-6-ui/plan.md`.
+`specs/014-visual-email-editor/plan.md`.
 <!-- SPECKIT END -->
 
 Use [go-ddd-architecture](.claude/skills/go-ddd-architecture) skill when need to plan Go architecture.
+
+## Working directory and paths
+
+- Always pass paths relative to the project root to Bash, Read, Edit, and Write (e.g. `internal/campaign/...`, not `/Users/nikthespirit/Documents/experiment/nvelope/internal/campaign/...`). The working directory is already the project root.
+- Never prepend `cd /Users/nikthespirit/Documents/experiment/nvelope && ...` or `cd $(pwd) && ...` to a command. The compound `cd <current-dir> && X` does not match permission rules written for `X` and forces an unnecessary approval prompt.
+- `cd` is only appropriate when entering a *different* directory (e.g. `cd frontend && pnpm test`).
 
 ## Services
 

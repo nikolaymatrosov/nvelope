@@ -226,6 +226,7 @@ export type Permission =
   | "branding:manage"
   | "media:get"
   | "media:manage"
+  | "subscriber_fields:manage"
 
 export const ALL_PERMISSIONS: Array<Permission> = [
   "lists:get",
@@ -252,6 +253,7 @@ export const ALL_PERMISSIONS: Array<Permission> = [
   "branding:manage",
   "media:get",
   "media:manage",
+  "subscriber_fields:manage",
 ]
 
 export type Role = {

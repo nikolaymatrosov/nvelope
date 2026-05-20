@@ -75,4 +75,44 @@ var (
 	// a sending domain that is not the tenant's.
 	ErrSendingDomainNotFound = apperr.NewNotFound("sending_domain_not_found",
 		"no such sending domain")
+
+	// ErrFieldNotFound is returned when no subscriber custom-field matches a
+	// lookup.
+	ErrFieldNotFound = apperr.NewNotFound("subscriber_field_not_found",
+		"no such subscriber field")
+
+	// ErrFieldSlugTaken is returned when creating a custom field whose slug is
+	// already in use within the tenant.
+	ErrFieldSlugTaken = apperr.NewConflict("subscriber_field_slug_taken",
+		"a subscriber field with that slug already exists")
+
+	// ErrFieldBuiltinSlug is returned when a tenant tries to create a custom
+	// field whose slug collides with a built-in pseudo-row (email, name,
+	// first_name, last_name, state).
+	ErrFieldBuiltinSlug = apperr.NewConflict("subscriber_field_builtin_slug",
+		"that slug is reserved for a built-in field")
+
+	// ErrFieldBuiltin is returned when a tenant tries to mutate or delete a
+	// built-in pseudo-row.
+	ErrFieldBuiltin = apperr.NewConflict("subscriber_field_builtin",
+		"built-in subscriber fields cannot be edited or deleted")
+
+	// ErrFieldInvalidSlug is returned when a slug fails the canonical regex.
+	ErrFieldInvalidSlug = apperr.NewIncorrectInput("subscriber_field_invalid_slug",
+		"slug must match ^[a-z][a-z0-9_]{0,62}$")
+
+	// ErrFieldInvalidDisplayName is returned when a display name is empty or
+	// exceeds 128 characters.
+	ErrFieldInvalidDisplayName = apperr.NewIncorrectInput("subscriber_field_invalid_display_name",
+		"display name must be between 1 and 128 characters")
+
+	// ErrFieldInvalidType is returned when the supplied field type is not in
+	// the known set.
+	ErrFieldInvalidType = apperr.NewIncorrectInput("subscriber_field_invalid_type",
+		"type must be one of: text, number, date, boolean, url")
+
+	// ErrFieldReorderIncomplete is returned when a reorder request does not
+	// cover every non-built-in field id exactly once.
+	ErrFieldReorderIncomplete = apperr.NewIncorrectInput("subscriber_field_reorder_incomplete",
+		"reorder must list every custom field exactly once")
 )
