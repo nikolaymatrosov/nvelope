@@ -1,12 +1,9 @@
 package visualrender
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 )
 
 // Negative tests for sanitizeHTML — for every disallowed construct in
@@ -127,25 +124,4 @@ func TestRawHTMLToText(t *testing.T) {
 	in := `<p>hello &amp; goodbye</p><br><span>more</span>`
 	out := rawHTMLToText(in)
 	require.Equal(t, "hello & goodbyemore", out)
-}
-
-// Ensure the renderer's whole-output guarantee holds: a RawHTML block
-// containing a script never produces script in the final HTML, regardless
-// of where it sits.
-func TestRenderer_StripsScriptFromAnyRawHTMLPosition(t *testing.T) {
-	t.Parallel()
-	r := NewRenderer("https://media.nvelope.example/tenants/abc/")
-	doc := &domain.VisualDoc{Version: 1, Nodes: []domain.Node{
-		domain.Paragraph{Children: []domain.Inline{domain.Text{Text: "before"}}},
-		domain.RawHTML{HTML: `<p>safe</p><script>alert(1)</script>`},
-		domain.Columns{Cols: [][]domain.Node{
-			{domain.RawHTML{HTML: `<iframe src="evil"></iframe>`}},
-			{domain.Paragraph{Children: []domain.Inline{domain.Text{Text: "right"}}}},
-		}},
-	}}
-	html, _, warnings, err := r.Render(doc, domain.DefaultsFromBranding("#0066cc"))
-	require.NoError(t, err)
-	require.NotContains(t, html, "<script")
-	require.NotContains(t, strings.ToLower(html), "<iframe")
-	require.NotEmpty(t, warnings)
 }

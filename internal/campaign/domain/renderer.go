@@ -9,14 +9,12 @@ type RenderWarning struct {
 	Detail string
 }
 
-// Renderer is the consumer-owned interface the save commands use to turn a
-// VisualDoc + Theme into email-ready HTML + plain text. The adapter that
-// implements it (internal/campaign/adapters/visualrender) is responsible for
-// sanitization, table-based layout, inline styling, and emission of the
-// literal `{{ namespace.key }}` strings for MergeTag nodes.
-//
-// The interface is declared by the consumer (per Constitution VI: "Contracts
-// are owned by the consumer"). The adapter conforms.
+// Renderer is the legacy consumer-owned interface from the pre-pivot design.
+// Rendering moved out of Go and into the TanStack Start + Nitro BFF — see
+// specs/014-visual-email-editor/research.md § R4. This interface is retained
+// only so the current Template/Campaign constructors compile; T033/T034 will
+// rewrite those constructors to accept already-rendered HTML + plain text
+// directly, after which this declaration should be removed.
 type Renderer interface {
 	Render(doc *VisualDoc, theme Theme) (html string, text string, warnings []RenderWarning, err error)
 }

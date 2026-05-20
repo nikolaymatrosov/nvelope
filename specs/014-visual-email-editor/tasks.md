@@ -93,7 +93,7 @@ Web application with Go backend (`internal/`, `cmd/`, `internal/db/migrations/`)
 
 ### Reverse the previous Go-renderer commit
 
-- [ ] T032 Delete `internal/campaign/adapters/visualrender/render.go` and `internal/campaign/adapters/visualrender/render_golden_test.go` from commit `6824db0`. The renderer moved to the BFF (Phase 3 BFF tasks); these files are obsolete. Remove any code that imports `visualrender.Renderer` (the interface was already dropped in T017 alongside this cleanup).
+- [X] T032 Delete `internal/campaign/adapters/visualrender/render.go` and `internal/campaign/adapters/visualrender/render_golden_test.go` from commit `6824db0`. The renderer moved to the BFF (Phase 3 BFF tasks); these files are obsolete. Remove any code that imports `visualrender.Renderer` (the interface was already dropped in T017 alongside this cleanup).
 
 **Checkpoint**: Foundation ready — schema migrated, domain types + sanitizer + extractor + substitutor + registry compile and tests pass. User-story phases can now begin.
 
