@@ -26,4 +26,16 @@ var (
 	// lookup. It is deliberately opaque — unknown, expired, revoked, and
 	// already-accepted invitations are indistinguishable.
 	ErrInvitationNotFound = apperr.NewNotFound("invitation_not_found", "this invitation is not valid")
+
+	// ErrInvalidBrandingColor is returned when a tenant's primary colour is
+	// not a hex CSS colour.
+	ErrInvalidBrandingColor = apperr.NewIncorrectInput("invalid_color",
+		"the primary colour must be a hex CSS colour like #4f46e5")
+
+	// ErrUnsafeCSS is returned when a tenant's custom CSS contains a construct
+	// that could break out of the public-page <style> block, fetch remote
+	// content, or execute script. The check runs on save so stored CSS is
+	// always safe to render.
+	ErrUnsafeCSS = apperr.NewIncorrectInput("unsafe_css",
+		"custom CSS contains a disallowed construct")
 )

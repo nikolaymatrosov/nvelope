@@ -93,3 +93,38 @@ func (h LocateWorkspaceHandler) Handle(ctx context.Context, q LocateWorkspace) (
 		Status: string(tenant.Status()),
 	}, nil
 }
+
+// LocateWorkspaceByID is the request to resolve a workspace by its id —
+// used by the token-addressed public pages, whose tokens carry the tenant id.
+type LocateWorkspaceByID struct {
+	TenantID string
+}
+
+// LocateWorkspaceByIDHandler handles the LocateWorkspaceByID query.
+type LocateWorkspaceByIDHandler struct {
+	tenants domain.TenantRepository
+}
+
+// NewLocateWorkspaceByIDHandler builds the handler, failing fast on a nil
+// dependency.
+func NewLocateWorkspaceByIDHandler(tenants domain.TenantRepository) LocateWorkspaceByIDHandler {
+	if tenants == nil {
+		panic("nil tenants repository")
+	}
+	return LocateWorkspaceByIDHandler{tenants: tenants}
+}
+
+// Handle resolves the id to a workspace. The returned ResolvedWorkspace carries
+// no membership Role.
+func (h LocateWorkspaceByIDHandler) Handle(ctx context.Context, q LocateWorkspaceByID) (ResolvedWorkspace, error) {
+	tenant, err := h.tenants.GetByID(ctx, q.TenantID)
+	if err != nil {
+		return ResolvedWorkspace{}, err
+	}
+	return ResolvedWorkspace{
+		ID:     tenant.ID(),
+		Slug:   tenant.Slug().String(),
+		Name:   tenant.Name(),
+		Status: string(tenant.Status()),
+	}, nil
+}

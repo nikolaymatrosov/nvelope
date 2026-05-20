@@ -1,0 +1,22 @@
+{{define "preferences"}}{{template "header" .}}
+<h2>Your subscription preferences</h2>
+<p class="nv-muted">{{.Email}}</p>
+{{if .Saved}}<p class="nv-notice">Your preferences have been saved.</p>{{end}}
+{{range .Errors}}<p class="nv-error">{{.}}</p>{{end}}
+<form method="post" action="/p/{{.Token}}">
+<label for="name">Name</label>
+<input type="text" id="name" name="name" value="{{.Name}}">
+{{if .Lists}}
+<p><strong>Lists</strong></p>
+<ul class="nv-list">
+{{range .Lists}}
+<li><label><input type="checkbox" name="list:{{.ListID}}"{{if .Subscribed}} checked{{end}}> {{.Name}}</label></li>
+{{end}}
+</ul>
+{{end}}
+<button type="submit">Save preferences</button>
+</form>
+<form method="post" action="/u/{{.Token}}">
+<button type="submit">Unsubscribe from all lists</button>
+</form>
+{{template "footer" .}}{{end}}

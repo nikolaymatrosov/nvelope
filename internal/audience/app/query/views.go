@@ -84,3 +84,68 @@ type SubscriberPage struct {
 	Subscribers []SubscriberView
 	Total       int
 }
+
+// SubscriptionPageView is the read model for one public subscription page.
+type SubscriptionPageView struct {
+	ID              string
+	Slug            string
+	Title           string
+	TargetListIDs   []string
+	Fields          []domain.FormField
+	SendingDomainID string
+	FromName        string
+	FromLocalPart   string
+	Active          bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// subscriptionPageView projects a domain subscription page onto its read model.
+func subscriptionPageView(p *domain.SubscriptionPage) SubscriptionPageView {
+	fields := p.Fields()
+	if fields == nil {
+		fields = []domain.FormField{}
+	}
+	listIDs := p.TargetListIDs()
+	if listIDs == nil {
+		listIDs = []string{}
+	}
+	return SubscriptionPageView{
+		ID:              p.ID(),
+		Slug:            p.Slug(),
+		Title:           p.Title(),
+		TargetListIDs:   listIDs,
+		Fields:          fields,
+		SendingDomainID: p.SendingDomainID(),
+		FromName:        p.FromName(),
+		FromLocalPart:   p.FromLocalPart(),
+		Active:          p.Active(),
+		CreatedAt:       p.CreatedAt(),
+		UpdatedAt:       p.UpdatedAt(),
+	}
+}
+
+// PendingSubscriptionView is the read model for one pending subscription.
+type PendingSubscriptionView struct {
+	ID      string
+	Email   string
+	Expired bool
+}
+
+// PreferenceListView is one list shown on a subscriber's preference page,
+// with whether the subscriber is currently subscribed to it.
+type PreferenceListView struct {
+	ListID     string
+	Name       string
+	Subscribed bool
+}
+
+// PreferencesView is the read model for a subscriber's self-serve preference
+// page: their profile plus their per-list subscription state.
+type PreferencesView struct {
+	SubscriberID string
+	Email        string
+	Name         string
+	Attributes   map[string]any
+	Lists        []PreferenceListView
+}

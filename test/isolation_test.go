@@ -267,6 +267,187 @@ func TestIAMCrossTenantIsolation(t *testing.T) {
 	}))
 }
 
+// TestPublicSubscriptionCrossTenantIsolation proves the Phase 6 public
+// subscription tables — subscription_pages and pending_subscriptions — are
+// isolated by RLS: a transaction bound to one tenant cannot see or delete
+// another tenant's rows.
+func TestPublicSubscriptionCrossTenantIsolation(t *testing.T) {
+	pool := dbtest.AppPool(t)
+	ctx := context.Background()
+
+	tenantA := seedTenant(t, pool, "Tenant A")
+	tenantB := seedTenant(t, pool, "Tenant B")
+
+	// Seed a sending domain, a subscription page, and a pending subscription
+	// into tenant A.
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		var listID, domainID, pageID string
+		if err := tx.QueryRow(ctx,
+			"INSERT INTO lists (tenant_id, name) VALUES ($1, 'A-list') RETURNING id",
+			tenantA).Scan(&listID); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx,
+			"INSERT INTO sending_domains (tenant_id, domain, status) VALUES ($1, 'a.example.com', 'verified') RETURNING id",
+			tenantA).Scan(&domainID); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO subscription_pages
+			   (tenant_id, slug, title, target_list_ids, sending_domain_id, from_name, from_local_part)
+			 VALUES ($1, 'join', 'Join A', ARRAY[$2]::uuid[], $3, 'A', 'hello') RETURNING id`,
+			tenantA, listID, domainID).Scan(&pageID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx,
+			`INSERT INTO pending_subscriptions
+			   (tenant_id, subscription_page_id, email, target_list_ids, confirmation_token_hash, expires_at)
+			 VALUES ($1, $2, 'p@example.com', ARRAY[$3]::uuid[], 'hash-a', now() + interval '7 days')`,
+			tenantA, pageID, listID)
+		return err
+	}))
+
+	for _, table := range []string{"subscription_pages", "pending_subscriptions"} {
+		t.Run(table, func(t *testing.T) {
+			require.NoError(t, boundTx(ctx, pool, tenantB, func(ctx context.Context, tx pgx.Tx) error {
+				var n int
+				if err := tx.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&n); err != nil {
+					return err
+				}
+				require.Equal(t, 0, n, "bound to B, %s shows none of A's rows", table)
+				tag, err := tx.Exec(ctx, "DELETE FROM "+table)
+				if err != nil {
+					return err
+				}
+				require.EqualValues(t, 0, tag.RowsAffected(),
+					"bound to B, an unfiltered DELETE on %s reaches no row of A's", table)
+				return nil
+			}))
+		})
+	}
+
+	// A's rows survive B's unfiltered DELETE attempts.
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		var pages, pending int
+		require.NoError(t, tx.QueryRow(ctx, "SELECT count(*) FROM subscription_pages").Scan(&pages))
+		require.NoError(t, tx.QueryRow(ctx, "SELECT count(*) FROM pending_subscriptions").Scan(&pending))
+		require.Equal(t, 1, pages, "tenant A's subscription page survives tenant B's unfiltered DELETE")
+		require.Equal(t, 1, pending, "tenant A's pending subscription survives tenant B's unfiltered DELETE")
+		return nil
+	}))
+}
+
+// TestBrandingCrossTenantIsolation proves the tenant_branding table is
+// isolated by RLS: a transaction bound to one tenant cannot see or delete
+// another tenant's branding.
+func TestBrandingCrossTenantIsolation(t *testing.T) {
+	pool := dbtest.AppPool(t)
+	ctx := context.Background()
+
+	tenantA := seedTenant(t, pool, "Tenant A")
+	tenantB := seedTenant(t, pool, "Tenant B")
+
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO tenant_branding (tenant_id, primary_color) VALUES ($1, '#aaaaaa')`,
+			tenantA)
+		return err
+	}))
+
+	require.NoError(t, boundTx(ctx, pool, tenantB, func(ctx context.Context, tx pgx.Tx) error {
+		var n int
+		require.NoError(t, tx.QueryRow(ctx, "SELECT count(*) FROM tenant_branding").Scan(&n))
+		require.Equal(t, 0, n, "bound to B, tenant_branding shows none of A's rows")
+		tag, err := tx.Exec(ctx, "DELETE FROM tenant_branding")
+		require.NoError(t, err)
+		require.EqualValues(t, 0, tag.RowsAffected())
+		return nil
+	}))
+
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		var color string
+		require.NoError(t, tx.QueryRow(ctx,
+			"SELECT primary_color FROM tenant_branding WHERE tenant_id = $1", tenantA).Scan(&color))
+		require.Equal(t, "#aaaaaa", color)
+		return nil
+	}))
+}
+
+// TestMediaCrossTenantIsolation proves the media_assets table is isolated by
+// RLS: a transaction bound to one tenant cannot see, modify, or delete
+// another tenant's media metadata. (Object bytes live in S3 under
+// tenant-prefixed unguessable keys — that isolation is exercised by the
+// blobstore tests in internal/media/adapters.)
+func TestMediaCrossTenantIsolation(t *testing.T) {
+	pool := dbtest.AppPool(t)
+	ctx := context.Background()
+
+	tenantA := seedTenant(t, pool, "Tenant A")
+	tenantB := seedTenant(t, pool, "Tenant B")
+
+	insertAsset := func(tenantID, filename string) string {
+		var id string
+		key := "media/" + tenantID + "/x/" + filename
+		require.NoError(t, boundTx(ctx, pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx,
+				`INSERT INTO media_assets
+				   (tenant_id, filename, content_type, size_bytes, storage_key, public_url)
+				 VALUES ($1, $2, 'image/png', 42, $3, $4)
+				 RETURNING id`, tenantID, filename, key, "https://media.test/"+key).Scan(&id)
+		}))
+		return id
+	}
+
+	aID := insertAsset(tenantA, "a.png")
+	insertAsset(tenantB, "b.png")
+
+	// Bound to A, an unfiltered SELECT returns only A's row.
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, "SELECT id FROM media_assets")
+		require.NoError(t, err)
+		defer rows.Close()
+		var ids []string
+		for rows.Next() {
+			var id string
+			require.NoError(t, rows.Scan(&id))
+			ids = append(ids, id)
+		}
+		require.NoError(t, rows.Err())
+		require.Equal(t, []string{aID}, ids,
+			"bound to A, media_assets exposes only A's row")
+		return nil
+	}))
+
+	// Bound to B, an unfiltered DELETE removes only B's row.
+	require.NoError(t, boundTx(ctx, pool, tenantB, func(ctx context.Context, tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, "DELETE FROM media_assets")
+		require.NoError(t, err)
+		require.EqualValues(t, 1, tag.RowsAffected(),
+			"the unfiltered DELETE reached only the bound tenant's rows")
+		return nil
+	}))
+
+	// A's row still exists.
+	require.NoError(t, boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		var n int
+		require.NoError(t, tx.QueryRow(ctx,
+			"SELECT count(*) FROM media_assets WHERE id = $1", aID).Scan(&n))
+		require.Equal(t, 1, n, "tenant A's media row survives tenant B's unfiltered DELETE")
+		return nil
+	}))
+
+	// An INSERT writing another tenant's id is rejected.
+	err := boundTx(ctx, pool, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		_, e := tx.Exec(ctx,
+			`INSERT INTO media_assets (tenant_id, filename, content_type, size_bytes, storage_key, public_url)
+			 VALUES ($1, 'sneaky.png', 'image/png', 1, 'media/x/y/z.png', 'https://x')`,
+			tenantB)
+		return e
+	})
+	require.Error(t, err,
+		"an INSERT writing another tenant's id must be rejected by the RLS WITH CHECK")
+}
+
 // boundTx runs fn inside a transaction with app.tenant_id bound to tenantID —
 // the binding every tenant-plane access depends on.
 func boundTx(ctx context.Context, pool *pgxpool.Pool, tenantID string,

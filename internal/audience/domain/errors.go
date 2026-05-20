@@ -40,4 +40,39 @@ var (
 	// ErrJobNotReady is returned when an export download is requested before
 	// the job has completed.
 	ErrJobNotReady = apperr.NewConflict("job_not_ready", "this job has not finished yet")
+
+	// ErrSubscriptionPageNotFound is returned when no subscription page matches
+	// a lookup, or the page is inactive.
+	ErrSubscriptionPageNotFound = apperr.NewNotFound("subscription_page_not_found",
+		"no such subscription page")
+
+	// ErrSubscriptionPageSlugTaken is returned when creating or renaming a
+	// subscription page to a slug already used within the tenant.
+	ErrSubscriptionPageSlugTaken = apperr.NewConflict("subscription_page_slug_taken",
+		"a subscription page with that slug already exists")
+
+	// ErrPendingSubscriptionNotFound is returned when no pending subscription
+	// matches a lookup.
+	ErrPendingSubscriptionNotFound = apperr.NewNotFound("pending_subscription_not_found",
+		"no such pending subscription")
+
+	// ErrConfirmationExpired is returned when a confirmation link is followed
+	// after its expiry.
+	ErrConfirmationExpired = apperr.NewIncorrectInput("confirmation_expired",
+		"this confirmation link has expired")
+
+	// ErrSubmissionThrottled is returned when a public subscription form is
+	// submitted too often for the same address or source.
+	ErrSubmissionThrottled = apperr.NewIncorrectInput("submission_throttled",
+		"please wait a moment before trying again")
+
+	// ErrAddressSuppressed is returned when a confirmation would re-subscribe
+	// an address the tenant has suppressed.
+	ErrAddressSuppressed = apperr.NewIncorrectInput("address_suppressed",
+		"this address cannot be subscribed")
+
+	// ErrSendingDomainNotFound is returned when a subscription page references
+	// a sending domain that is not the tenant's.
+	ErrSendingDomainNotFound = apperr.NewNotFound("sending_domain_not_found",
+		"no such sending domain")
 )

@@ -36,5 +36,5 @@ func TestIsListScoped(t *testing.T) {
 
 func TestAllPermissionsCoversCatalogue(t *testing.T) {
 	t.Parallel()
-	require.Len(t, domain.AllPermissions(), 20)
+	require.Len(t, domain.AllPermissions(), 24)
 }

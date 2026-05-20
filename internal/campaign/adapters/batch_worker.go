@@ -26,17 +26,20 @@ type BatchWorker struct {
 	domains     domain.SendingDomainLookup
 	suppression domain.SuppressionChecker
 	usage       domain.UsageRecorder
+	unsubscribe domain.UnsubscribeLinker
 	perTenant   domain.Limit
 	baseURL     string
 }
 
 // NewBatchWorker builds the campaign.batch worker, failing fast on a nil
 // dependency. usage may be nil — a deployment without billing does not meter
-// sends.
+// sends. unsubscribe may be nil — campaign mail then carries no
+// List-Unsubscribe header.
 func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.RecipientRepository,
 	tracking domain.TrackingRepository, messenger domain.Messenger, limiter domain.RateLimiter,
 	domains domain.SendingDomainLookup, suppression domain.SuppressionChecker,
-	usage domain.UsageRecorder, perTenant domain.Limit, baseURL string) *BatchWorker {
+	usage domain.UsageRecorder, unsubscribe domain.UnsubscribeLinker,
+	perTenant domain.Limit, baseURL string) *BatchWorker {
 	if campaigns == nil || recipients == nil || tracking == nil ||
 		messenger == nil || limiter == nil || domains == nil || suppression == nil {
 		panic("nil dependency")
@@ -44,7 +47,8 @@ func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.Recip
 	return &BatchWorker{
 		campaigns: campaigns, recipients: recipients, tracking: tracking,
 		messenger: messenger, limiter: limiter, domains: domains,
-		suppression: suppression, usage: usage, perTenant: perTenant, baseURL: baseURL,
+		suppression: suppression, usage: usage, unsubscribe: unsubscribe,
+		perTenant: perTenant, baseURL: baseURL,
 	}
 }
 
@@ -146,6 +150,18 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 	if html != "" {
 		html = domain.RenderTracked(html, w.baseURL, campaign.ID(), rec.ID(), linkIDs)
 	}
+	headers := map[string]string{
+		"X-Tenant":     tenantID,
+		"X-Campaign":   campaign.ID(),
+		"X-Subscriber": rec.SubscriberID(),
+	}
+	// RFC 8058 one-click unsubscribe: a mail client shows a built-in
+	// unsubscribe control that POSTs to the URL with no page interaction.
+	if w.unsubscribe != nil && rec.SubscriberID() != "" {
+		url := w.unsubscribe.UnsubscribeURL(tenantID, rec.SubscriberID())
+		headers["List-Unsubscribe"] = "<" + url + ">"
+		headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+	}
 	messageRef, err := w.messenger.Send(ctx, domain.OutboundMessage{
 		FromName:    campaign.FromName(),
 		FromAddress: fromAddress,
@@ -153,11 +169,7 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 		Subject:     campaign.Subject(),
 		HTMLBody:    html,
 		TextBody:    campaign.BodyText(),
-		Headers: map[string]string{
-			"X-Tenant":     tenantID,
-			"X-Campaign":   campaign.ID(),
-			"X-Subscriber": rec.SubscriberID(),
-		},
+		Headers:     headers,
 	})
 	// The provider has already accepted (or rejected) the message — the
 	// per-recipient status MUST be recorded even if the worker is shutting

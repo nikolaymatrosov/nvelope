@@ -107,11 +107,20 @@ later phase.
 
 ---
 
-## Phase 6 — Public Pages & Media
+## Phase 6 — Public Pages & Media ✅
 
-- **6.1** Public subscription page, double-opt-in flow, and preference management.
-- **6.2** Campaign archive and RSS feed with per-tenant branding/CSS.
-- **6.3** Media library backed by S3-compatible object storage, tenant-prefixed.
+- **6.1** Public subscription page, double-opt-in flow, and preference management —
+  server-rendered Go `html/template` pages under `/t/{slug}/subscribe/{page-slug}`,
+  `/c/{token}`, `/p/{token}`, `/u/{token}`; confirmation email delivered via the
+  durable `optin.send` River job from the page's verified sending domain.
+- **6.2** Campaign archive and RSS feed with per-tenant branding/CSS — sent campaigns
+  marked archive-visible appear on `/t/{slug}/archive`, `/t/{slug}/archive/{id}`,
+  and `/t/{slug}/feed.xml`. Tenant branding (logo, primary colour, sanitised custom
+  CSS) is applied via a single `.nv-public`-scoped `<style>` block.
+- **6.3** Media library backed by S3-compatible object storage — new `media` bounded
+  context, RLS-protected `media_assets` metadata, tenant-prefixed unguessable
+  capability URLs (`media/{tenantID}/{assetID}/{filename}`); admin endpoints
+  `GET/POST /t/{slug}/api/media` and `DELETE .../{id}`.
 
 **Exit criteria:** subscribers can self-serve via public pages; media uploads work.
 *(Satisfies Epic G, completes Epic H.)*

@@ -94,7 +94,7 @@ func TestOpenWorkspaceSessionProvisionsFirstUserAsOwner(t *testing.T) {
 
 	tenantPerms, _, err := roles.EffectiveFor(context.Background(), "t1", "user-1")
 	require.NoError(t, err)
-	require.Len(t, tenantPerms, 20, "the first user is provisioned the Owner role")
+	require.Len(t, tenantPerms, 24, "the first user is provisioned the Owner role")
 
 	_, err = h.Handle(context.Background(), command.OpenWorkspaceSession{
 		TenantID: "t1", PlatformUserID: "member", Email: "member@b.com", Name: "Member",

@@ -18,6 +18,10 @@ data:
   NVELOPE_FEEDBACK_STREAM_DATABASE: "/ru-central1/b1g000000000000000/etn000000000000000"
   NVELOPE_FEEDBACK_STREAM_TOPIC: "postbox-feedback"
   NVELOPE_FEEDBACK_STREAM_CONSUMER: "nvelope-consumer"
+  NVELOPE_OBJECT_STORAGE_ENDPOINT: "https://storage.yandexcloud.net"
+  NVELOPE_OBJECT_STORAGE_REGION: "ru-central1"
+  NVELOPE_OBJECT_STORAGE_BUCKET: "nvelope-media"
+  NVELOPE_OBJECT_STORAGE_PUBLIC_BASE_URL: "https://nvelope-media.storage.yandexcloud.net"
 ---
 # Secrets for local evaluation. These are throwaway dev values — never reuse
 # them anywhere real.
@@ -34,3 +38,7 @@ stringData:
   # Actual email sending will fail without real Yandex Postbox keys.
   NVELOPE_POSTBOX_ACCESS_KEY_ID: "local-eval-placeholder"
   NVELOPE_POSTBOX_SECRET_ACCESS_KEY: "local-eval-placeholder"
+  # Placeholder object-storage credentials — non-empty so config validation
+  # passes. Media uploads will fail without real S3-compatible keys.
+  NVELOPE_OBJECT_STORAGE_ACCESS_KEY_ID: "local-eval-placeholder"
+  NVELOPE_OBJECT_STORAGE_SECRET_ACCESS_KEY: "local-eval-placeholder"

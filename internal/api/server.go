@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 
@@ -15,8 +16,10 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	deliverabilityapp "github.com/nikolaymatrosov/nvelope/internal/deliverability/app"
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
+	mediaapp "github.com/nikolaymatrosov/nvelope/internal/media/app"
 	sendingapp "github.com/nikolaymatrosov/nvelope/internal/sending/app"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
+	"github.com/nikolaymatrosov/nvelope/internal/token"
 )
 
 // Server wires the nvelope HTTP API: the wired Application, configuration, and
@@ -31,10 +34,14 @@ type Server struct {
 	campaign       campaignapp.Application
 	deliverability deliverabilityapp.Application
 	billing        billingapp.Application
+	media          mediaapp.Application
 	tracking       campaigndomain.TrackingRepository
 	cfg            config.Config
 	logger         *slog.Logger
 	health         http.Handler
+	// prefSigner verifies the stateless preference / one-click-unsubscribe
+	// tokens minted by the campaign send path.
+	prefSigner token.Signer
 }
 
 // New returns a Server. The context applications are built by the composition
@@ -44,12 +51,17 @@ type Server struct {
 func New(auth authapp.Application, tenant tenantapp.Application, audience audienceapp.Application,
 	iam iamapp.Application, sending sendingapp.Application, campaign campaignapp.Application,
 	deliverability deliverabilityapp.Application, billing billingapp.Application,
-	tracking campaigndomain.TrackingRepository,
+	media mediaapp.Application, tracking campaigndomain.TrackingRepository,
 	cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
+	// The preference-token signer shares the TOTP encryption key, derived to a
+	// distinct purpose. A malformed key cannot occur in production (config
+	// validation rejects it) and yields a signer that verifies nothing.
+	signKey, _ := hex.DecodeString(cfg.TOTPEncryptionKey)
 	return &Server{
 		auth: auth, tenant: tenant, audience: audience, iam: iam, sending: sending,
 		campaign: campaign, deliverability: deliverability, billing: billing,
-		tracking: tracking, cfg: cfg, logger: logger, health: health,
+		media: media, tracking: tracking, cfg: cfg, logger: logger, health: health,
+		prefSigner: token.NewSigner(signKey),
 	}
 }
 
@@ -180,6 +192,21 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/campaigns/{id}/analytics", s.handleCampaignAnalytics)
 			r.Get("/dashboard", s.handleDashboard)
 
+			// Public subscription pages — admin configuration (Phase 6 US1).
+			r.Get("/subscription-pages", s.handleListSubscriptionPages)
+			r.Post("/subscription-pages", s.handleCreateSubscriptionPage)
+			r.Put("/subscription-pages/{id}", s.handleUpdateSubscriptionPage)
+
+			// Tenant branding & campaign archive toggle (Phase 6 US3).
+			r.Get("/branding", s.handleGetBranding)
+			r.Put("/branding", s.handleSaveBranding)
+			r.Post("/campaigns/{id}/archive", s.handleSetCampaignArchive)
+
+			// Tenant media library (Phase 6 US4).
+			r.Get("/media", s.handleListMedia)
+			r.Post("/media", s.handleUploadMedia)
+			r.Delete("/media/{id}", s.handleDeleteMedia)
+
 			// Billing — plans, subscription, invoices (Phase 5).
 			r.Get("/plans", s.handleListPlans)
 			r.Post("/subscription", s.handleSubscribe)
@@ -203,5 +230,37 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/o/{campaignId}", s.handleTrackOpen)
 	r.Get("/l/{linkId}", s.handleTrackClick)
 
+	// Public, unauthenticated subscriber-facing pages (Phase 6). The slug-
+	// scoped subtree resolves the tenant from the path; token-addressed pages
+	// resolve it from the signed token's payload.
+	s.mountPublicRoutes(r)
+
+	// Subscriber preference page and one-click unsubscribe (Phase 6 US2). The
+	// signed token carries the tenant, so these routes are not slug-scoped.
+	r.Get("/p/{token}", s.handlePreferencesForm)
+	r.Post("/p/{token}", s.handlePreferencesSubmit)
+	r.Get("/u/{token}", s.handleUnsubscribe)
+	r.Post("/u/{token}", s.handleUnsubscribe)
+
 	return r
+}
+
+// mountPublicRoutes registers the Phase 6 server-rendered public pages — the
+// subscription form, double-opt-in confirmation, preference management,
+// campaign archive, and RSS feed — none of which require a session.
+func (s *Server) mountPublicRoutes(r chi.Router) {
+	r.Route("/t/{slug}", func(r chi.Router) {
+		r.Use(s.resolvePublicTenant)
+
+		// Public subscription + double opt-in (Phase 6 US1).
+		r.Get("/subscribe/{pageSlug}", s.handlePublicSubscribeForm)
+		r.Post("/subscribe/{pageSlug}", s.handlePublicSubscribeSubmit)
+		r.Get("/confirm/{token}", s.handleConfirm)
+		r.Post("/confirm/{token}/resend", s.handleResendConfirmation)
+
+		// Campaign archive + RSS feed (Phase 6 US3).
+		r.Get("/archive", s.handleArchiveIndex)
+		r.Get("/archive/{campaignId}", s.handleArchiveCampaign)
+		r.Get("/feed.xml", s.handleRSSFeed)
+	})
 }

@@ -40,7 +40,7 @@ func main() {
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: api.New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
-			app.Campaign, app.Deliverability, app.Billing, app.Tracking,
+			app.Campaign, app.Deliverability, app.Billing, app.Media, app.Tracking,
 			cfg, logger, healthHandler).Handler(),
 	}
 

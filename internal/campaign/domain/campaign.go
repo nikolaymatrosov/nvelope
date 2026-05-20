@@ -49,6 +49,8 @@ type Campaign struct {
 	updatedAt       time.Time
 	startedAt       *time.Time
 	finishedAt      *time.Time
+	archiveVisible  bool
+	archivedAt      *time.Time
 }
 
 // NewCampaign builds a draft campaign, rejecting any invariant violation. A
@@ -86,7 +88,8 @@ func NewCampaign(tenantID, name, subject, bodyHTML, bodyText, fromName, fromLoca
 func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, fromLocalPart,
 	sendingDomainID, templateID string, status CampaignStatus,
 	maxSendErrors, sentCount, failedCount, recipientCount int,
-	createdAt, updatedAt time.Time, startedAt, finishedAt *time.Time) *Campaign {
+	createdAt, updatedAt time.Time, startedAt, finishedAt *time.Time,
+	archiveVisible bool, archivedAt *time.Time) *Campaign {
 
 	return &Campaign{
 		id: id, tenantID: tenantID, name: name, subject: subject,
@@ -97,6 +100,7 @@ func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, 
 		sentCount: sentCount, failedCount: failedCount, recipientCount: recipientCount,
 		createdAt: createdAt, updatedAt: updatedAt,
 		startedAt: startedAt, finishedAt: finishedAt,
+		archiveVisible: archiveVisible, archivedAt: archivedAt,
 	}
 }
 
@@ -272,4 +276,30 @@ func (c *Campaign) SyncProgress(sent, failed int) {
 // campaign's threshold while it is still running.
 func (c *Campaign) ShouldAutoPause() bool {
 	return c.status == CampaignRunning && c.failedCount > c.maxSendErrors
+}
+
+// ArchiveVisible reports whether the campaign is exposed on the tenant's
+// public archive and RSS feed.
+func (c *Campaign) ArchiveVisible() bool { return c.archiveVisible }
+
+// ArchivedAt returns when the campaign was first made archive-visible, or nil.
+func (c *Campaign) ArchivedAt() *time.Time { return c.archivedAt }
+
+// SetArchiveVisible toggles a campaign's archive visibility. Only a campaign
+// whose send has begun may be made archive-visible — a draft or never-sent
+// campaign has no audience-facing content yet. Idempotent: setting the same
+// value preserves the original archived_at timestamp.
+func (c *Campaign) SetArchiveVisible(v bool, at time.Time) error {
+	if v && c.startedAt == nil {
+		return ErrCampaignNotSent
+	}
+	if v == c.archiveVisible {
+		return nil
+	}
+	c.archiveVisible = v
+	if v && c.archivedAt == nil {
+		at = at.UTC()
+		c.archivedAt = &at
+	}
+	return nil
 }

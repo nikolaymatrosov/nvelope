@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/hex"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -10,6 +11,7 @@ import (
 	audienceapp "github.com/nikolaymatrosov/nvelope/internal/audience/app"
 	audiencecommand "github.com/nikolaymatrosov/nvelope/internal/audience/app/command"
 	audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
+	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	authadapters "github.com/nikolaymatrosov/nvelope/internal/auth/adapters"
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
 	authcommand "github.com/nikolaymatrosov/nvelope/internal/auth/app/command"
@@ -33,6 +35,11 @@ import (
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
 	iamcommand "github.com/nikolaymatrosov/nvelope/internal/iam/app/command"
 	iamquery "github.com/nikolaymatrosov/nvelope/internal/iam/app/query"
+	mediaadapters "github.com/nikolaymatrosov/nvelope/internal/media/adapters"
+	mediaapp "github.com/nikolaymatrosov/nvelope/internal/media/app"
+	mediacommand "github.com/nikolaymatrosov/nvelope/internal/media/app/command"
+	mediaquery "github.com/nikolaymatrosov/nvelope/internal/media/app/query"
+	mediadomain "github.com/nikolaymatrosov/nvelope/internal/media/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/decorator"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/postbox"
@@ -60,6 +67,7 @@ type Application struct {
 	Campaign       campaignapp.Application
 	Deliverability deliverabilityapp.Application
 	Billing        billingapp.Application
+	Media          mediaapp.Application
 	// Tracking is the campaign context's tracking repository, used directly by
 	// the public open/click endpoints.
 	Tracking campaigndomain.TrackingRepository
@@ -73,6 +81,13 @@ type overrides struct {
 	campaignMessenger  campaigndomain.Messenger
 	campaignLimiter    campaigndomain.RateLimiter
 	billingGateway     billingdomain.PaymentGateway
+	mediaBlobStore     mediadomain.BlobStore
+}
+
+// WithMediaBlobStore substitutes the media context's blob store — used by
+// tests to avoid booting an object store.
+func WithMediaBlobStore(b mediadomain.BlobStore) Option {
+	return func(o *overrides) { o.mediaBlobStore = b }
 }
 
 // Option overrides a composition-root dependency. It exists so tests can
@@ -119,6 +134,7 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	tenants := tenantadapters.NewTenants(pool)
 	invitations := tenantadapters.NewInvitations(pool)
 	settings := tenantadapters.NewSettings(pool)
+	branding := tenantadapters.NewBranding(pool)
 
 	onboard := newOnboarding(pool, hasher, cfg.SessionTTL)
 	directory := newMemberDirectory(users, tenants)
@@ -150,6 +166,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				tenantcommand.NewRevokeInvitationHandler(invitations), "RevokeInvitation", logger),
 			UpdateSettings: decorator.ApplyResultCommandDecorators(
 				tenantcommand.NewUpdateSettingsHandler(settings), "UpdateSettings", logger),
+			SaveBranding: decorator.ApplyCommandDecorators(
+				tenantcommand.NewSaveBrandingHandler(branding), "SaveBranding", logger),
 		},
 		Queries: tenantapp.Queries{
 			ListWorkspaces: decorator.ApplyQueryDecorators(
@@ -158,6 +176,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				tenantquery.NewResolveWorkspaceHandler(tenants), "ResolveWorkspace", logger),
 			LocateWorkspace: decorator.ApplyQueryDecorators(
 				tenantquery.NewLocateWorkspaceHandler(tenants), "LocateWorkspace", logger),
+			LocateWorkspaceByID: decorator.ApplyQueryDecorators(
+				tenantquery.NewLocateWorkspaceByIDHandler(tenants), "LocateWorkspaceByID", logger),
 			WorkspaceMembers: decorator.ApplyQueryDecorators(
 				tenantquery.NewWorkspaceMembersHandler(tenants), "WorkspaceMembers", logger),
 			GetSettings: decorator.ApplyQueryDecorators(
@@ -166,6 +186,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				tenantquery.NewPendingInvitationsHandler(invitations), "PendingInvitations", logger),
 			LookUpInvitation: decorator.ApplyQueryDecorators(
 				tenantquery.NewLookUpInvitationHandler(invitations, tenants), "LookUpInvitation", logger),
+			GetBranding: decorator.ApplyQueryDecorators(
+				tenantquery.NewGetBrandingHandler(branding), "GetBranding", logger),
 		},
 	}
 
@@ -175,11 +197,51 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	campaign, tracking := buildCampaign(pool, cfg, logger, ov)
 	deliverability := buildDeliverability(pool, cfg, logger)
 	billing := buildBilling(pool, cfg, logger, ov)
+	media := buildMedia(pool, cfg, logger, ov)
 
 	return Application{
 		Auth: auth, Tenant: tenant, Audience: audience, IAM: iam,
 		Sending: sending, Campaign: campaign, Deliverability: deliverability,
-		Billing: billing, Tracking: tracking,
+		Billing: billing, Media: media, Tracking: tracking,
+	}
+}
+
+// buildMedia wires the media context — tenant media library uploads, listing,
+// and deletion — with logging decorators applied. The blob store is built from
+// configuration; tests substitute it via WithMediaBlobStore.
+func buildMedia(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
+	ov overrides) mediaapp.Application {
+
+	assets := mediaadapters.NewAssets(pool)
+
+	blobs := ov.mediaBlobStore
+	if blobs == nil {
+		s3blobs, err := mediaadapters.NewS3BlobStore(mediaadapters.S3Config{
+			Endpoint:        cfg.ObjectStorageEndpoint,
+			Region:          cfg.ObjectStorageRegion,
+			Bucket:          cfg.ObjectStorageBucket,
+			AccessKeyID:     cfg.ObjectStorageAccessKeyID,
+			SecretAccessKey: cfg.ObjectStorageSecretAccessKey,
+			PublicBaseURL:   cfg.ObjectStoragePublicBaseURL,
+		})
+		if err != nil {
+			panic("building s3 blob store: " + err.Error())
+		}
+		blobs = s3blobs
+	}
+
+	return mediaapp.Application{
+		Commands: mediaapp.Commands{
+			UploadAsset: decorator.ApplyResultCommandDecorators(
+				mediacommand.NewUploadAssetHandler(assets, blobs, cfg.MediaMaxBytes),
+				"UploadAsset", logger),
+			DeleteAsset: decorator.ApplyCommandDecorators(
+				mediacommand.NewDeleteAssetHandler(assets, blobs), "DeleteAsset", logger),
+		},
+		Queries: mediaapp.Queries{
+			ListAssets: decorator.ApplyQueryDecorators(
+				mediaquery.NewListAssetsHandler(assets), "ListAssets", logger),
+		},
 	}
 }
 
@@ -361,6 +423,9 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 					txMessages, deliverabilityadapters.NewSuppressionChecker(pool), usageRecorder,
 					quotaGate, perTenant),
 				"SendTransactional", logger),
+			SetArchiveVisibility: decorator.ApplyCommandDecorators(
+				campaigncommand.NewSetArchiveVisibilityHandler(campaigns),
+				"SetArchiveVisibility", logger),
 		},
 		Queries: campaignapp.Queries{
 			ListTemplates: decorator.ApplyQueryDecorators(
@@ -371,6 +436,10 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 				campaignquery.NewListCampaignsHandler(campaigns), "ListCampaigns", logger),
 			GetCampaign: decorator.ApplyQueryDecorators(
 				campaignquery.NewGetCampaignHandler(campaigns), "GetCampaign", logger),
+			ListArchive: decorator.ApplyQueryDecorators(
+				campaignquery.NewListArchiveHandler(campaigns), "ListArchive", logger),
+			GetArchivedCampaign: decorator.ApplyQueryDecorators(
+				campaignquery.NewGetArchivedCampaignHandler(campaigns), "GetArchivedCampaign", logger),
 		},
 	}
 	return app, tracking
@@ -487,13 +556,24 @@ func buildIAM(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) iamapp
 	}
 }
 
+// optinThrottleMax and optinThrottleWindow bound how often a public
+// subscription form may be submitted for one address or source, so the form
+// cannot be used to flood an inbox with confirmation mail.
+const (
+	optinThrottleMax    = 5
+	optinThrottleWindow = 10 * time.Minute
+)
+
 // buildAudience wires the audience context — lists, subscribers, memberships,
-// and import/export jobs — with logging decorators applied to every handler.
+// import/export jobs, and the Phase 6 public subscription pages — with logging
+// decorators applied to every handler.
 func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) audienceapp.Application {
 	lists := audienceadapters.NewLists(pool)
 	subscribers := audienceadapters.NewSubscribers(pool)
 	memberships := audienceadapters.NewMemberships(pool)
 	jobRepo := audienceadapters.NewJobs(pool)
+	subscriptionPages := audienceadapters.NewSubscriptionPages(pool)
+	pendingSubscriptions := audienceadapters.NewPendingSubscriptions(pool)
 
 	// The API service only enqueues jobs; the worker service consumes them.
 	riverClient, err := jobs.NewInsertOnlyClient(pool)
@@ -501,6 +581,31 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 		panic("building river client: " + err.Error())
 	}
 	enqueuer := jobs.NewEnqueuer(riverClient, cfg.WorkerQueue)
+	// Double-opt-in confirmation emails ride the sending queue.
+	optinEnqueuer := jobs.NewSendEnqueuer(riverClient, cfg.WorkerSendQueue)
+
+	// The submission throttle needs Redis. Production config always supplies a
+	// Redis DSN (config.Validate requires it); a config without one — only
+	// constructed directly in tests — gets a permissive no-op throttle.
+	var throttle audiencedomain.SubmissionThrottle = allowAllThrottle{}
+	if cfg.RedisURL != "" {
+		redisThrottle, err := audienceadapters.NewSubmissionThrottle(cfg.RedisURL,
+			optinThrottleMax, optinThrottleWindow)
+		if err != nil {
+			panic("building submission throttle: " + err.Error())
+		}
+		throttle = redisThrottle
+	}
+	sendingDomains := sendingadapters.NewSendingDomains(pool)
+	domainCheck := NewSendingDomainOwnership(sendingDomains)
+	suppression := deliverabilityadapters.NewSuppressionChecker(pool)
+
+	// Production config always supplies a confirmation TTL (config.Validate
+	// requires a positive value); a directly-constructed test config may not.
+	optinTTL := cfg.OptinConfirmationTTL
+	if optinTTL <= 0 {
+		optinTTL = 168 * time.Hour
+	}
 
 	return audienceapp.Application{
 		Commands: audienceapp.Commands{
@@ -526,6 +631,27 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 				audiencecommand.NewStartImportHandler(jobRepo, enqueuer), "StartImport", logger),
 			StartExport: decorator.ApplyResultCommandDecorators(
 				audiencecommand.NewStartExportHandler(jobRepo, enqueuer), "StartExport", logger),
+			SaveSubscriptionPage: decorator.ApplyResultCommandDecorators(
+				audiencecommand.NewSaveSubscriptionPageHandler(subscriptionPages, lists, domainCheck),
+				"SaveSubscriptionPage", logger),
+			SubmitPublicSubscription: decorator.ApplyCommandDecorators(
+				audiencecommand.NewSubmitPublicSubscriptionHandler(subscriptionPages,
+					pendingSubscriptions, throttle, optinEnqueuer, optinTTL),
+				"SubmitPublicSubscription", logger),
+			ConfirmSubscription: decorator.ApplyResultCommandDecorators(
+				audiencecommand.NewConfirmSubscriptionHandler(pendingSubscriptions, subscribers,
+					memberships, suppression),
+				"ConfirmSubscription", logger),
+			ResendConfirmation: decorator.ApplyCommandDecorators(
+				audiencecommand.NewResendConfirmationHandler(pendingSubscriptions, optinEnqueuer,
+					optinTTL),
+				"ResendConfirmation", logger),
+			UpdatePreferences: decorator.ApplyCommandDecorators(
+				audiencecommand.NewUpdatePreferencesHandler(subscribers, memberships),
+				"UpdatePreferences", logger),
+			PublicUnsubscribe: decorator.ApplyCommandDecorators(
+				audiencecommand.NewPublicUnsubscribeHandler(memberships),
+				"PublicUnsubscribe", logger),
 		},
 		Queries: audienceapp.Queries{
 			ListLists: decorator.ApplyQueryDecorators(
@@ -542,6 +668,18 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 				audiencequery.NewGetJobStatusHandler(jobRepo), "GetJobStatus", logger),
 			ExportFile: decorator.ApplyQueryDecorators(
 				audiencequery.NewExportFileHandler(jobRepo), "ExportFile", logger),
+			GetSubscriptionPage: decorator.ApplyQueryDecorators(
+				audiencequery.NewGetSubscriptionPageHandler(subscriptionPages),
+				"GetSubscriptionPage", logger),
+			ListSubscriptionPages: decorator.ApplyQueryDecorators(
+				audiencequery.NewListSubscriptionPagesHandler(subscriptionPages),
+				"ListSubscriptionPages", logger),
+			GetPendingByToken: decorator.ApplyQueryDecorators(
+				audiencequery.NewGetPendingByTokenHandler(pendingSubscriptions),
+				"GetPendingByToken", logger),
+			GetPreferences: decorator.ApplyQueryDecorators(
+				audiencequery.NewGetPreferencesHandler(subscribers, memberships, lists),
+				"GetPreferences", logger),
 		},
 	}
 }

@@ -20,6 +20,7 @@ import (
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
+	mediaadapters "github.com/nikolaymatrosov/nvelope/internal/media/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/tenantdb"
 	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
@@ -111,14 +112,16 @@ func newTestServer(t *testing.T) *testServer {
 		WorkerTenantConcurrency: 2,
 		// A fixed 32-byte key (hex-encoded) so the TOTP capability builds.
 		TOTPEncryptionKey: "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+		MediaMaxBytes:     10 << 20,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	txMessenger := &capturingMessenger{}
 	app := service.NewApplication(pool, cfg, logger,
 		service.WithSendingProvisioner(fakeProvisioner{}),
-		service.WithCampaignSender(txMessenger, permissiveLimiter{}))
+		service.WithCampaignSender(txMessenger, permissiveLimiter{}),
+		service.WithMediaBlobStore(mediaadapters.NewMemoryBlobStore("https://media.test")))
 	handler := New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
-		app.Campaign, app.Deliverability, app.Billing, app.Tracking,
+		app.Campaign, app.Deliverability, app.Billing, app.Media, app.Tracking,
 		cfg, logger, http.NotFoundHandler()).Handler()
 
 	hs := httptest.NewTLSServer(handler)

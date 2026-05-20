@@ -1,0 +1,12 @@
+{{define "archive_index"}}{{template "header" .}}
+<h2>Archive</h2>
+{{if .Entries}}
+<ul class="nv-list">
+{{range .Entries}}
+<li><a href="/t/{{$.Slug}}/archive/{{.ID}}">{{.Name}}</a><br><span class="nv-muted">{{.Date}}</span></li>
+{{end}}
+</ul>
+{{else}}
+<p class="nv-muted">No archived campaigns yet.</p>
+{{end}}
+{{template "footer" .}}{{end}}

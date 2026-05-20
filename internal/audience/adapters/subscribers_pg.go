@@ -207,7 +207,10 @@ func (r *Subscribers) InList(ctx context.Context, tenantID, listID string,
 	var subs []*domain.Subscriber
 	var total int
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
-		const join = "JOIN subscriber_lists sl ON sl.subscriber_id = s.id WHERE sl.list_id = $1"
+		// An unsubscribed membership is excluded: a subscriber who has left a
+		// list is no longer a recipient of, nor exported as a member of, it.
+		const join = "JOIN subscriber_lists sl ON sl.subscriber_id = s.id " +
+			"WHERE sl.list_id = $1 AND sl.subscription_status <> 'unsubscribed'"
 		if err := tx.QueryRow(ctx,
 			"SELECT count(*) FROM subscribers s "+join, listID).Scan(&total); err != nil {
 			if db.IsInvalidInput(err) {

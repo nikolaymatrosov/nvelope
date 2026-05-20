@@ -113,6 +113,21 @@ type UsageRollupArgs struct {
 // Kind is the stable River job kind for a usage rollup.
 func (UsageRollupArgs) Kind() string { return "usage.rollup" }
 
+// OptinSendArgs is the River job payload for sending one double-opt-in
+// confirmation email. It carries the pending-subscription identifier — the row
+// itself lives in PostgreSQL — plus the raw confirmation token, which is
+// needed to build the confirmation link and is held only as a hash at rest.
+// The job table is transient, so the raw token never persists long-term.
+type OptinSendArgs struct {
+	TenantID              string `json:"tenant_id"`
+	TenantSlug            string `json:"tenant_slug"`
+	PendingSubscriptionID string `json:"pending_subscription_id"`
+	ConfirmationToken     string `json:"confirmation_token"`
+}
+
+// Kind is the stable River job kind for a double-opt-in confirmation send.
+func (OptinSendArgs) Kind() string { return "optin.send" }
+
 // Migrate installs (or updates) River's own queue tables. It is invoked from
 // cmd/migrate after the application migrations so `migrate up` provisions the
 // whole schema.
@@ -337,6 +352,21 @@ func (e *SendEnqueuer) EnqueueUsageRollup(ctx context.Context, tenantID string) 
 		})
 	if err != nil {
 		return fmt.Errorf("enqueuing usage rollup job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueOptinSend enqueues a double-opt-in confirmation send for one pending
+// subscription, keyed to its pending_subscriptions row.
+func (e *SendEnqueuer) EnqueueOptinSend(ctx context.Context, tenantID, tenantSlug, pendingSubscriptionID, confirmationToken string) error {
+	_, err := e.client.Insert(ctx, OptinSendArgs{
+		TenantID:              tenantID,
+		TenantSlug:            tenantSlug,
+		PendingSubscriptionID: pendingSubscriptionID,
+		ConfirmationToken:     confirmationToken,
+	}, &river.InsertOpts{Queue: e.queue})
+	if err != nil {
+		return fmt.Errorf("enqueuing optin send job: %w", err)
 	}
 	return nil
 }

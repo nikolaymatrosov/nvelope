@@ -79,4 +79,10 @@ var (
 	// suspended for non-payment, blocking all sends.
 	ErrTenantSuspended = apperr.NewForbidden("tenant_suspended",
 		"the tenant's subscription is suspended for non-payment")
+
+	// ErrCampaignNotSent is returned when archive-visibility is enabled on a
+	// campaign whose send has never begun — a draft has no audience-facing
+	// content to archive.
+	ErrCampaignNotSent = apperr.NewConflict("campaign_not_sent",
+		"only a sent campaign can be made archive-visible")
 )

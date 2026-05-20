@@ -1,0 +1,17 @@
+{{define "subscribe"}}{{template "header" .}}
+<h2>{{.PageTitle}}</h2>
+{{if .Submitted}}
+<p class="nv-notice">Thanks — please check your email for a link to confirm your subscription.</p>
+{{else}}
+{{range .Errors}}<p class="nv-error">{{.}}</p>{{end}}
+<form method="post" action="/t/{{.Slug}}/subscribe/{{.PageSlug}}">
+<label for="email">Email</label>
+<input type="email" id="email" name="email" value="{{index .Values "email"}}" required>
+{{range .Fields}}
+<label for="f_{{.Key}}">{{.Label}}{{if .Required}} *{{end}}</label>
+<input type="text" id="f_{{.Key}}" name="{{.Key}}" value="{{index $.Values .Key}}"{{if .Required}} required{{end}}>
+{{end}}
+<button type="submit">Subscribe</button>
+</form>
+{{end}}
+{{template "footer" .}}{{end}}

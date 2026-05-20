@@ -28,6 +28,11 @@ func setPhase3Env(t *testing.T) {
 	t.Setenv("NVELOPE_FEEDBACK_STREAM_DATABASE", "/ru-central1/b1g/etn")
 	t.Setenv("NVELOPE_FEEDBACK_STREAM_TOPIC", "postbox-feedback")
 	t.Setenv("NVELOPE_FEEDBACK_STREAM_CONSUMER", "nvelope-consumer")
+	t.Setenv("NVELOPE_OBJECT_STORAGE_ENDPOINT", "https://storage.yandexcloud.net")
+	t.Setenv("NVELOPE_OBJECT_STORAGE_BUCKET", "nvelope-media")
+	t.Setenv("NVELOPE_OBJECT_STORAGE_ACCESS_KEY_ID", "test-os-access-key")
+	t.Setenv("NVELOPE_OBJECT_STORAGE_SECRET_ACCESS_KEY", "test-os-secret-key")
+	t.Setenv("NVELOPE_OBJECT_STORAGE_PUBLIC_BASE_URL", "https://media.example.com")
 }
 
 func TestLoadValidConfig(t *testing.T) {
@@ -82,6 +87,45 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	require.Equal(t, 72*time.Hour, cfg.SendingDomainVerifyWindow)
 	require.Equal(t, 500, cfg.CampaignBatchSize)
 	require.Equal(t, 60*time.Second, cfg.AnalyticsRefreshInterval)
+	require.Equal(t, "ru-central1", cfg.ObjectStorageRegion)
+	require.Equal(t, "http://localhost:8080", cfg.PublicBaseURL)
+	require.Equal(t, 168*time.Hour, cfg.OptinConfirmationTTL)
+	require.Equal(t, int64(10<<20), cfg.MediaMaxBytes)
+}
+
+func TestLoadObjectStorageConfig(t *testing.T) {
+	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	t.Setenv("NVELOPE_BASE_URL", "https://app.example.com")
+	t.Setenv("NVELOPE_PUBLIC_BASE_URL", "https://pages.example.com")
+	t.Setenv("NVELOPE_OPTIN_CONFIRMATION_TTL", "48h")
+	t.Setenv("NVELOPE_MEDIA_MAX_BYTES", "5242880")
+	setPhase3Env(t)
+
+	cfg, err := Load("")
+	require.NoError(t, err)
+	require.Equal(t, "https://storage.yandexcloud.net", cfg.ObjectStorageEndpoint)
+	require.Equal(t, "nvelope-media", cfg.ObjectStorageBucket)
+	require.Equal(t, "https://media.example.com", cfg.ObjectStoragePublicBaseURL)
+	require.Equal(t, "https://pages.example.com", cfg.PublicBaseURL)
+	require.Equal(t, 48*time.Hour, cfg.OptinConfirmationTTL)
+	require.Equal(t, int64(5242880), cfg.MediaMaxBytes)
+}
+
+func TestLoadMissingObjectStorageFails(t *testing.T) {
+	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	t.Setenv("NVELOPE_REDIS_URL", "redis://localhost:6379/0")
+	t.Setenv("NVELOPE_POSTBOX_ACCESS_KEY_ID", "test-access-key")
+	t.Setenv("NVELOPE_POSTBOX_SECRET_ACCESS_KEY", "test-secret-key")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_ENDPOINT", "grpcs://ydb.example.net:2135")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_DATABASE", "/ru-central1/b1g/etn")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_TOPIC", "postbox-feedback")
+	t.Setenv("NVELOPE_FEEDBACK_STREAM_CONSUMER", "nvelope-consumer")
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_OBJECT_STORAGE_ENDPOINT")
 }
 
 func TestMigrateDatabaseURLFallsBackToDatabaseURL(t *testing.T) {
