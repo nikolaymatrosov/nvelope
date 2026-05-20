@@ -1,10 +1,11 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { ImageIcon } from "lucide-react"
 import { CampaignStatusBadge } from "./index"
-import type { CampaignView } from "@/lib/api-types"
+import type { CampaignView, MediaAssetView } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { ApiError, errorMessage } from "@/lib/errors"
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/select"
 import { AsyncState } from "@/components/common/async-state"
 import { ConfirmDialog } from "@/components/common/confirm-dialog"
+import { MediaPicker } from "@/components/common/media-picker"
 import { FormField, compose, fieldError, rules } from "@/components/common/form-field"
 
 export const Route = createFileRoute("/t/$slug/campaigns/$id")({
@@ -106,6 +108,10 @@ function CampaignEditor({
   const [sendBlock, setSendBlock] = useState<"quota" | "suspended" | null>(
     null,
   )
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false)
+  const bodyHtmlRef = useRef<HTMLTextAreaElement | null>(null)
+  const { can } = usePermissions(slug)
+  const canPickMedia = can("media:get")
 
   const domainsQuery = useQuery({
     queryKey: queryKeys.sendingDomains(slug),
@@ -178,6 +184,20 @@ function CampaignEditor({
       }
       toast.error(errorMessage(e))
     },
+  })
+
+  const archive = useMutation({
+    mutationFn: (visible: boolean) =>
+      api.setCampaignArchive(slug, campaign.id, visible),
+    onSuccess: async (_, visible) => {
+      await invalidate()
+      toast.success(
+        visible
+          ? "Campaign is now visible in the public archive."
+          : "Campaign is hidden from the public archive.",
+      )
+    },
+    onError: (e) => toast.error(errorMessage(e)),
   })
 
   const lifecycle = useMutation({
@@ -322,6 +342,29 @@ function CampaignEditor({
         <SendProgress campaign={campaign} />
       )}
 
+      {campaign.status !== "draft" && canManage && (
+        <Card data-testid="archive-visibility-card">
+          <CardHeader>
+            <CardTitle>Public archive</CardTitle>
+            <CardDescription>
+              When enabled, this campaign appears in the tenant's public
+              archive index, on its standalone page, and in the RSS feed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={Boolean(campaign.archive_visible)}
+                disabled={archive.isPending}
+                onCheckedChange={(c) => archive.mutate(Boolean(c))}
+                data-testid="archive-visible-toggle"
+              />
+              Visible in the public archive
+            </label>
+          </CardContent>
+        </Card>
+      )}
+
       {isDraft ? (
         <form
           className="flex flex-col gap-6"
@@ -375,13 +418,54 @@ function CampaignEditor({
               </form.Field>
               <form.Field name="bodyHtml">
                 {(field) => (
-                  <FormField label="HTML body">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="campaign-body-html">HTML body</Label>
+                      {canPickMedia && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setMediaPickerOpen(true)}
+                          data-testid="open-media-picker"
+                        >
+                          <ImageIcon /> Insert from media library
+                        </Button>
+                      )}
+                    </div>
                     <Textarea
+                      id="campaign-body-html"
+                      ref={bodyHtmlRef}
                       rows={8}
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                     />
-                  </FormField>
+                    <MediaPicker
+                      slug={slug}
+                      open={mediaPickerOpen}
+                      onOpenChange={setMediaPickerOpen}
+                      onPick={(asset: MediaAssetView) => {
+                        const ta = bodyHtmlRef.current
+                        const value = field.state.value
+                        const insert = asset.public_url
+                        if (ta) {
+                          const start = ta.selectionStart
+                          const end = ta.selectionEnd
+                          const next =
+                            value.slice(0, start) + insert + value.slice(end)
+                          field.handleChange(next)
+                          // Restore caret after the inserted URL.
+                          requestAnimationFrame(() => {
+                            const pos = start + insert.length
+                            ta.focus()
+                            ta.setSelectionRange(pos, pos)
+                          })
+                        } else {
+                          field.handleChange(value + insert)
+                        }
+                      }}
+                    />
+                  </div>
                 )}
               </form.Field>
               <form.Field name="bodyText">

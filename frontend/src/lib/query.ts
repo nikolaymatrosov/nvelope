@@ -108,4 +108,13 @@ export const queryKeys = {
     ["t", slug, "invoices", { limit, offset }] as const,
   invoice: (slug: string, id: string) =>
     ["t", slug, "invoices", id] as const,
+
+  subscriptionPages: (slug: string) =>
+    ["t", slug, "subscription-pages"] as const,
+  subscriptionPage: (slug: string, id: string) =>
+    ["t", slug, "subscription-pages", id] as const,
+  branding: (slug: string) => ["t", slug, "branding"] as const,
+  media: (slug: string) => ["t", slug, "media"] as const,
+  mediaAsset: (slug: string, id: string) =>
+    ["t", slug, "media", id] as const,
 }

@@ -13,6 +13,7 @@ import type {
   APIKey,
   AuditRecord,
   BounceSettings,
+  BrandingView,
   CampaignAnalytics,
   CampaignView,
   CreateCampaignInput,
@@ -27,6 +28,8 @@ import type {
   IssuedAPIKey,
   JobStatusView,
   List,
+  MediaAssetView,
+  MediaUploadResult,
   Membership,
   Node,
   Page,
@@ -34,10 +37,13 @@ import type {
   PlanView,
   PlatformAccount,
   Role,
+  SaveBrandingInput,
+  SaveSubscriptionPageInput,
   SessionResult,
   StartExportInput,
   SubscribeResult,
   Subscriber,
+  SubscriptionPageView,
   SubscriptionResponse,
   SuppressionEntry,
   SuppressionListResponse,
@@ -351,6 +357,12 @@ export const api = {
     request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/resume`)),
   cancelCampaign: (slug: string, id: string) =>
     request<{ status: string }>("POST", tp(slug, `/campaigns/${id}/cancel`)),
+  setCampaignArchive: (slug: string, id: string, visible: boolean) =>
+    request<{ visible: boolean }>(
+      "POST",
+      tp(slug, `/campaigns/${id}/archive`),
+      { visible },
+    ),
 
   // ── Suppression list (Phase 4) ─────────────────────────────────────────────
   suppressions: {
@@ -416,6 +428,52 @@ export const api = {
       request<InvoiceView>("GET", tp(slug, `/invoices/${id}`)),
     settleInvoice: (slug: string, id: string) =>
       request<InvoiceView>("POST", tp(slug, `/invoices/${id}/settle`)),
+  },
+
+  // ── Subscription pages (Phase 6) ───────────────────────────────────────────
+  subscriptionPages: {
+    list: (slug: string) =>
+      request<{ subscription_pages: Array<SubscriptionPageView> }>(
+        "GET",
+        tp(slug, "/subscription-pages"),
+      ),
+    create: (slug: string, body: SaveSubscriptionPageInput) =>
+      request<SubscriptionPageView>(
+        "POST",
+        tp(slug, "/subscription-pages"),
+        { ...body },
+      ),
+    update: (slug: string, id: string, body: SaveSubscriptionPageInput) =>
+      request<SubscriptionPageView>(
+        "PUT",
+        tp(slug, `/subscription-pages/${id}`),
+        { ...body },
+      ),
+  },
+
+  // ── Branding (Phase 6) ─────────────────────────────────────────────────────
+  branding: {
+    get: (slug: string) =>
+      request<BrandingView>("GET", tp(slug, "/branding")),
+    save: (slug: string, body: SaveBrandingInput) =>
+      request<BrandingView>("PUT", tp(slug, "/branding"), { ...body }),
+  },
+
+  // ── Media library (Phase 6) ────────────────────────────────────────────────
+  media: {
+    list: (slug: string) =>
+      request<{ items: Array<MediaAssetView> }>("GET", tp(slug, "/media")),
+    upload: (slug: string, file: File) => {
+      const form = new FormData()
+      form.append("file", file)
+      return requestMultipart<MediaUploadResult>(
+        "POST",
+        tp(slug, "/media"),
+        form,
+      )
+    },
+    remove: (slug: string, id: string) =>
+      request("DELETE", tp(slug, `/media/${id}`)),
   },
 }
 

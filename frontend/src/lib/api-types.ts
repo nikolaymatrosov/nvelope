@@ -222,6 +222,10 @@ export type Permission =
   | "transactional:send"
   | "billing:get"
   | "billing:manage"
+  | "subscription_pages:manage"
+  | "branding:manage"
+  | "media:get"
+  | "media:manage"
 
 export const ALL_PERMISSIONS: Array<Permission> = [
   "lists:get",
@@ -244,6 +248,10 @@ export const ALL_PERMISSIONS: Array<Permission> = [
   "transactional:send",
   "billing:get",
   "billing:manage",
+  "subscription_pages:manage",
+  "branding:manage",
+  "media:get",
+  "media:manage",
 ]
 
 export type Role = {
@@ -395,6 +403,7 @@ export type CampaignView = {
   updated_at: string
   started_at?: string
   finished_at?: string
+  archive_visible?: boolean
 }
 
 export type CreateCampaignInput = {
@@ -594,4 +603,96 @@ export type InvoiceView = InvoiceSummary & {
   nextAttemptAt: string | null
   lineItems: Array<LineItemView>
   paymentAttempts: Array<PaymentAttemptView>
+}
+
+// ── Public pages & media (Phase 6) ───────────────────────────────────────────
+
+// One configurable field beyond the always-present email a public subscription
+// page collects. Matches `audiencedomain.FormField` (snake_case json tags).
+export type SubscriptionPageFieldView = {
+  key: string
+  label: string
+  required: boolean
+}
+
+// SubscriptionPageView matches the backend's PascalCase read model (no JSON
+// tags on the Go struct) — fields are emitted as-is.
+export type SubscriptionPageView = {
+  ID: string
+  Slug: string
+  Title: string
+  TargetListIDs: Array<string>
+  Fields: Array<SubscriptionPageFieldView>
+  SendingDomainID: string
+  FromName: string
+  FromLocalPart: string
+  Active: boolean
+  CreatedAt: string
+  UpdatedAt: string
+}
+
+export type SaveSubscriptionPageInput = {
+  slug: string
+  title: string
+  target_list_ids: Array<string>
+  fields: Array<SubscriptionPageFieldView>
+  sending_domain_id: string
+  from_name: string
+  from_local_part: string
+  active: boolean
+}
+
+// BrandingView matches the backend's snake_case json shape.
+export type BrandingView = {
+  logo_url: string
+  primary_color: string
+  custom_css: string
+}
+
+export type SaveBrandingInput = {
+  logo_url: string
+  primary_color: string
+  custom_css: string
+}
+
+// The custom-CSS limit is enforced server-side; the UI uses this constant for
+// inline byte-length feedback. Bumping it requires a backend change too.
+export const CUSTOM_CSS_LIMIT_BYTES = 16384
+
+// MediaAssetView matches the backend's snake_case json shape.
+export type MediaAssetView = {
+  id: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  public_url: string
+  uploaded_by?: string
+  created_at: string
+}
+
+// Result returned by POST /media — narrower than the full view.
+export type MediaUploadResult = {
+  id: string
+  public_url: string
+  filename: string
+}
+
+// Mirror of the backend's `media.domain.allowedContentTypes` allowlist. The
+// server is authoritative; the UI uses this for early rejection only.
+export const ALLOWED_MEDIA_CONTENT_TYPES: Array<string> = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "application/pdf",
+]
+
+// Default upload size cap mirroring the backend default
+// (`config.MediaMaxBytes` default = 10 MB). Used only for early rejection
+// before sending; the backend still enforces the configured limit.
+export const DEFAULT_MEDIA_MAX_BYTES = 10 * 1024 * 1024
+
+export function isImageContentType(contentType: string): boolean {
+  return contentType.startsWith("image/")
 }
