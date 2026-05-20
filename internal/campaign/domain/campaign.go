@@ -117,57 +117,57 @@ func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, 
 	}
 }
 
-// NewVisualCampaign builds a draft campaign authored visually. It validates
-// the document against the supplied registry and media-ref rules, renders it
-// to HTML and plain text, and returns the populated aggregate together with
-// any non-fatal renderer warnings (e.g. content the sanitizer stripped).
+// NewVisualCampaign builds a draft campaign authored visually. The caller
+// (the save_visual_campaign command) is responsible for rendering the doc
+// to HTML and plain text — typically by side-calling the BFF render tier
+// (see specs/014-visual-email-editor/research.md § R4) and then running
+// the BFF-rendered HTML through the Go-side bluemonday sanitizer
+// (internal/campaign/adapters/visualrender.Sanitize). This constructor
+// revalidates the doc against the registry and media-ref rules as
+// defense in depth and returns the populated aggregate with all three
+// pieces (body_doc, body_html, body_text) atomically.
 //
 // pinnedTheme is the operator's explicit override and may be nil; the row
-// then persists a NULL theme and inherits tenant branding at future render
-// time. effectiveTheme is the value the renderer uses NOW (callers resolve
-// nil pinnedTheme to DefaultsFromBranding before invoking).
+// then persists a NULL theme and inherits tenant branding at future
+// render time. warnings are the sanitizer-emitted notes from the
+// caller's sanitization pass; the aggregate carries them so the handler
+// can return them to the operator in the save response.
 func NewVisualCampaign(
 	tenantID, name, subject string,
-	doc *VisualDoc, pinnedTheme *Theme, effectiveTheme Theme,
+	doc *VisualDoc, pinnedTheme *Theme,
+	bodyHTML, bodyText string, warnings []RenderWarning,
 	fromName, fromLocalPart, sendingDomainID, templateID string, maxSendErrors int,
-	renderer Renderer, fields FieldSet, mediaRefs MediaRefValidator,
-) (*Campaign, []RenderWarning, error) {
+	fields FieldSet, mediaRefs MediaRefValidator,
+) (*Campaign, error) {
 	if tenantID == "" {
-		return nil, nil, ErrCampaignInvalid.WithMessage("a tenant is required")
+		return nil, ErrCampaignInvalid.WithMessage("a tenant is required")
 	}
 	name = strings.TrimSpace(name)
 	subject = strings.TrimSpace(subject)
 	fromLocalPart = strings.TrimSpace(fromLocalPart)
 	if name == "" {
-		return nil, nil, ErrCampaignInvalid.WithMessage("campaign name is required")
+		return nil, ErrCampaignInvalid.WithMessage("campaign name is required")
 	}
 	if fromLocalPart != "" && !localPartPattern.MatchString(fromLocalPart) {
-		return nil, nil, ErrCampaignInvalid.WithMessage("the From address local part is not valid")
+		return nil, ErrCampaignInvalid.WithMessage("the From address local part is not valid")
 	}
 	if doc == nil {
-		return nil, nil, ErrVisualDocInvalid.WithMessage("document is required")
-	}
-	if renderer == nil {
-		return nil, nil, ErrCampaignInvalid.WithMessage("renderer is required")
+		return nil, ErrVisualDocInvalid.WithMessage("document is required")
 	}
 	if err := Validate(doc, ValidateContext{Fields: fields, MediaRefs: mediaRefs}); err != nil {
-		return nil, nil, err
-	}
-	html, text, warnings, err := renderer.Render(doc, effectiveTheme)
-	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if maxSendErrors <= 0 {
 		maxSendErrors = 100
 	}
 	return &Campaign{
 		tenantID: tenantID, name: name, subject: subject,
-		bodyHTML: html, bodyText: text,
+		bodyHTML: bodyHTML, bodyText: bodyText,
 		bodyDoc: doc, theme: pinnedTheme, warnings: warnings,
 		fromName: strings.TrimSpace(fromName), fromLocalPart: fromLocalPart,
 		sendingDomainID: sendingDomainID, templateID: templateID,
 		status: CampaignDraft, maxSendErrors: maxSendErrors,
-	}, warnings, nil
+	}, nil
 }
 
 // ID returns the database-assigned id.

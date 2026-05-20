@@ -85,56 +85,52 @@ func HydrateTemplate(id, tenantID, name string, kind Kind, subject, bodyHTML, bo
 	}
 }
 
-// NewVisualTemplate builds a template authored visually. It validates the
-// document against the supplied registry and media-ref rules, renders it to
-// HTML and plain text using the supplied renderer, and returns the populated
-// aggregate together with any non-fatal warnings the renderer emitted (for
-// example, content the sanitizer stripped from a RawHTML block).
+// NewVisualTemplate builds a template authored visually. The caller (the
+// save_visual_template command) is responsible for rendering the doc to
+// HTML and plain text — typically by side-calling the BFF render tier
+// (see specs/014-visual-email-editor/research.md § R4) and then running
+// the BFF-rendered HTML through the Go-side bluemonday sanitizer
+// (internal/campaign/adapters/visualrender.Sanitize). This constructor
+// revalidates the doc against the registry and media-ref rules as
+// defense in depth and returns the populated aggregate with all three
+// pieces (body_doc, body_html, body_text) atomically.
 //
 // pinnedTheme is the operator's explicit theme override and may be nil —
 // when nil the row persists a NULL theme and inherits tenant branding at
-// future render time. effectiveTheme is the value the renderer uses NOW
-// (callers resolve nil pinnedTheme to DefaultsFromBranding before invoking).
-//
-// The three pieces of content (body_doc, body_html, body_text) end up on
-// the aggregate together — there is no path that produces fewer than three.
+// future render time. warnings are the sanitizer-emitted notes from the
+// caller's sanitization pass; the aggregate carries them so the handler
+// can return them to the operator in the save response.
 func NewVisualTemplate(
 	tenantID, name string, kind Kind, subject string,
-	doc *VisualDoc, pinnedTheme *Theme, effectiveTheme Theme,
-	renderer Renderer, fields FieldSet, mediaRefs MediaRefValidator,
-) (*Template, []RenderWarning, error) {
+	doc *VisualDoc, pinnedTheme *Theme,
+	bodyHTML, bodyText string, warnings []RenderWarning,
+	fields FieldSet, mediaRefs MediaRefValidator,
+) (*Template, error) {
 	if tenantID == "" {
-		return nil, nil, ErrTemplateInvalid.WithMessage("a tenant is required")
+		return nil, ErrTemplateInvalid.WithMessage("a tenant is required")
 	}
 	if !validKind(kind) {
-		return nil, nil, ErrTemplateInvalid.WithMessage("kind must be campaign or transactional")
+		return nil, ErrTemplateInvalid.WithMessage("kind must be campaign or transactional")
 	}
 	name = strings.TrimSpace(name)
 	subject = strings.TrimSpace(subject)
 	if name == "" {
-		return nil, nil, ErrTemplateInvalid.WithMessage("template name is required")
+		return nil, ErrTemplateInvalid.WithMessage("template name is required")
 	}
 	if subject == "" {
-		return nil, nil, ErrTemplateInvalid.WithMessage("template subject is required")
+		return nil, ErrTemplateInvalid.WithMessage("template subject is required")
 	}
 	if doc == nil {
-		return nil, nil, ErrVisualDocInvalid.WithMessage("document is required")
-	}
-	if renderer == nil {
-		return nil, nil, ErrTemplateInvalid.WithMessage("renderer is required")
+		return nil, ErrVisualDocInvalid.WithMessage("document is required")
 	}
 	if err := Validate(doc, ValidateContext{Fields: fields, MediaRefs: mediaRefs}); err != nil {
-		return nil, nil, err
-	}
-	html, text, warnings, err := renderer.Render(doc, effectiveTheme)
-	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	return &Template{
 		tenantID: tenantID, name: name, kind: kind,
-		subject: subject, bodyHTML: html, bodyText: text,
+		subject: subject, bodyHTML: bodyHTML, bodyText: bodyText,
 		bodyDoc: doc, theme: pinnedTheme, warnings: warnings,
-	}, warnings, nil
+	}, nil
 }
 
 // ID returns the database-assigned id.

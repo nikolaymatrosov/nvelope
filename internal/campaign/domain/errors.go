@@ -85,4 +85,12 @@ var (
 	// content to archive.
 	ErrCampaignNotSent = apperr.NewConflict("campaign_not_sent",
 		"only a sent campaign can be made archive-visible")
+
+	// ErrStaleRow is returned when a visual save is attempted with an
+	// ifUnmodifiedSince timestamp that does not match the row's current
+	// updated_at — the row was changed in another tab or session since the
+	// editor loaded it (per FR-009). The HTTP envelope includes the row's
+	// current updatedAt so the SPA can offer Reload / Force-overwrite.
+	ErrStaleRow = apperr.NewConflict("stale_row",
+		"the row was changed in another tab or session since it was loaded")
 )
