@@ -1,0 +1,1 @@
+Unsubscribe at {{ campaign.unsubscribe_url }}
