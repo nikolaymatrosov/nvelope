@@ -30,11 +30,13 @@ vi.mock("@/lib/api", () => ({
     pauseCampaign: vi.fn(),
     resumeCampaign: vi.fn(),
     cancelCampaign: vi.fn(),
+    setCampaignArchive: vi.fn(),
     listSendingDomains: vi.fn(),
     listLists: vi.fn(),
     me: vi.fn(),
     tenant: vi.fn(),
     listRoles: vi.fn(),
+    media: { list: vi.fn() },
   },
 }))
 
@@ -176,5 +178,52 @@ describe("CampaignDetail", () => {
 
     expect(await screen.findByText(/auto-paused/i)).toBeDefined()
     expect(screen.getByRole("button", { name: /resume/i })).toBeDefined()
+  })
+
+  it("shows the archive-visible toggle on a finished campaign and round-trips it", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(
+        campaign({
+          status: "finished",
+          archive_visible: false,
+          recipient_count: 10,
+          sent_count: 10,
+        }),
+      ),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    vi.mocked(api.setCampaignArchive).mockResolvedValue(ok({ visible: true }))
+    renderWithClient(<CampaignDetail />)
+
+    expect(await screen.findByTestId("archive-visibility-card")).toBeTruthy()
+    const toggle = screen.getByTestId("archive-visible-toggle")
+    expect(toggle.getAttribute("aria-checked")).toBe("false")
+    fireEvent.click(toggle)
+    await waitFor(() =>
+      expect(api.setCampaignArchive).toHaveBeenCalledWith("acme", "camp-1", true),
+    )
+  })
+
+  it("hides the archive toggle on a draft campaign", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(ok(campaign()))
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    renderWithClient(<CampaignDetail />)
+    await screen.findByRole("button", { name: /start campaign/i })
+    expect(screen.queryByTestId("archive-visibility-card")).toBeNull()
+  })
+
+  it("opens the media picker from the HTML body field on a draft campaign", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(ok(campaign()))
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    vi.mocked(api.media.list).mockResolvedValue(ok({ items: [] }))
+    renderWithClient(<CampaignDetail />)
+
+    const open = await screen.findByTestId("open-media-picker")
+    fireEvent.click(open)
+    // Picker opens; media list is fetched.
+    await waitFor(() => expect(api.media.list).toHaveBeenCalledWith("acme"))
   })
 })

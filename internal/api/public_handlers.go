@@ -29,6 +29,7 @@ type subscribePageData struct {
 // confirmPageData is the data the confirmation-result template renders.
 type confirmPageData struct {
 	Chrome      publicChrome
+	Slug        string
 	Heading     string
 	Message     string
 	ShowResend  bool
@@ -196,6 +197,7 @@ func (s *Server) handleResendConfirmation(w http.ResponseWriter, r *http.Request
 // renderConfirm renders the confirmation-result page with tenant chrome.
 func (s *Server) renderConfirm(w http.ResponseWriter, r *http.Request, data confirmPageData) {
 	data.Chrome = s.chromeFor(r.Context(), data.Heading)
+	data.Slug = tenantFromContext(r.Context()).Slug
 	s.renderPublic(w, http.StatusOK, "confirm", data)
 }
 

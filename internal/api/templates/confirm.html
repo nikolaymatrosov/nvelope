@@ -2,7 +2,7 @@
 <h2>{{.Heading}}</h2>
 <p>{{.Message}}</p>
 {{if .ShowResend}}
-<form method="post" action="/c/{{.ResendToken}}/resend">
+<form method="post" action="/t/{{.Slug}}/confirm/{{.ResendToken}}/resend">
 <button type="submit">Send a new confirmation link</button>
 </form>
 {{end}}

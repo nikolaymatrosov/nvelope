@@ -23,10 +23,13 @@ import { Route as TSlugSubscribersIndexRouteImport } from './routes/t/$slug/subs
 import { Route as TSlugSettingsIndexRouteImport } from './routes/t/$slug/settings/index'
 import { Route as TSlugSendingDomainsIndexRouteImport } from './routes/t/$slug/sending-domains/index'
 import { Route as TSlugSecurityIndexRouteImport } from './routes/t/$slug/security/index'
+import { Route as TSlugPublicPagesIndexRouteImport } from './routes/t/$slug/public-pages/index'
+import { Route as TSlugMediaIndexRouteImport } from './routes/t/$slug/media/index'
 import { Route as TSlugListsIndexRouteImport } from './routes/t/$slug/lists/index'
 import { Route as TSlugImportExportIndexRouteImport } from './routes/t/$slug/import-export/index'
 import { Route as TSlugDashboardIndexRouteImport } from './routes/t/$slug/dashboard/index'
 import { Route as TSlugCampaignsIndexRouteImport } from './routes/t/$slug/campaigns/index'
+import { Route as TSlugBrandingIndexRouteImport } from './routes/t/$slug/branding/index'
 import { Route as TSlugBillingIndexRouteImport } from './routes/t/$slug/billing/index'
 import { Route as TSlugAuditIndexRouteImport } from './routes/t/$slug/audit/index'
 import { Route as TSlugAccessIndexRouteImport } from './routes/t/$slug/access/index'
@@ -34,6 +37,8 @@ import { Route as TSlugTemplatesIdRouteImport } from './routes/t/$slug/templates
 import { Route as TSlugSuppressionsSettingsRouteImport } from './routes/t/$slug/suppressions/settings'
 import { Route as TSlugSubscribersIdRouteImport } from './routes/t/$slug/subscribers/$id'
 import { Route as TSlugSendingDomainsIdRouteImport } from './routes/t/$slug/sending-domains/$id'
+import { Route as TSlugPublicPagesIdRouteImport } from './routes/t/$slug/public-pages/$id'
+import { Route as TSlugMediaIdRouteImport } from './routes/t/$slug/media/$id'
 import { Route as TSlugListsIdRouteImport } from './routes/t/$slug/lists/$id'
 import { Route as TSlugCampaignsIdRouteImport } from './routes/t/$slug/campaigns/$id'
 import { Route as TSlugBillingUsageRouteImport } from './routes/t/$slug/billing/usage'
@@ -112,6 +117,16 @@ const TSlugSecurityIndexRoute = TSlugSecurityIndexRouteImport.update({
   path: '/security/',
   getParentRoute: () => TSlugRouteRoute,
 } as any)
+const TSlugPublicPagesIndexRoute = TSlugPublicPagesIndexRouteImport.update({
+  id: '/public-pages/',
+  path: '/public-pages/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugMediaIndexRoute = TSlugMediaIndexRouteImport.update({
+  id: '/media/',
+  path: '/media/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
 const TSlugListsIndexRoute = TSlugListsIndexRouteImport.update({
   id: '/lists/',
   path: '/lists/',
@@ -130,6 +145,11 @@ const TSlugDashboardIndexRoute = TSlugDashboardIndexRouteImport.update({
 const TSlugCampaignsIndexRoute = TSlugCampaignsIndexRouteImport.update({
   id: '/campaigns/',
   path: '/campaigns/',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugBrandingIndexRoute = TSlugBrandingIndexRouteImport.update({
+  id: '/branding/',
+  path: '/branding/',
   getParentRoute: () => TSlugRouteRoute,
 } as any)
 const TSlugBillingIndexRoute = TSlugBillingIndexRouteImport.update({
@@ -166,6 +186,16 @@ const TSlugSubscribersIdRoute = TSlugSubscribersIdRouteImport.update({
 const TSlugSendingDomainsIdRoute = TSlugSendingDomainsIdRouteImport.update({
   id: '/sending-domains/$id',
   path: '/sending-domains/$id',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugPublicPagesIdRoute = TSlugPublicPagesIdRouteImport.update({
+  id: '/public-pages/$id',
+  path: '/public-pages/$id',
+  getParentRoute: () => TSlugRouteRoute,
+} as any)
+const TSlugMediaIdRoute = TSlugMediaIdRouteImport.update({
+  id: '/media/$id',
+  path: '/media/$id',
   getParentRoute: () => TSlugRouteRoute,
 } as any)
 const TSlugListsIdRoute = TSlugListsIdRouteImport.update({
@@ -213,6 +243,8 @@ export interface FileRoutesByFullPath {
   '/t/$slug/billing/usage': typeof TSlugBillingUsageRoute
   '/t/$slug/campaigns/$id': typeof TSlugCampaignsIdRouteWithChildren
   '/t/$slug/lists/$id': typeof TSlugListsIdRoute
+  '/t/$slug/media/$id': typeof TSlugMediaIdRoute
+  '/t/$slug/public-pages/$id': typeof TSlugPublicPagesIdRoute
   '/t/$slug/sending-domains/$id': typeof TSlugSendingDomainsIdRoute
   '/t/$slug/subscribers/$id': typeof TSlugSubscribersIdRoute
   '/t/$slug/suppressions/settings': typeof TSlugSuppressionsSettingsRoute
@@ -220,10 +252,13 @@ export interface FileRoutesByFullPath {
   '/t/$slug/access/': typeof TSlugAccessIndexRoute
   '/t/$slug/audit/': typeof TSlugAuditIndexRoute
   '/t/$slug/billing/': typeof TSlugBillingIndexRoute
+  '/t/$slug/branding/': typeof TSlugBrandingIndexRoute
   '/t/$slug/campaigns/': typeof TSlugCampaignsIndexRoute
   '/t/$slug/dashboard/': typeof TSlugDashboardIndexRoute
   '/t/$slug/import-export/': typeof TSlugImportExportIndexRoute
   '/t/$slug/lists/': typeof TSlugListsIndexRoute
+  '/t/$slug/media/': typeof TSlugMediaIndexRoute
+  '/t/$slug/public-pages/': typeof TSlugPublicPagesIndexRoute
   '/t/$slug/security/': typeof TSlugSecurityIndexRoute
   '/t/$slug/sending-domains/': typeof TSlugSendingDomainsIndexRoute
   '/t/$slug/settings/': typeof TSlugSettingsIndexRoute
@@ -245,6 +280,8 @@ export interface FileRoutesByTo {
   '/t/$slug/billing/usage': typeof TSlugBillingUsageRoute
   '/t/$slug/campaigns/$id': typeof TSlugCampaignsIdRouteWithChildren
   '/t/$slug/lists/$id': typeof TSlugListsIdRoute
+  '/t/$slug/media/$id': typeof TSlugMediaIdRoute
+  '/t/$slug/public-pages/$id': typeof TSlugPublicPagesIdRoute
   '/t/$slug/sending-domains/$id': typeof TSlugSendingDomainsIdRoute
   '/t/$slug/subscribers/$id': typeof TSlugSubscribersIdRoute
   '/t/$slug/suppressions/settings': typeof TSlugSuppressionsSettingsRoute
@@ -252,10 +289,13 @@ export interface FileRoutesByTo {
   '/t/$slug/access': typeof TSlugAccessIndexRoute
   '/t/$slug/audit': typeof TSlugAuditIndexRoute
   '/t/$slug/billing': typeof TSlugBillingIndexRoute
+  '/t/$slug/branding': typeof TSlugBrandingIndexRoute
   '/t/$slug/campaigns': typeof TSlugCampaignsIndexRoute
   '/t/$slug/dashboard': typeof TSlugDashboardIndexRoute
   '/t/$slug/import-export': typeof TSlugImportExportIndexRoute
   '/t/$slug/lists': typeof TSlugListsIndexRoute
+  '/t/$slug/media': typeof TSlugMediaIndexRoute
+  '/t/$slug/public-pages': typeof TSlugPublicPagesIndexRoute
   '/t/$slug/security': typeof TSlugSecurityIndexRoute
   '/t/$slug/sending-domains': typeof TSlugSendingDomainsIndexRoute
   '/t/$slug/settings': typeof TSlugSettingsIndexRoute
@@ -279,6 +319,8 @@ export interface FileRoutesById {
   '/t/$slug/billing/usage': typeof TSlugBillingUsageRoute
   '/t/$slug/campaigns/$id': typeof TSlugCampaignsIdRouteWithChildren
   '/t/$slug/lists/$id': typeof TSlugListsIdRoute
+  '/t/$slug/media/$id': typeof TSlugMediaIdRoute
+  '/t/$slug/public-pages/$id': typeof TSlugPublicPagesIdRoute
   '/t/$slug/sending-domains/$id': typeof TSlugSendingDomainsIdRoute
   '/t/$slug/subscribers/$id': typeof TSlugSubscribersIdRoute
   '/t/$slug/suppressions/settings': typeof TSlugSuppressionsSettingsRoute
@@ -286,10 +328,13 @@ export interface FileRoutesById {
   '/t/$slug/access/': typeof TSlugAccessIndexRoute
   '/t/$slug/audit/': typeof TSlugAuditIndexRoute
   '/t/$slug/billing/': typeof TSlugBillingIndexRoute
+  '/t/$slug/branding/': typeof TSlugBrandingIndexRoute
   '/t/$slug/campaigns/': typeof TSlugCampaignsIndexRoute
   '/t/$slug/dashboard/': typeof TSlugDashboardIndexRoute
   '/t/$slug/import-export/': typeof TSlugImportExportIndexRoute
   '/t/$slug/lists/': typeof TSlugListsIndexRoute
+  '/t/$slug/media/': typeof TSlugMediaIndexRoute
+  '/t/$slug/public-pages/': typeof TSlugPublicPagesIndexRoute
   '/t/$slug/security/': typeof TSlugSecurityIndexRoute
   '/t/$slug/sending-domains/': typeof TSlugSendingDomainsIndexRoute
   '/t/$slug/settings/': typeof TSlugSettingsIndexRoute
@@ -314,6 +359,8 @@ export interface FileRouteTypes {
     | '/t/$slug/billing/usage'
     | '/t/$slug/campaigns/$id'
     | '/t/$slug/lists/$id'
+    | '/t/$slug/media/$id'
+    | '/t/$slug/public-pages/$id'
     | '/t/$slug/sending-domains/$id'
     | '/t/$slug/subscribers/$id'
     | '/t/$slug/suppressions/settings'
@@ -321,10 +368,13 @@ export interface FileRouteTypes {
     | '/t/$slug/access/'
     | '/t/$slug/audit/'
     | '/t/$slug/billing/'
+    | '/t/$slug/branding/'
     | '/t/$slug/campaigns/'
     | '/t/$slug/dashboard/'
     | '/t/$slug/import-export/'
     | '/t/$slug/lists/'
+    | '/t/$slug/media/'
+    | '/t/$slug/public-pages/'
     | '/t/$slug/security/'
     | '/t/$slug/sending-domains/'
     | '/t/$slug/settings/'
@@ -346,6 +396,8 @@ export interface FileRouteTypes {
     | '/t/$slug/billing/usage'
     | '/t/$slug/campaigns/$id'
     | '/t/$slug/lists/$id'
+    | '/t/$slug/media/$id'
+    | '/t/$slug/public-pages/$id'
     | '/t/$slug/sending-domains/$id'
     | '/t/$slug/subscribers/$id'
     | '/t/$slug/suppressions/settings'
@@ -353,10 +405,13 @@ export interface FileRouteTypes {
     | '/t/$slug/access'
     | '/t/$slug/audit'
     | '/t/$slug/billing'
+    | '/t/$slug/branding'
     | '/t/$slug/campaigns'
     | '/t/$slug/dashboard'
     | '/t/$slug/import-export'
     | '/t/$slug/lists'
+    | '/t/$slug/media'
+    | '/t/$slug/public-pages'
     | '/t/$slug/security'
     | '/t/$slug/sending-domains'
     | '/t/$slug/settings'
@@ -379,6 +434,8 @@ export interface FileRouteTypes {
     | '/t/$slug/billing/usage'
     | '/t/$slug/campaigns/$id'
     | '/t/$slug/lists/$id'
+    | '/t/$slug/media/$id'
+    | '/t/$slug/public-pages/$id'
     | '/t/$slug/sending-domains/$id'
     | '/t/$slug/subscribers/$id'
     | '/t/$slug/suppressions/settings'
@@ -386,10 +443,13 @@ export interface FileRouteTypes {
     | '/t/$slug/access/'
     | '/t/$slug/audit/'
     | '/t/$slug/billing/'
+    | '/t/$slug/branding/'
     | '/t/$slug/campaigns/'
     | '/t/$slug/dashboard/'
     | '/t/$slug/import-export/'
     | '/t/$slug/lists/'
+    | '/t/$slug/media/'
+    | '/t/$slug/public-pages/'
     | '/t/$slug/security/'
     | '/t/$slug/sending-domains/'
     | '/t/$slug/settings/'
@@ -509,6 +569,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TSlugSecurityIndexRouteImport
       parentRoute: typeof TSlugRouteRoute
     }
+    '/t/$slug/public-pages/': {
+      id: '/t/$slug/public-pages/'
+      path: '/public-pages'
+      fullPath: '/t/$slug/public-pages/'
+      preLoaderRoute: typeof TSlugPublicPagesIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/media/': {
+      id: '/t/$slug/media/'
+      path: '/media'
+      fullPath: '/t/$slug/media/'
+      preLoaderRoute: typeof TSlugMediaIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
     '/t/$slug/lists/': {
       id: '/t/$slug/lists/'
       path: '/lists'
@@ -535,6 +609,13 @@ declare module '@tanstack/react-router' {
       path: '/campaigns'
       fullPath: '/t/$slug/campaigns/'
       preLoaderRoute: typeof TSlugCampaignsIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/branding/': {
+      id: '/t/$slug/branding/'
+      path: '/branding'
+      fullPath: '/t/$slug/branding/'
+      preLoaderRoute: typeof TSlugBrandingIndexRouteImport
       parentRoute: typeof TSlugRouteRoute
     }
     '/t/$slug/billing/': {
@@ -584,6 +665,20 @@ declare module '@tanstack/react-router' {
       path: '/sending-domains/$id'
       fullPath: '/t/$slug/sending-domains/$id'
       preLoaderRoute: typeof TSlugSendingDomainsIdRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/public-pages/$id': {
+      id: '/t/$slug/public-pages/$id'
+      path: '/public-pages/$id'
+      fullPath: '/t/$slug/public-pages/$id'
+      preLoaderRoute: typeof TSlugPublicPagesIdRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
+    '/t/$slug/media/$id': {
+      id: '/t/$slug/media/$id'
+      path: '/media/$id'
+      fullPath: '/t/$slug/media/$id'
+      preLoaderRoute: typeof TSlugMediaIdRouteImport
       parentRoute: typeof TSlugRouteRoute
     }
     '/t/$slug/lists/$id': {
@@ -649,6 +744,8 @@ interface TSlugRouteRouteChildren {
   TSlugBillingUsageRoute: typeof TSlugBillingUsageRoute
   TSlugCampaignsIdRoute: typeof TSlugCampaignsIdRouteWithChildren
   TSlugListsIdRoute: typeof TSlugListsIdRoute
+  TSlugMediaIdRoute: typeof TSlugMediaIdRoute
+  TSlugPublicPagesIdRoute: typeof TSlugPublicPagesIdRoute
   TSlugSendingDomainsIdRoute: typeof TSlugSendingDomainsIdRoute
   TSlugSubscribersIdRoute: typeof TSlugSubscribersIdRoute
   TSlugSuppressionsSettingsRoute: typeof TSlugSuppressionsSettingsRoute
@@ -656,10 +753,13 @@ interface TSlugRouteRouteChildren {
   TSlugAccessIndexRoute: typeof TSlugAccessIndexRoute
   TSlugAuditIndexRoute: typeof TSlugAuditIndexRoute
   TSlugBillingIndexRoute: typeof TSlugBillingIndexRoute
+  TSlugBrandingIndexRoute: typeof TSlugBrandingIndexRoute
   TSlugCampaignsIndexRoute: typeof TSlugCampaignsIndexRoute
   TSlugDashboardIndexRoute: typeof TSlugDashboardIndexRoute
   TSlugImportExportIndexRoute: typeof TSlugImportExportIndexRoute
   TSlugListsIndexRoute: typeof TSlugListsIndexRoute
+  TSlugMediaIndexRoute: typeof TSlugMediaIndexRoute
+  TSlugPublicPagesIndexRoute: typeof TSlugPublicPagesIndexRoute
   TSlugSecurityIndexRoute: typeof TSlugSecurityIndexRoute
   TSlugSendingDomainsIndexRoute: typeof TSlugSendingDomainsIndexRoute
   TSlugSettingsIndexRoute: typeof TSlugSettingsIndexRoute
@@ -676,6 +776,8 @@ const TSlugRouteRouteChildren: TSlugRouteRouteChildren = {
   TSlugBillingUsageRoute: TSlugBillingUsageRoute,
   TSlugCampaignsIdRoute: TSlugCampaignsIdRouteWithChildren,
   TSlugListsIdRoute: TSlugListsIdRoute,
+  TSlugMediaIdRoute: TSlugMediaIdRoute,
+  TSlugPublicPagesIdRoute: TSlugPublicPagesIdRoute,
   TSlugSendingDomainsIdRoute: TSlugSendingDomainsIdRoute,
   TSlugSubscribersIdRoute: TSlugSubscribersIdRoute,
   TSlugSuppressionsSettingsRoute: TSlugSuppressionsSettingsRoute,
@@ -683,10 +785,13 @@ const TSlugRouteRouteChildren: TSlugRouteRouteChildren = {
   TSlugAccessIndexRoute: TSlugAccessIndexRoute,
   TSlugAuditIndexRoute: TSlugAuditIndexRoute,
   TSlugBillingIndexRoute: TSlugBillingIndexRoute,
+  TSlugBrandingIndexRoute: TSlugBrandingIndexRoute,
   TSlugCampaignsIndexRoute: TSlugCampaignsIndexRoute,
   TSlugDashboardIndexRoute: TSlugDashboardIndexRoute,
   TSlugImportExportIndexRoute: TSlugImportExportIndexRoute,
   TSlugListsIndexRoute: TSlugListsIndexRoute,
+  TSlugMediaIndexRoute: TSlugMediaIndexRoute,
+  TSlugPublicPagesIndexRoute: TSlugPublicPagesIndexRoute,
   TSlugSecurityIndexRoute: TSlugSecurityIndexRoute,
   TSlugSendingDomainsIndexRoute: TSlugSendingDomainsIndexRoute,
   TSlugSettingsIndexRoute: TSlugSettingsIndexRoute,
@@ -711,12 +816,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
