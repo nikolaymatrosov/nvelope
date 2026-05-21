@@ -37,6 +37,7 @@ import (
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
 	iamcommand "github.com/nikolaymatrosov/nvelope/internal/iam/app/command"
 	iamquery "github.com/nikolaymatrosov/nvelope/internal/iam/app/query"
+	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
 	mediaadapters "github.com/nikolaymatrosov/nvelope/internal/media/adapters"
 	mediaapp "github.com/nikolaymatrosov/nvelope/internal/media/app"
 	mediacommand "github.com/nikolaymatrosov/nvelope/internal/media/app/command"
@@ -70,6 +71,11 @@ type Application struct {
 	Deliverability deliverabilityapp.Application
 	Billing        billingapp.Application
 	Media          mediaapp.Application
+	// Audit is the iam context's audit_log writer, surfaced here so the
+	// api layer can append Phase 7 audit rows (campaign.save_visual,
+	// template.save_visual, subscriber_field.*) without re-instantiating
+	// the adapter.
+	Audit iamdomain.AuditRepository
 	// Tracking is the campaign context's tracking repository, used directly by
 	// the public open/click endpoints.
 	Tracking campaigndomain.TrackingRepository
@@ -193,8 +199,14 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 		},
 	}
 
+	// Audit is owned by the iam context but consumed across the platform —
+	// the api layer writes audit rows for Phase 7 visual-save and
+	// subscriber-field actions (T115). Construct once here so buildIAM and
+	// the api wiring share the same writer.
+	audit := iamadapters.NewAudit(pool)
+
 	audience := buildAudience(pool, cfg, logger)
-	iam := buildIAM(pool, cfg, logger)
+	iam := buildIAM(pool, cfg, logger, audit)
 	sending := buildSending(pool, cfg, logger, ov)
 	campaign, tracking := buildCampaign(pool, cfg, logger, ov)
 	deliverability := buildDeliverability(pool, cfg, logger)
@@ -204,7 +216,7 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	return Application{
 		Auth: auth, Tenant: tenant, Audience: audience, IAM: iam,
 		Sending: sending, Campaign: campaign, Deliverability: deliverability,
-		Billing: billing, Media: media, Tracking: tracking,
+		Billing: billing, Media: media, Tracking: tracking, Audit: audit,
 	}
 }
 
@@ -552,11 +564,12 @@ func buildSending(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 
 // buildIAM wires the iam context — tenant-plane users, sessions, roles,
 // permissions, and the audit log — with logging decorators applied.
-func buildIAM(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) iamapp.Application {
+func buildIAM(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
+	audit iamdomain.AuditRepository) iamapp.Application {
+
 	users := iamadapters.NewUsers(pool)
 	sessions := iamadapters.NewSessions(pool)
 	roles := iamadapters.NewRoles(pool)
-	audit := iamadapters.NewAudit(pool)
 	apiKeys := iamadapters.NewAPIKeys(pool)
 	recoveryCodes := iamadapters.NewRecoveryCodes(pool)
 
@@ -694,7 +707,7 @@ func buildAudience(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger) a
 			StartExport: decorator.ApplyResultCommandDecorators(
 				audiencecommand.NewStartExportHandler(jobRepo, enqueuer), "StartExport", logger),
 			SaveSubscriptionPage: decorator.ApplyResultCommandDecorators(
-				audiencecommand.NewSaveSubscriptionPageHandler(subscriptionPages, lists, domainCheck),
+				audiencecommand.NewSaveSubscriptionPageHandler(subscriptionPages, lists, domainCheck, fields),
 				"SaveSubscriptionPage", logger),
 			SubmitPublicSubscription: decorator.ApplyCommandDecorators(
 				audiencecommand.NewSubmitPublicSubscriptionHandler(subscriptionPages,

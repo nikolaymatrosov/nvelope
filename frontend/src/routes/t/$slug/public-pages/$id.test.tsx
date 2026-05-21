@@ -37,6 +37,9 @@ vi.mock("@/lib/api", () => ({
     },
     listLists: vi.fn(),
     listSendingDomains: vi.fn(),
+    subscriberFields: {
+      list: vi.fn(),
+    },
   },
 }))
 
@@ -71,6 +74,45 @@ beforeEach(() => {
         { id: "d1", domain: "acme.com", status: "verified" } as never,
       ],
     }),
+  )
+  vi.mocked(api.subscriberFields.list).mockResolvedValue(
+    ok({
+      fields: [
+        {
+          id: "builtin:first_name",
+          slug: "first_name",
+          displayName: "First name",
+          type: "text",
+          defaultValue: "",
+          position: 0,
+          builtIn: true,
+          createdAt: "2026-05-01T00:00:00Z",
+          updatedAt: "2026-05-01T00:00:00Z",
+        },
+        {
+          id: "builtin:email",
+          slug: "email",
+          displayName: "Email",
+          type: "url",
+          defaultValue: "",
+          position: 2,
+          builtIn: true,
+          createdAt: "2026-05-01T00:00:00Z",
+          updatedAt: "2026-05-01T00:00:00Z",
+        },
+        {
+          id: "f-country",
+          slug: "country",
+          displayName: "Country",
+          type: "text",
+          defaultValue: "",
+          position: 10,
+          builtIn: false,
+          createdAt: "2026-05-01T00:00:00Z",
+          updatedAt: "2026-05-01T00:00:00Z",
+        },
+      ],
+    }) as never,
   )
 })
 
@@ -138,6 +180,57 @@ describe("SubscriptionPageEdit", () => {
       expect(inline || fieldErrors.length > 0).toBeTruthy()
     })
     expect(api.subscriptionPages.create).not.toHaveBeenCalled()
+  })
+
+  it("populates the Add-field button from the subscriber-fields registry (FR-016b)", async () => {
+    vi.mocked(api.subscriptionPages.list).mockResolvedValue(
+      ok({ subscription_pages: [] }),
+    )
+    renderWithClient(<SubscriptionPageEdit />)
+    await screen.findByRole("heading", { name: /new subscription page/i })
+    // Wait for the registry query to resolve so the Add-field button is enabled.
+    await waitFor(() => {
+      const btn = screen.getByTestId("add-field")
+      expect((btn as HTMLButtonElement).disabled).toBe(false)
+    })
+    fireEvent.click(screen.getByTestId("add-field"))
+    // The newly-appended row picks the first available registry slug
+    // (first_name — Email is filtered out because it's always shown).
+    const select = (await screen.findByTestId(
+      "field-key-0",
+    )) as unknown as HTMLSelectElement
+    expect(select.value).toBe("first_name")
+    // The select options come from the registry: first_name + country (Email
+    // is hidden because it's implicit, and the "no longer in registry" entry
+    // only appears for stale slugs).
+    const optionValues = Array.from(select.options).map((o) => o.value)
+    expect(optionValues).toContain("first_name")
+    expect(optionValues).toContain("country")
+    expect(optionValues).not.toContain("email")
+  })
+
+  it("retains a stale field slug with a 'no longer in registry' marker", async () => {
+    routeParams = { slug: "acme", id: "p1" }
+    vi.mocked(api.subscriptionPages.list).mockResolvedValue(
+      ok({
+        subscription_pages: [
+          pageView({
+            Fields: [{ key: "favorite_color", label: "Favorite color", required: false }],
+          }),
+        ],
+      }),
+    )
+    renderWithClient(<SubscriptionPageEdit />)
+    await screen.findByRole("heading", { name: /edit subscription page/i })
+    const select = (await screen.findByTestId(
+      "field-key-0",
+    )) as unknown as HTMLSelectElement
+    expect(select.value).toBe("favorite_color")
+    const stale = Array.from(select.options).find(
+      (o) => o.value === "favorite_color",
+    )
+    if (!stale) throw new Error("favorite_color option missing from select")
+    expect(stale.textContent.toLowerCase()).toContain("no longer in registry")
   })
 
   it("offers the preview control when an existing page is loaded", async () => {

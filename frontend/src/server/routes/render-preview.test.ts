@@ -113,6 +113,46 @@ describe("runRenderPreview", () => {
     )
   })
 
+  // T118 — BFF-side preview-output sanitizer (FR-014a). The preview path
+  // runs DOMPurify over the rendered HTML before the SPA loads it into the
+  // preview iframe. A RawHTML block carrying a <script> renders through
+  // dangerouslySetInnerHTML, then the preview sanitizer must strip it AND
+  // emit a sanitizer_stripped warning the SPA can surface.
+  it("strips <script> from a RawHTML block and emits sanitizer_stripped (FR-014a)", async () => {
+    const ff = fakeFetch([subscriberFieldsOk, brandingOk])
+    const out = await runRenderPreview({
+      slug: "acme",
+      cookie: "c=x",
+      requestId: "req-1",
+      goApiBaseUrl: "http://go.test",
+      mediaUrlPrefix: "",
+      body: {
+        bodyDoc: {
+          version: 1,
+          type: "doc",
+          content: [
+            {
+              type: "rawHtml",
+              attrs: {
+                html: `<p>Hello.</p><script>document.cookie='stolen'</script>`,
+              },
+            },
+          ],
+        },
+        theme: null,
+      },
+      fetchImpl: ff.fetch,
+    })
+    expect(out.status).toBe(200)
+    if (out.kind !== "ok") throw new Error(`unexpected result: ${out.kind}`)
+    expect(out.body.bodyHtml.toLowerCase()).not.toContain("<script")
+    expect(out.body.bodyHtml).not.toContain("document.cookie")
+    const sanitizerWarnings = out.body.warnings.filter(
+      (w) => w.kind === "sanitizer_stripped",
+    )
+    expect(sanitizerWarnings).not.toHaveLength(0)
+  })
+
   it("DOES side-call substitute-sample when sample is provided", async () => {
     const ff = fakeFetch([subscriberFieldsOk, brandingOk, substituteOk])
     const out = await runRenderPreview({

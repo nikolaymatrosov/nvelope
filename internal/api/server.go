@@ -16,7 +16,9 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/config"
 	deliverabilityapp "github.com/nikolaymatrosov/nvelope/internal/deliverability/app"
 	iamapp "github.com/nikolaymatrosov/nvelope/internal/iam/app"
+	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
 	mediaapp "github.com/nikolaymatrosov/nvelope/internal/media/app"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/metrics"
 	sendingapp "github.com/nikolaymatrosov/nvelope/internal/sending/app"
 	tenantapp "github.com/nikolaymatrosov/nvelope/internal/tenant/app"
 	"github.com/nikolaymatrosov/nvelope/internal/token"
@@ -36,6 +38,7 @@ type Server struct {
 	billing        billingapp.Application
 	media          mediaapp.Application
 	tracking       campaigndomain.TrackingRepository
+	audit          iamdomain.AuditRepository
 	cfg            config.Config
 	logger         *slog.Logger
 	health         http.Handler
@@ -52,6 +55,7 @@ func New(auth authapp.Application, tenant tenantapp.Application, audience audien
 	iam iamapp.Application, sending sendingapp.Application, campaign campaignapp.Application,
 	deliverability deliverabilityapp.Application, billing billingapp.Application,
 	media mediaapp.Application, tracking campaigndomain.TrackingRepository,
+	audit iamdomain.AuditRepository,
 	cfg config.Config, logger *slog.Logger, health http.Handler) *Server {
 	// The preference-token signer shares the TOTP encryption key, derived to a
 	// distinct purpose. A malformed key cannot occur in production (config
@@ -60,7 +64,8 @@ func New(auth authapp.Application, tenant tenantapp.Application, audience audien
 	return &Server{
 		auth: auth, tenant: tenant, audience: audience, iam: iam, sending: sending,
 		campaign: campaign, deliverability: deliverability, billing: billing,
-		media: media, tracking: tracking, cfg: cfg, logger: logger, health: health,
+		media: media, tracking: tracking, audit: audit,
+		cfg: cfg, logger: logger, health: health,
 		prefSigner: token.NewSigner(signKey),
 	}
 }
@@ -69,8 +74,10 @@ func New(auth authapp.Application, tenant tenantapp.Application, audience audien
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
+	r.Use(s.requestID)
 
 	r.Method(http.MethodGet, "/healthz", s.health)
+	r.Method(http.MethodGet, "/metrics", metrics.Handler())
 
 	// Platform API — not scoped to a tenant.
 	r.Route("/api/platform", func(r chi.Router) {

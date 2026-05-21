@@ -285,6 +285,39 @@ own migrations.
     and FR-028. The bytes are written to the BlobStore **before** the metadata row is
     inserted (FR-029), so an interrupted upload leaves no listed-but-missing asset.
 - API client is a typed REST layer; tenant slug is part of every admin route.
+- **TanStack Start + Nitro BFF (Phase 7)** — `frontend/` is also a Node tier
+  that intercepts three visual-editor endpoints before the catch-all vite
+  proxy to Go:
+  - `PUT /t/{slug}/api/campaigns/{id}/visual`
+  - `PUT /t/{slug}/api/templates/{id}/visual`
+  - `POST /t/{slug}/api/render-preview`
+
+  The BFF owns email-HTML rendering: it converts the structured
+  `VisualDoc` (TipTap JSON) to email-ready HTML + plain text via
+  `@react-email/components`, then forwards the rendered output to Go for
+  validation, sanitization, and persistence. The tier split is fixed —
+  **render lives on the BFF, validate / sanitize / persist live in Go** —
+  per the rationale in
+  [`specs/014-visual-email-editor/research.md` § R4](../specs/014-visual-email-editor/research.md).
+  Source layout under [`frontend/src/server/`](../frontend/src/server/):
+  - `render/` — react-email mapping + golden tests.
+  - `validate/` — TS port of Go's doc validator with a cross-stack
+    drift-catcher (`campaign-keys.test.ts`).
+  - `clients/go-api.ts` — typed Go-API client that forwards the session
+    cookie and `X-Request-Id` end-to-end.
+  - `routes/` — Nitro route orchestrators (`visual-save.ts`,
+    `render-preview.ts`) and the file-based-routing H3 shims that wire
+    request → orchestrator → response.
+  - `metrics/` — Prometheus instrumentation served at
+    `GET /metrics`: render-latency histogram + per-surface attempt
+    counter, complementing the Go-side `nvelope_visual_editor_saves_total`
+    so dashboards can split BFF render time from Go validate + persist.
+  - Side-call failures to Go fail closed as `502 bad_gateway` per the
+    2026-05-20 spec clarification — the BFF never silently swallows a
+    Go error.
+  - The preview endpoint additionally runs a DOMPurify pass before
+    returning HTML to the iframe (FR-014a) so a malicious `RawHTML`
+    block can't execute even pre-save.
 
 ---
 

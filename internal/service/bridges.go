@@ -7,8 +7,10 @@ import (
 	"fmt"
 
 	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
+	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
+	tenantdomain "github.com/nikolaymatrosov/nvelope/internal/tenant/domain"
 )
 
 // resolvePageSize bounds how many subscribers are read per page when a bridge
@@ -86,6 +88,62 @@ func appendMembers(out []campaigndomain.AudienceMember,
 		})
 	}
 	return out
+}
+
+// audienceSubscriberLookup adapts the audience context's subscriber
+// repository to the campaign batch worker's SubscriberLookup port — the
+// piece Phase 7's merge-tag substituter (sending.Substitute) needs at send
+// time. The campaign domain stays unaware of the audience aggregate; this
+// bridge does the projection.
+type audienceSubscriberLookup struct {
+	subscribers audiencedomain.SubscriberRepository
+}
+
+var _ campaignadapters.SubscriberLookup = (*audienceSubscriberLookup)(nil)
+
+// NewSubscriberLookup builds the bridge over the audience subscriber
+// repository.
+func NewSubscriberLookup(subscribers audiencedomain.SubscriberRepository) *audienceSubscriberLookup {
+	return &audienceSubscriberLookup{subscribers: subscribers}
+}
+
+// Lookup loads the per-recipient SubscriberView the substituter needs.
+func (s *audienceSubscriberLookup) Lookup(ctx context.Context, tenantID, subscriberID string) (
+	sendingdomain.SubscriberView, error) {
+
+	sub, err := s.subscribers.Get(ctx, tenantID, subscriberID)
+	if err != nil {
+		return sendingdomain.SubscriberView{}, err
+	}
+	return sendingdomain.SubscriberView{
+		Email:      sub.Email(),
+		Name:       sub.Name(),
+		State:      string(sub.State()),
+		Attributes: sub.Attributes().Values(),
+	}, nil
+}
+
+// tenantNameLookup adapts the tenant context's repository to the campaign
+// batch worker's TenantNameLookup port. Used for the
+// `{{ campaign.tenant_name }}` merge tag.
+type tenantNameLookup struct {
+	tenants tenantdomain.TenantRepository
+}
+
+var _ campaignadapters.TenantNameLookup = (*tenantNameLookup)(nil)
+
+// NewTenantNameLookup builds the bridge over the tenant repository.
+func NewTenantNameLookup(tenants tenantdomain.TenantRepository) *tenantNameLookup {
+	return &tenantNameLookup{tenants: tenants}
+}
+
+// TenantName resolves the workspace name for a tenant id.
+func (l *tenantNameLookup) TenantName(ctx context.Context, tenantID string) (string, error) {
+	t, err := l.tenants.GetByID(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	return t.Name(), nil
 }
 
 // sendingDomainLookup adapts the sending context's repository to the campaign

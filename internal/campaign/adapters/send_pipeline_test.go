@@ -174,7 +174,7 @@ func (f *pipelineFixture) run(t *testing.T, batchSize int, perTenant ratelimit.L
 
 	batch := adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
 		f.messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
-		noopSuppression{}, nil, nil,
+		noopSuppression{}, nil, nil, nil, nil,
 		domain.Limit{Max: perTenant.Max, Window: perTenant.Window}, "https://track.test")
 
 	for _, b := range f.enqueuer.batches {

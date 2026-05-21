@@ -22,6 +22,7 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/platform/tenantdb"
 	sendingadapters "github.com/nikolaymatrosov/nvelope/internal/sending/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/service"
+	"github.com/nikolaymatrosov/nvelope/internal/token"
 )
 
 // capturingMessenger records every message the send pipeline delivers.
@@ -93,9 +94,16 @@ func (ts *testServer) startCampaignWorkers(messenger campaigndomain.Messenger) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
 		source, enqueuer, nil, 500))
+	subscriberLookup := service.NewSubscriberLookup(audienceadapters.NewSubscribers(ts.pool))
+	// A real UnsubscribeLinker so `{{ campaign.unsubscribe_url }}` substitutes
+	// to a per-recipient signed URL (T117). The signer key is fixed for tests
+	// — the URL only has to be stable and per-recipient-unique, not verifiable.
+	unsubscribeLinker := campaignadapters.NewUnsubscribeLinker(
+		token.NewSigner([]byte("test-unsubscribe-key-fixed-for-tests")), ts.URL)
 	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
 		messenger, campaignadapters.NewRateLimiter(limiter), lookup,
-		deliverabilityadapters.NewSuppressionChecker(ts.pool), nil, nil,
+		deliverabilityadapters.NewSuppressionChecker(ts.pool), nil, unsubscribeLinker,
+		subscriberLookup, nil,
 		campaigndomain.Limit{Max: 1000, Window: time.Second}, ts.URL))
 
 	client, err := jobs.NewWorkerClientForQueues(ts.pool, map[string]int{ts.sendQueue: 4}, workers)

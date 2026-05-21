@@ -10,6 +10,6 @@ package domain
 // validate → sanitize → persist; warnings originate from the bluemonday
 // sanitization pass that runs over the BFF-rendered HTML before persistence.
 type RenderWarning struct {
-	Kind   string
-	Detail string
+	Kind   string `json:"kind"`
+	Detail string `json:"detail"`
 }

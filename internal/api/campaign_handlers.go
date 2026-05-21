@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,7 +14,34 @@ import (
 	campaignquery "github.com/nikolaymatrosov/nvelope/internal/campaign/app/query"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/metrics"
 )
+
+// saveVisualErrorResult maps a save-command error to the metric label used
+// for the "result" dimension of VisualSavesTotal. Unknown errors fall back
+// to "error" so the dashboard can flag them without losing the data point.
+func saveVisualErrorResult(err error) string {
+	if err == nil {
+		return "ok"
+	}
+	if errors.Is(err, campaigndomain.ErrStaleRow) {
+		return "stale_row"
+	}
+	if typed, ok := apperr.As(err); ok {
+		switch typed.Slug() {
+		case "unknown_placeholder":
+			return "unknown_placeholder"
+		case "invalid_media_ref":
+			return "invalid_media_ref"
+		case "invalid_doc", "validation_failed":
+			return "invalid_doc"
+		case "campaign_forbidden", "forbidden":
+			return "forbidden"
+		}
+	}
+	return "error"
+}
 
 // campaignPageFromRequest reads limit/offset query parameters into a
 // campaign-domain Page.
@@ -299,23 +327,28 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 		IfUnmodifiedSince time.Time       `json:"ifUnmodifiedSince"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
+		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_body", "false").Inc()
 		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	doc, theme, ok := s.decodeVisualPayload(w, req.BodyDocRaw, req.ThemeRaw)
 	if !ok {
+		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_doc", "false").Inc()
 		return
 	}
 	if req.BodyHTML == "" || req.BodyText == "" {
+		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_body", "false").Inc()
 		writeError(w, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
 		return
 	}
 	if req.IfUnmodifiedSince.IsZero() {
+		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_body", "false").Inc()
 		writeError(w, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
 		return
 	}
+	campaignID := chi.URLParam(r, "id")
 	res, err := s.campaign.Commands.SaveVisualCampaign.Handle(r.Context(), campaigncommand.SaveVisualCampaign{
-		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
+		TenantID: ws.ID, CampaignID: campaignID,
 		Subject:           req.Subject,
 		Doc:               doc,
 		BodyHTML:          req.BodyHTML,
@@ -327,6 +360,7 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		if errors.Is(err, campaigndomain.ErrStaleRow) {
+			metrics.VisualSavesTotal.WithLabelValues("campaign", "stale_row", "false").Inc()
 			writeJSON(w, http.StatusConflict, map[string]any{
 				"error":            "stale_row",
 				"kind":             "stale_row",
@@ -334,16 +368,30 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 			})
 			return
 		}
+		metrics.VisualSavesTotal.WithLabelValues("campaign", saveVisualErrorResult(err), "false").Inc()
 		s.fail(w, "save visual campaign", err)
 		return
 	}
 	view, err := s.campaign.Queries.GetCampaign.Handle(r.Context(), campaignquery.GetCampaign{
-		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
+		TenantID: ws.ID, CampaignID: campaignID,
 	})
 	if err != nil {
+		metrics.VisualSavesTotal.WithLabelValues("campaign", "error", "false").Inc()
 		s.fail(w, "save visual campaign", err)
 		return
 	}
+	warningsPresent := "false"
+	if len(res.Warnings) > 0 {
+		warningsPresent = "true"
+	}
+	metrics.VisualSavesTotal.WithLabelValues("campaign", "ok", warningsPresent).Inc()
+	s.recordAudit(r.Context(), "campaign.save_visual", campaignID, map[string]any{
+		"warnings_count": len(res.Warnings),
+	})
+	s.logEvent(r.Context(), "campaign.save_visual",
+		slog.String("campaign_id", campaignID),
+		slog.Int("warnings_count", len(res.Warnings)),
+	)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"campaign":  view,
 		"warnings":  res.Warnings,
@@ -379,23 +427,28 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 		IfUnmodifiedSince time.Time       `json:"ifUnmodifiedSince"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
+		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_body", "false").Inc()
 		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	doc, theme, ok := s.decodeVisualPayload(w, req.BodyDocRaw, req.ThemeRaw)
 	if !ok {
+		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_doc", "false").Inc()
 		return
 	}
 	if req.BodyHTML == "" || req.BodyText == "" {
+		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_body", "false").Inc()
 		writeError(w, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
 		return
 	}
 	if req.IfUnmodifiedSince.IsZero() {
+		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_body", "false").Inc()
 		writeError(w, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
 		return
 	}
+	templateID := chi.URLParam(r, "id")
 	res, err := s.campaign.Commands.SaveVisualTemplate.Handle(r.Context(), campaigncommand.SaveVisualTemplate{
-		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
+		TenantID: ws.ID, TemplateID: templateID,
 		Subject:           req.Subject,
 		Doc:               doc,
 		BodyHTML:          req.BodyHTML,
@@ -407,6 +460,7 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		if errors.Is(err, campaigndomain.ErrStaleRow) {
+			metrics.VisualSavesTotal.WithLabelValues("template", "stale_row", "false").Inc()
 			writeJSON(w, http.StatusConflict, map[string]any{
 				"error":            "stale_row",
 				"kind":             "stale_row",
@@ -414,16 +468,30 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 			})
 			return
 		}
+		metrics.VisualSavesTotal.WithLabelValues("template", saveVisualErrorResult(err), "false").Inc()
 		s.fail(w, "save visual template", err)
 		return
 	}
 	view, err := s.campaign.Queries.GetTemplate.Handle(r.Context(), campaignquery.GetTemplate{
-		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
+		TenantID: ws.ID, TemplateID: templateID,
 	})
 	if err != nil {
+		metrics.VisualSavesTotal.WithLabelValues("template", "error", "false").Inc()
 		s.fail(w, "save visual template", err)
 		return
 	}
+	warningsPresent := "false"
+	if len(res.Warnings) > 0 {
+		warningsPresent = "true"
+	}
+	metrics.VisualSavesTotal.WithLabelValues("template", "ok", warningsPresent).Inc()
+	s.recordAudit(r.Context(), "template.save_visual", templateID, map[string]any{
+		"warnings_count": len(res.Warnings),
+	})
+	s.logEvent(r.Context(), "template.save_visual",
+		slog.String("template_id", templateID),
+		slog.Int("warnings_count", len(res.Warnings)),
+	)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"template":  view,
 		"warnings":  res.Warnings,

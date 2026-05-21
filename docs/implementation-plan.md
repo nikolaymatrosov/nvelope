@@ -127,12 +127,25 @@ later phase.
 
 ---
 
-## Phase 7 — Parity Completion & Hardening
+## Phase 7 — Parity Completion & Hardening 🚧 (visual editor in flight)
 
-- **7.1** Visual email editor, A/B testing, and advanced segmentation.
+- **7.1** Visual email editor — TipTap-based authoring surface with bubble
+  menu, slash command, multi-column layouts, merge-tag picker, media-library
+  / drag-and-drop image insertion, code view, and per-row theming pinned or
+  inherited from tenant branding. Rendering runs on a new
+  **TanStack Start + Nitro BFF tier** that converts the structured
+  `VisualDoc` to email-ready HTML + plain text via
+  `@react-email/components` and forwards to Go for validation, sanitization
+  (bluemonday), and persistence. Subscriber-fields registry + send-time
+  merge-tag substitution wired through the batch worker; audit-log rows
+  emitted for every visual-save and registry mutation. See
+  [`specs/014-visual-email-editor/`](../specs/014-visual-email-editor/)
+  and [§ 9 (Frontend)](architecture.md#9-frontend) for the BFF tier split.
+- A/B testing and advanced segmentation remain ahead.
 - **7.2** Platform admin console and audit-log UI.
 - **7.3** Load testing; security review (RLS, SigV4, webhook signatures, API keys);
-  observability (metrics, tracing, alerting).
+  observability (metrics, tracing, alerting — Phase 7 added the first
+  `/metrics` endpoints on both Go API and BFF).
 - **7.4** Production Kubernetes rollout, backups, and operational runbooks.
 
 **Exit criteria:** full listmonk feature parity reached; security and load reviews signed off;

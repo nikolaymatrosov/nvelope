@@ -11,6 +11,7 @@ import { CopyIcon, ExternalLinkIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 import { subscriptionPageUrl } from "./index"
 import type {
+  Field,
   SaveSubscriptionPageInput,
   SubscriptionPageFieldView,
   SubscriptionPageView,
@@ -108,6 +109,14 @@ export function SubscriptionPageEdit() {
     queryFn: async () => (await api.listSendingDomains(slug)).data.domains,
   })
 
+  // FR-016b: the subscription-page "visible profile fields" picker reads
+  // from the same subscriber-fields registry the visual editor's merge-tag
+  // picker uses. Built-in pseudo-rows + tenant custom fields, one source.
+  const subscriberFieldsQuery = useQuery({
+    queryKey: queryKeys.subscriberFields(slug),
+    queryFn: async () => (await api.subscriberFields.list(slug)).data.fields,
+  })
+
   const existing = !isNew
     ? pagesQuery.data?.find((p) => p.ID === id)
     : undefined
@@ -171,6 +180,8 @@ export function SubscriptionPageEdit() {
       lists={listsQuery.data ?? []}
       domainsLoading={sendingDomainsQuery.isLoading}
       domains={sendingDomainsQuery.data ?? []}
+      fieldsLoading={subscriberFieldsQuery.isLoading}
+      fields={subscriberFieldsQuery.data ?? []}
     />
   )
 }
@@ -184,6 +195,8 @@ type SubscriptionPageFormProps = {
   lists: Array<{ ID: string; Name: string }>
   domainsLoading: boolean
   domains: Array<{ id: string; domain: string; status: string }>
+  fieldsLoading: boolean
+  fields: Array<Field>
 }
 
 function SubscriptionPageForm({
@@ -195,6 +208,8 @@ function SubscriptionPageForm({
   lists,
   domainsLoading,
   domains,
+  fieldsLoading,
+  fields,
 }: SubscriptionPageFormProps) {
   const [serverError, setServerError] = useState<string | null>(null)
 
@@ -405,86 +420,162 @@ function SubscriptionPageForm({
           <CardHeader>
             <CardTitle>Fields</CardTitle>
             <CardDescription>
-              Email is always shown and always required. Add custom fields the
-              visitor must (or may) fill in.
+              Email is always shown and always required. Pick from your
+              subscriber-fields registry to add more — the same list the
+              visual editor's merge-tag picker uses. Manage the registry under
+              Settings → Subscriber fields.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form.Field name="fields">
-              {(field) => (
-                <div className="flex flex-col gap-3" data-testid="fields-editor">
-                  {field.state.value.map((row, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-1 gap-2 rounded-md border p-3 sm:grid-cols-[1fr_1fr_auto_auto]"
+              {(field) => {
+                const chosen = new Set(field.state.value.map((f) => f.key))
+                const available = fields.filter(
+                  (f) => f.slug !== "email" && !chosen.has(f.slug),
+                )
+                const fieldBySlug = new Map(fields.map((f) => [f.slug, f]))
+                return (
+                  <div className="flex flex-col gap-3" data-testid="fields-editor">
+                    {field.state.value.map((row, idx) => {
+                      const meta = fieldBySlug.get(row.key)
+                      // Selectable options for this row: every registry entry
+                      // not chosen on another row, plus the row's own slug
+                      // (so the current pick stays visible while editing).
+                      const options = fields.filter(
+                        (f) =>
+                          f.slug !== "email" &&
+                          (f.slug === row.key || !chosen.has(f.slug)),
+                      )
+                      return (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-1 gap-2 rounded-md border p-3 sm:grid-cols-[1fr_1fr_auto_auto]"
+                        >
+                          <div>
+                            <Label htmlFor={`field-key-${idx}`}>Field</Label>
+                            <select
+                              id={`field-key-${idx}`}
+                              value={row.key}
+                              onChange={(e) => {
+                                const pickedSlug = e.target.value
+                                const picked = fieldBySlug.get(pickedSlug)
+                                const next = [...field.state.value]
+                                next[idx] = {
+                                  ...row,
+                                  key: pickedSlug,
+                                  // Auto-fill the label from the registry the
+                                  // first time the operator picks a slug.
+                                  // Manual edits afterwards survive a re-pick
+                                  // because we only overwrite an empty label
+                                  // or one that matched the previously-chosen
+                                  // field's displayName.
+                                  label:
+                                    !row.label ||
+                                    (meta && row.label === meta.displayName)
+                                      ? picked
+                                        ? picked.displayName
+                                        : ""
+                                      : row.label,
+                                }
+                                field.handleChange(next)
+                              }}
+                              className="h-10 w-full rounded-md border px-3 text-sm"
+                              data-testid={`field-key-${idx}`}
+                              disabled={fieldsLoading}
+                            >
+                              <option value="">
+                                {fieldsLoading
+                                  ? "Loading fields…"
+                                  : "Choose a field…"}
+                              </option>
+                              {options.map((f) => (
+                                <option key={f.slug} value={f.slug}>
+                                  {f.displayName}
+                                  {f.builtIn ? " (built-in)" : ""}
+                                </option>
+                              ))}
+                              {row.key && !fieldBySlug.has(row.key) && (
+                                // A persisted page may reference a slug whose
+                                // registry entry was deleted later. Keep it
+                                // visible so the operator can re-pick rather
+                                // than silently losing it on save.
+                                <option value={row.key}>
+                                  {row.key} (no longer in registry)
+                                </option>
+                              )}
+                            </select>
+                          </div>
+                          <div>
+                            <Label htmlFor={`field-label-${idx}`}>Label</Label>
+                            <Input
+                              id={`field-label-${idx}`}
+                              value={row.label}
+                              onChange={(e) => {
+                                const next = [...field.state.value]
+                                next[idx] = { ...row, label: e.target.value }
+                                field.handleChange(next)
+                              }}
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 self-end text-sm">
+                            <Checkbox
+                              checked={row.required}
+                              onCheckedChange={(c) => {
+                                const next = [...field.state.value]
+                                next[idx] = { ...row, required: Boolean(c) }
+                                field.handleChange(next)
+                              }}
+                            />
+                            Required
+                          </label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="self-end"
+                            onClick={() =>
+                              field.handleChange(
+                                field.state.value.filter((_, i) => i !== idx),
+                              )
+                            }
+                            aria-label={`Remove field ${row.label || row.key || idx + 1}`}
+                          >
+                            <Trash2Icon />
+                          </Button>
+                        </div>
+                      )
+                    })}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        // The button is disabled when no unused options
+                        // remain, so available[0] is always defined here.
+                        const next = available[0]
+                        field.handleChange([
+                          ...field.state.value,
+                          {
+                            key: next.slug,
+                            label: next.displayName,
+                            required: false,
+                          },
+                        ])
+                      }}
+                      data-testid="add-field"
+                      disabled={fieldsLoading || available.length === 0}
                     >
-                      <div>
-                        <Label htmlFor={`field-key-${idx}`}>Key</Label>
-                        <Input
-                          id={`field-key-${idx}`}
-                          value={row.key}
-                          onChange={(e) => {
-                            const next = [...field.state.value]
-                            next[idx] = { ...row, key: e.target.value }
-                            field.handleChange(next)
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor={`field-label-${idx}`}>Label</Label>
-                        <Input
-                          id={`field-label-${idx}`}
-                          value={row.label}
-                          onChange={(e) => {
-                            const next = [...field.state.value]
-                            next[idx] = { ...row, label: e.target.value }
-                            field.handleChange(next)
-                          }}
-                        />
-                      </div>
-                      <label className="flex items-center gap-2 self-end text-sm">
-                        <Checkbox
-                          checked={row.required}
-                          onCheckedChange={(c) => {
-                            const next = [...field.state.value]
-                            next[idx] = { ...row, required: Boolean(c) }
-                            field.handleChange(next)
-                          }}
-                        />
-                        Required
-                      </label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="self-end"
-                        onClick={() =>
-                          field.handleChange(
-                            field.state.value.filter((_, i) => i !== idx),
-                          )
-                        }
-                        aria-label={`Remove field ${row.label || row.key || idx + 1}`}
-                      >
-                        <Trash2Icon />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      field.handleChange([
-                        ...field.state.value,
-                        { key: "", label: "", required: false },
-                      ])
-                    }
-                    data-testid="add-field"
-                  >
-                    <PlusIcon /> Add field
-                  </Button>
-                </div>
-              )}
+                      <PlusIcon /> Add field
+                    </Button>
+                    {!fieldsLoading && fields.length <= 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        No custom subscriber fields yet — add one under
+                        Settings → Subscriber fields to surface it here.
+                      </p>
+                    )}
+                  </div>
+                )
+              }}
             </form.Field>
           </CardContent>
         </Card>

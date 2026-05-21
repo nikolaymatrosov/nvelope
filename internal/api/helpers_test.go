@@ -122,7 +122,7 @@ func newTestServer(t *testing.T) *testServer {
 		service.WithMediaBlobStore(mediaadapters.NewMemoryBlobStore("https://media.test")))
 	handler := New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
 		app.Campaign, app.Deliverability, app.Billing, app.Media, app.Tracking,
-		cfg, logger, http.NotFoundHandler()).Handler()
+		app.Audit, cfg, logger, http.NotFoundHandler()).Handler()
 
 	hs := httptest.NewTLSServer(handler)
 	t.Cleanup(hs.Close)

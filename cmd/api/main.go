@@ -41,7 +41,7 @@ func main() {
 		Addr: cfg.HTTPAddr,
 		Handler: api.New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
 			app.Campaign, app.Deliverability, app.Billing, app.Media, app.Tracking,
-			cfg, logger, healthHandler).Handler(),
+			app.Audit, cfg, logger, healthHandler).Handler(),
 	}
 
 	runner := service.RunnerFunc(func(ctx context.Context) error {

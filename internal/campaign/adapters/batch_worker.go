@@ -10,7 +10,25 @@ import (
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
+	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
 )
+
+// SubscriberLookup loads the per-recipient SubscriberView the send-time
+// merge-tag substituter needs. The campaign context owns this port; an
+// adapter in the composition root bridges to the audience context's
+// subscriber repository so the substitution test (T117) wires through one
+// integration boundary, not two.
+type SubscriberLookup interface {
+	Lookup(ctx context.Context, tenantID, subscriberID string) (sendingdomain.SubscriberView, error)
+}
+
+// TenantNameLookup returns the workspace name for use as the
+// `{{ campaign.tenant_name }}` merge-tag value. Empty when the tenant
+// name cannot be resolved — the substituter leaves the placeholder as a
+// literal rather than blowing up the send.
+type TenantNameLookup interface {
+	TenantName(ctx context.Context, tenantID string) (string, error)
+}
 
 // BatchWorker is the River worker for campaign.batch: it sends one bounded
 // slice of a campaign's recipients, rate-limited and resumable. Per-recipient
@@ -27,6 +45,8 @@ type BatchWorker struct {
 	suppression domain.SuppressionChecker
 	usage       domain.UsageRecorder
 	unsubscribe domain.UnsubscribeLinker
+	subscribers SubscriberLookup
+	tenants     TenantNameLookup
 	perTenant   domain.Limit
 	baseURL     string
 }
@@ -34,11 +54,15 @@ type BatchWorker struct {
 // NewBatchWorker builds the campaign.batch worker, failing fast on a nil
 // dependency. usage may be nil — a deployment without billing does not meter
 // sends. unsubscribe may be nil — campaign mail then carries no
-// List-Unsubscribe header.
+// List-Unsubscribe header. subscribers may be nil — Phase 7 merge-tag
+// substitution is then skipped (the bodies ship with literal placeholders);
+// tests that don't need substitution can pass nil. tenants may be nil — the
+// `{{ campaign.tenant_name }}` merge tag is then left as a literal.
 func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.RecipientRepository,
 	tracking domain.TrackingRepository, messenger domain.Messenger, limiter domain.RateLimiter,
 	domains domain.SendingDomainLookup, suppression domain.SuppressionChecker,
 	usage domain.UsageRecorder, unsubscribe domain.UnsubscribeLinker,
+	subscribers SubscriberLookup, tenants TenantNameLookup,
 	perTenant domain.Limit, baseURL string) *BatchWorker {
 	if campaigns == nil || recipients == nil || tracking == nil ||
 		messenger == nil || limiter == nil || domains == nil || suppression == nil {
@@ -48,6 +72,7 @@ func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.Recip
 		campaigns: campaigns, recipients: recipients, tracking: tracking,
 		messenger: messenger, limiter: limiter, domains: domains,
 		suppression: suppression, usage: usage, unsubscribe: unsubscribe,
+		subscribers: subscribers, tenants: tenants,
 		perTenant: perTenant, baseURL: baseURL,
 	}
 }
@@ -131,6 +156,21 @@ func (w *BatchWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignBatc
 	return w.syncProgress(ctx, tenantID, campaignID)
 }
 
+// tenantName returns the workspace name for the merge-tag context, falling
+// back to empty when no lookup is wired or the lookup errors (the
+// substituter then leaves the placeholder as a literal — the same
+// fallthrough policy used for unknown subscriber slugs).
+func (w *BatchWorker) tenantName(ctx context.Context, tenantID string) string {
+	if w.tenants == nil {
+		return ""
+	}
+	name, err := w.tenants.TenantName(ctx, tenantID)
+	if err != nil {
+		return ""
+	}
+	return name
+}
+
 // recordUsage meters the sent recipients as campaign-send usage events. A
 // repeated record is a no-op, so a redelivered batch never double-counts.
 func (w *BatchWorker) recordUsage(ctx context.Context, tenantID string, recipientIDs []string) {
@@ -146,10 +186,6 @@ func (w *BatchWorker) recordUsage(ctx context.Context, tenantID string, recipien
 func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *domain.Campaign,
 	rec *domain.Recipient, fromAddress string, linkIDs map[string]string) bool {
 
-	html := campaign.BodyHTML()
-	if html != "" {
-		html = domain.RenderTracked(html, w.baseURL, campaign.ID(), rec.ID(), linkIDs)
-	}
 	headers := map[string]string{
 		"X-Tenant":     tenantID,
 		"X-Campaign":   campaign.ID(),
@@ -157,18 +193,45 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 	}
 	// RFC 8058 one-click unsubscribe: a mail client shows a built-in
 	// unsubscribe control that POSTs to the URL with no page interaction.
+	var unsubscribeURL string
 	if w.unsubscribe != nil && rec.SubscriberID() != "" {
-		url := w.unsubscribe.UnsubscribeURL(tenantID, rec.SubscriberID())
-		headers["List-Unsubscribe"] = "<" + url + ">"
+		unsubscribeURL = w.unsubscribe.UnsubscribeURL(tenantID, rec.SubscriberID())
+		headers["List-Unsubscribe"] = "<" + unsubscribeURL + ">"
 		headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+	}
+
+	// Phase 7 merge-tag substitution. Runs BEFORE the tracker rewrite so
+	// `{{ campaign.unsubscribe_url }}` becomes a real URL that the tracker
+	// (which only rewrites URLs that appeared in the original body) leaves
+	// untouched — clicking unsubscribe goes straight to the unsubscribe
+	// handler, not through the click tracker.
+	html := campaign.BodyHTML()
+	text := campaign.BodyText()
+	subject := campaign.Subject()
+	if w.subscribers != nil && rec.SubscriberID() != "" {
+		sub, err := w.subscribers.Lookup(ctx, tenantID, rec.SubscriberID())
+		if err == nil {
+			cctx := sendingdomain.CampaignContext{
+				UnsubscribeURL: unsubscribeURL,
+				TenantName:     w.tenantName(ctx, tenantID),
+				CurrentDate:    time.Now(),
+			}
+			html, text = sendingdomain.Substitute(html, text, sub, cctx)
+			subjectHTML, _ := sendingdomain.Substitute(subject, "", sub, cctx)
+			subject = subjectHTML
+		}
+	}
+
+	if html != "" {
+		html = domain.RenderTracked(html, w.baseURL, campaign.ID(), rec.ID(), linkIDs)
 	}
 	messageRef, err := w.messenger.Send(ctx, domain.OutboundMessage{
 		FromName:    campaign.FromName(),
 		FromAddress: fromAddress,
 		To:          rec.Email(),
-		Subject:     campaign.Subject(),
+		Subject:     subject,
 		HTMLBody:    html,
-		TextBody:    campaign.BodyText(),
+		TextBody:    text,
 		Headers:     headers,
 	})
 	// The provider has already accepted (or rejected) the message — the

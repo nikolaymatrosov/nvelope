@@ -26,6 +26,7 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/platform/ratelimit"
 	sendingadapters "github.com/nikolaymatrosov/nvelope/internal/sending/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/service"
+	tenantadapters "github.com/nikolaymatrosov/nvelope/internal/tenant/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/token"
 )
 
@@ -131,11 +132,16 @@ func main() {
 	unsubscribeLinker := campaignadapters.NewUnsubscribeLinker(
 		token.NewSigner(totpKey), cfg.PublicBaseURL)
 
+	// Phase 7 merge-tag substitution at send time. Subscriber lookup feeds
+	// `{{ subscriber.* }}`; tenant name feeds `{{ campaign.tenant_name }}`.
+	subscriberLookup := service.NewSubscriberLookup(subscribers)
+	tenantNameLookup := service.NewTenantNameLookup(tenantadapters.NewTenants(pool))
+
 	river.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
 		recipientSource, enqueuer, quotaGate, cfg.CampaignBatchSize))
 	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
 		messenger, rateLimiter, domainLookup, campaignSuppression, usageRecorder,
-		unsubscribeLinker, perTenant, cfg.BaseURL))
+		unsubscribeLinker, subscriberLookup, tenantNameLookup, perTenant, cfg.BaseURL))
 
 	// Deliverability: inbound feedback processing with automatic suppression.
 	deliverabilityEvents := deliverabilityadapters.NewEvents(pool)

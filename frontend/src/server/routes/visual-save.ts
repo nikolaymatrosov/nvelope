@@ -19,13 +19,14 @@
 // and forbidden 403s from Go pass through unchanged.
 
 import {
-  
+
   GoApiError,
   GoApiUnreachable,
-  
-  
+
+
   createGoApiClient
 } from "../clients/go-api"
+import { bffSaveAttemptsTotal, observeRender } from "../metrics"
 import { PlatformDefaultTheme, renderVisualDoc } from "../render"
 import { ValidatorError, validateVisualDoc } from "../validate"
 import type {
@@ -75,6 +76,7 @@ export async function runVisualCampaignSave(input: VisualSaveInput): Promise<Vis
     fetchImpl: input.fetchImpl,
   })
 
+  const log = resolveLog(input.log)
   const logFields = {
     tenant_slug: input.slug,
     campaign_id: input.campaignId,
@@ -85,7 +87,7 @@ export async function runVisualCampaignSave(input: VisualSaveInput): Promise<Vis
   try {
     fields = await client.listSubscriberFields(input.cookie, input.slug)
   } catch (err) {
-    return badGateway(err, "fetching subscriber fields", logFields, input.log)
+    return badGateway("campaign_save", err, "fetching subscriber fields", logFields, log)
   }
 
   const knownSlugs = new Set(fields.fields.map((f) => f.slug))
@@ -96,6 +98,7 @@ export async function runVisualCampaignSave(input: VisualSaveInput): Promise<Vis
     })
   } catch (err) {
     if (err instanceof ValidatorError) {
+      bffSaveAttemptsTotal.inc({ surface: "campaign_save", kind: "validation_error" })
       return {
         kind: "validation_error",
         status: 400,
@@ -117,12 +120,16 @@ export async function runVisualCampaignSave(input: VisualSaveInput): Promise<Vis
     try {
       branding = await client.getBranding(input.cookie, input.slug)
     } catch (err) {
-      return badGateway(err, "fetching branding", logFields, input.log)
+      return badGateway("campaign_save", err, "fetching branding", logFields, log)
     }
     effectiveTheme = themeFromBranding(branding)
   }
 
-  const { bodyHtml, bodyText } = await renderVisualDoc(input.body.bodyDoc, effectiveTheme)
+  const renderStart = Date.now()
+  const { bodyHtml, bodyText } = await observeRender("campaign_save", () =>
+    renderVisualDoc(input.body.bodyDoc, effectiveTheme),
+  )
+  const renderDurationMs = Date.now() - renderStart
 
   const payload: PutVisualPayload = {
     subject: input.body.subject,
@@ -137,14 +144,20 @@ export async function runVisualCampaignSave(input: VisualSaveInput): Promise<Vis
 
   try {
     const goRes = await client.putCampaignVisual(input.cookie, input.slug, input.campaignId, payload)
-    input.log?.("info", "visual_save.ok", { ...logFields, warnings_count: goRes.warnings.length })
+    bffSaveAttemptsTotal.inc({ surface: "campaign_save", kind: "ok" })
+    log("info", "visual_save.ok", {
+      ...logFields,
+      warnings_count: goRes.warnings.length,
+      render_duration_ms: renderDurationMs,
+    })
     return { kind: "ok", status: 200, body: goRes }
   } catch (err) {
     if (err instanceof GoApiError) {
-      input.log?.("warn", "visual_save.go_error", { ...logFields, status: err.status })
+      bffSaveAttemptsTotal.inc({ surface: "campaign_save", kind: "go_error" })
+      log("warn", "visual_save.go_error", { ...logFields, status: err.status })
       return { kind: "go_error", status: err.status, body: err.body }
     }
-    return badGateway(err, "forwarding save to Go", logFields, input.log)
+    return badGateway("campaign_save", err, "forwarding save to Go", logFields, log)
   }
 }
 
@@ -186,6 +199,7 @@ export async function runVisualTemplateSave(input: VisualTemplateSaveInput): Pro
     fetchImpl: input.fetchImpl,
   })
 
+  const log = resolveLog(input.log)
   const logFields = {
     tenant_slug: input.slug,
     template_id: input.templateId,
@@ -196,7 +210,7 @@ export async function runVisualTemplateSave(input: VisualTemplateSaveInput): Pro
   try {
     fields = await client.listSubscriberFields(input.cookie, input.slug)
   } catch (err) {
-    return badGateway(err, "fetching subscriber fields", logFields, input.log)
+    return badGateway("template_save", err, "fetching subscriber fields", logFields, log)
   }
 
   const knownSlugs = new Set(fields.fields.map((f) => f.slug))
@@ -207,6 +221,7 @@ export async function runVisualTemplateSave(input: VisualTemplateSaveInput): Pro
     })
   } catch (err) {
     if (err instanceof ValidatorError) {
+      bffSaveAttemptsTotal.inc({ surface: "template_save", kind: "validation_error" })
       return {
         kind: "validation_error",
         status: 400,
@@ -228,12 +243,16 @@ export async function runVisualTemplateSave(input: VisualTemplateSaveInput): Pro
     try {
       branding = await client.getBranding(input.cookie, input.slug)
     } catch (err) {
-      return badGateway(err, "fetching branding", logFields, input.log)
+      return badGateway("template_save", err, "fetching branding", logFields, log)
     }
     effectiveTheme = themeFromBranding(branding)
   }
 
-  const { bodyHtml, bodyText } = await renderVisualDoc(input.body.bodyDoc, effectiveTheme)
+  const renderStart = Date.now()
+  const { bodyHtml, bodyText } = await observeRender("template_save", () =>
+    renderVisualDoc(input.body.bodyDoc, effectiveTheme),
+  )
+  const renderDurationMs = Date.now() - renderStart
 
   const payload: PutVisualTemplatePayload = {
     name: input.body.name,
@@ -250,14 +269,20 @@ export async function runVisualTemplateSave(input: VisualTemplateSaveInput): Pro
 
   try {
     const goRes = await client.putTemplateVisual(input.cookie, input.slug, input.templateId, payload)
-    input.log?.("info", "template_visual_save.ok", { ...logFields, warnings_count: goRes.warnings.length })
+    bffSaveAttemptsTotal.inc({ surface: "template_save", kind: "ok" })
+    log("info", "template_visual_save.ok", {
+      ...logFields,
+      warnings_count: goRes.warnings.length,
+      render_duration_ms: renderDurationMs,
+    })
     return { kind: "ok", status: 200, body: goRes }
   } catch (err) {
     if (err instanceof GoApiError) {
-      input.log?.("warn", "template_visual_save.go_error", { ...logFields, status: err.status })
+      bffSaveAttemptsTotal.inc({ surface: "template_save", kind: "go_error" })
+      log("warn", "template_visual_save.go_error", { ...logFields, status: err.status })
       return { kind: "go_error", status: err.status, body: err.body }
     }
-    return badGateway(err, "forwarding template save to Go", logFields, input.log)
+    return badGateway("template_save", err, "forwarding template save to Go", logFields, log)
   }
 }
 
@@ -276,16 +301,44 @@ export function themeFromBranding(b: BrandingResponse): Theme {
 }
 
 function badGateway(
+  surface: "campaign_save" | "template_save",
   err: unknown,
   detail: string,
   logFields: Record<string, unknown>,
-  log: VisualSaveInput["log"],
+  log: NonNullable<VisualSaveInput["log"]>,
 ): VisualSaveResult {
   const message = err instanceof GoApiUnreachable ? err.message : String(err)
-  log?.("error", "visual_save.bad_gateway", { ...logFields, detail, error: message })
+  bffSaveAttemptsTotal.inc({ surface, kind: "bad_gateway" })
+  log("error", "visual_save.bad_gateway", { ...logFields, detail, error: message })
   return {
     kind: "bad_gateway",
     status: 502,
     body: { error: "bad_gateway", detail },
+  }
+}
+
+// resolveLog returns the caller-supplied logger if any, otherwise a
+// console-backed structured shim so the BFF never silently drops events.
+// The shim emits NDJSON-on-stdout in the same shape as Go's slog handler
+// so a single log pipeline ingests both tiers.
+function resolveLog(
+  log: VisualSaveInput["log"],
+): NonNullable<VisualSaveInput["log"]> {
+  if (log) return log
+  return (level, event, fields) => {
+    const line = JSON.stringify({
+      level,
+      service: "bff",
+      time: new Date().toISOString(),
+      event,
+      ...fields,
+    })
+    if (level === "error") {
+      console.error(line)
+    } else if (level === "warn") {
+      console.warn(line)
+    } else {
+      console.log(line)
+    }
   }
 }

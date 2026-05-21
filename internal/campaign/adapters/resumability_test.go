@@ -75,7 +75,7 @@ func TestSendPipelineResumesAfterWorkerCrash(t *testing.T) {
 	newBatch := func() *adapters.BatchWorker {
 		return adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
 			messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
-			noopSuppression{}, nil, nil,
+			noopSuppression{}, nil, nil, nil, nil,
 			domain.Limit{Max: limit.Max, Window: limit.Window}, "https://track.test")
 	}
 	job := &river.Job[jobs.CampaignBatchArgs]{
