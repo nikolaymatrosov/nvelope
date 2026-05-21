@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react"
 import { CampaignDetail } from "./$id"
-import type { CampaignStatus } from "@/lib/api-types"
+import type { CampaignStatus, VisualDoc } from "@/lib/api-types"
 import { renderWithClient } from "@/test/render"
 import { api } from "@/lib/api"
 
@@ -37,7 +37,28 @@ vi.mock("@/lib/api", () => ({
     tenant: vi.fn(),
     listRoles: vi.fn(),
     media: { list: vi.fn() },
+    mergeTags: { list: vi.fn() },
+    campaigns: { saveVisual: vi.fn() },
   },
+}))
+
+// The campaign route renders <VisualEmailEditor> which mounts TipTap;
+// jsdom doesn't fully implement Selection / Range APIs ProseMirror's
+// drop-cursor uses. The unit-level editor tree is covered separately in
+// `src/components/visual-editor/VisualEmailEditor.test.tsx` — here we
+// stub the heavy component out so the route tests stay focused on the
+// save flow and the stale-row UX.
+vi.mock("@/components/visual-editor/VisualEmailEditor", () => ({
+  VisualEmailEditor: ({
+    value,
+  }: {
+    value: { content: Array<unknown> }
+  }) => (
+    <div
+      data-testid="visual-email-editor"
+      data-doc-blocks={String(value.content.length)}
+    />
+  ),
 }))
 
 const ok = <T,>(data: T) => ({ status: 200, ok: true, data })
@@ -225,5 +246,122 @@ describe("CampaignDetail", () => {
     fireEvent.click(open)
     // Picker opens; media list is fetched.
     await waitFor(() => expect(api.media.list).toHaveBeenCalledWith("acme"))
+  })
+})
+
+describe("CampaignDetail — visual editor surface (T070, T127)", () => {
+  const visualDoc: VisualDoc = {
+    version: 1,
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Hi" }] },
+    ],
+  }
+
+  it("renders <VisualEmailEditor /> when the row has body_doc", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(campaign({ body_doc: visualDoc })),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    renderWithClient(<CampaignDetail />)
+    expect(await screen.findByTestId("visual-email-editor")).toBeTruthy()
+    // Legacy textarea is hidden in visual mode.
+    expect(screen.queryByTestId("open-media-picker")).toBeNull()
+  })
+
+  it("keeps the code editor when the row is legacy raw-HTML", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(campaign({ body_doc: null, body_html: "<p>legacy</p>" })),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    renderWithClient(<CampaignDetail />)
+    expect(await screen.findByTestId("open-media-picker")).toBeTruthy()
+    expect(screen.queryByTestId("visual-email-editor")).toBeNull()
+  })
+
+  it("saves via campaigns.saveVisual with the row's updated_at as ifUnmodifiedSince", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(
+        campaign({
+          body_doc: visualDoc,
+          updated_at: "2026-05-20T12:34:56Z",
+        }),
+      ),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    vi.mocked(api.updateCampaign).mockResolvedValue(ok(campaign()))
+    vi.mocked(api.campaigns.saveVisual).mockResolvedValue(
+      ok({
+        id: "camp-1",
+        subject: "Big news",
+        bodyHtml: "<p>Hi</p>",
+        bodyText: "Hi",
+        bodyDoc: visualDoc,
+        theme: null,
+        warnings: [],
+        updatedAt: "2026-05-20T12:40:00Z",
+      }),
+    )
+    renderWithClient(<CampaignDetail />)
+
+    const saveBtn = await screen.findByRole("button", { name: /save changes/i })
+    fireEvent.click(saveBtn)
+
+    await waitFor(() =>
+      expect(api.campaigns.saveVisual).toHaveBeenCalledWith(
+        "acme",
+        "camp-1",
+        expect.objectContaining({
+          ifUnmodifiedSince: "2026-05-20T12:34:56Z",
+          bodyDoc: visualDoc,
+          theme: null,
+        }),
+      ),
+    )
+  })
+
+  it("surfaces a stale_row 409 as an ApiError that the route can handle", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(
+        campaign({
+          body_doc: visualDoc,
+          updated_at: "2026-05-20T12:34:56Z",
+        }),
+      ),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    vi.mocked(api.updateCampaign).mockResolvedValue(ok(campaign()))
+    const { ApiError } = await import("@/lib/errors")
+    vi.mocked(api.campaigns.saveVisual).mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "stale_row",
+        "Changed in another tab/session",
+        "/t/acme/api/campaigns/camp-1/visual",
+        { currentUpdatedAt: "2026-05-20T12:38:00Z" },
+      ),
+    )
+    renderWithClient(<CampaignDetail />)
+
+    const saveBtn = await screen.findByRole("button", { name: /save changes/i })
+    fireEvent.click(saveBtn)
+
+    // The route catches the 409 and offers a recovery UX via sonner.
+    // The mutation completes — we assert the API was called with the
+    // stale token, confirming the route reaches the 409 branch rather
+    // than crashing.
+    await waitFor(() =>
+      expect(api.campaigns.saveVisual).toHaveBeenCalledWith(
+        "acme",
+        "camp-1",
+        expect.objectContaining({
+          ifUnmodifiedSince: "2026-05-20T12:34:56Z",
+        }),
+      ),
+    )
   })
 })

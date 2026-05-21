@@ -347,6 +347,9 @@ export type TemplateView = {
   subject: string
   body_html: string
   body_text: string
+  // Phase 7 — populated when the template was last saved visually.
+  body_doc?: VisualDoc | null
+  theme?: Theme | null
   created_at: string
   updated_at: string
 }
@@ -390,6 +393,11 @@ export type CampaignView = {
   subject: string
   body_html: string
   body_text: string
+  // Phase 7 — populated when the campaign was last saved via the visual
+  // editor. NULL means raw-HTML / code-only — the operator must opt-in
+  // to switch to the visual editor (per FR-029).
+  body_doc?: VisualDoc | null
+  theme?: Theme | null
   from_name: string
   from_local_part: string
   sending_domain_id?: string
@@ -697,4 +705,235 @@ export const DEFAULT_MEDIA_MAX_BYTES = 10 * 1024 * 1024
 
 export function isImageContentType(contentType: string): boolean {
   return contentType.startsWith("image/")
+}
+
+// ── Visual editor (Phase 7) ──────────────────────────────────────────────────
+//
+// Wire shape for the structured-document editor. Mirrors the Go
+// `internal/campaign/domain.VisualDoc` types and the BFF render tier's
+// `frontend/src/server/render/types.ts`. The SPA produces VisualDoc JSON in
+// the browser; the BFF renders it to HTML+text; Go validates, sanitizes,
+// and persists. Field names match the wire format byte-for-byte — see
+// `specs/014-visual-email-editor/contracts/tenant-api.md` §
+// "Structured-document JSON schema".
+
+export type MergeTagNamespace = "subscriber" | "campaign"
+
+export type Mark =
+  | { type: "bold" }
+  | { type: "italic" }
+  | { type: "underline" }
+  | { type: "strike" }
+  | { type: "color"; attrs: { color: string } }
+  | { type: "link"; attrs: { href: string } }
+
+export type TextInline = {
+  type: "text"
+  text: string
+  marks?: Array<Mark>
+}
+
+export type MergeTagInline = {
+  type: "mergeTag"
+  attrs: { namespace: MergeTagNamespace; key: string }
+}
+
+export type Inline = TextInline | MergeTagInline
+
+export type ParagraphBlock = { type: "paragraph"; content: Array<Inline> }
+export type HeadingBlock = {
+  type: "heading"
+  attrs: { level: 1 | 2 | 3 }
+  content: Array<Inline>
+}
+export type ListItemBlock = { type: "listItem"; content: Array<VisualBlock> }
+export type BulletListBlock = {
+  type: "bulletList"
+  content: Array<ListItemBlock>
+}
+export type OrderedListBlock = {
+  type: "orderedList"
+  content: Array<ListItemBlock>
+}
+export type BlockquoteBlock = {
+  type: "blockquote"
+  content: Array<VisualBlock>
+}
+export type CodeBlock = {
+  type: "codeBlock"
+  content: Array<{ type: "text"; text: string }>
+}
+export type ImageBlock = {
+  type: "image"
+  attrs: { mediaRef: string; alt: string; href: string }
+}
+export type ButtonBlock = {
+  type: "button"
+  attrs: { label: string; href: string }
+}
+export type DividerBlock = { type: "divider" }
+export type ColumnBlock = { type: "column"; content: Array<VisualBlock> }
+export type ColumnsBlock = {
+  type: "columns"
+  attrs: { count: 2 | 3 | 4 }
+  content: Array<ColumnBlock>
+}
+export type RawHtmlBlock = { type: "rawHtml"; attrs: { html: string } }
+
+export type VisualBlock =
+  | ParagraphBlock
+  | HeadingBlock
+  | BulletListBlock
+  | OrderedListBlock
+  | ListItemBlock
+  | BlockquoteBlock
+  | CodeBlock
+  | ImageBlock
+  | ButtonBlock
+  | DividerBlock
+  | ColumnsBlock
+  | ColumnBlock
+  | RawHtmlBlock
+
+export type VisualDoc = {
+  version: 1
+  type: "doc"
+  content: Array<VisualBlock>
+}
+
+// Theme value object. NULL on the row means "inherit tenant branding".
+export type Theme = {
+  textColor: string
+  linkColor: string
+  buttonColor: string
+  buttonTextColor: string
+  fontFamily: string
+  containerWidth: number
+}
+
+export type RenderWarning = {
+  kind: string
+  detail: string
+}
+
+// Subscriber-field registry — surfaced as one merged list by
+// GET /subscriber-fields (built-in pseudo-rows + tenant rows).
+export type FieldType = "text" | "number" | "date" | "boolean" | "url"
+
+export const FIELD_TYPES: Array<FieldType> = [
+  "text",
+  "number",
+  "date",
+  "boolean",
+  "url",
+]
+
+export type Field = {
+  id: string
+  slug: string
+  displayName: string
+  type: FieldType
+  defaultValue: string
+  position: number
+  builtIn: boolean
+}
+
+export type CreateFieldInput = {
+  slug: string
+  displayName: string
+  type: FieldType
+  defaultValue: string
+}
+
+export type UpdateFieldInput = {
+  displayName?: string
+  type?: FieldType
+  defaultValue?: string
+}
+
+// Merge-tag picker — one shape combining subscriber + campaign-namespace
+// entries returned by GET /merge-tags.
+export type MergeTagSubscriberItem = {
+  slug: string
+  displayName: string
+  type: FieldType
+  builtIn: boolean
+}
+
+export type MergeTagCampaignItem = {
+  key: string
+  displayName: string
+}
+
+export type MergeTagPickerItem =
+  | ({ namespace: "subscriber" } & MergeTagSubscriberItem)
+  | ({ namespace: "campaign" } & MergeTagCampaignItem)
+
+export type MergeTagsResponse = {
+  subscriber: Array<MergeTagSubscriberItem>
+  campaign: Array<MergeTagCampaignItem>
+}
+
+// Visual save — campaigns.
+export type SaveVisualCampaignInput = {
+  subject: string
+  bodyDoc: VisualDoc
+  theme: Theme | null
+  ifUnmodifiedSince: string
+}
+
+// Visual save — templates.
+export type SaveVisualTemplateInput = {
+  name: string
+  kind: TemplateKind
+  subject: string
+  bodyDoc: VisualDoc
+  theme: Theme | null
+  ifUnmodifiedSince: string
+}
+
+// Successful visual save response. Campaign and template responses share
+// this shape (template adds name+kind on top — captured in the
+// VisualTemplateSaveResponse extension below).
+export type VisualSaveResponse = {
+  id: string
+  subject: string
+  bodyHtml: string
+  bodyText: string
+  bodyDoc: VisualDoc
+  theme: Theme | null
+  warnings: Array<RenderWarning>
+  updatedAt: string
+}
+
+export type VisualTemplateSaveResponse = VisualSaveResponse & {
+  name: string
+  kind: TemplateKind
+}
+
+// Render-preview — tenant-scoped (no row id). Shared by campaign + template
+// editors. Optional `sample` triggers a Go-side substitute-sample side-call.
+export type RenderPreviewInput = {
+  bodyDoc: VisualDoc
+  theme: Theme | null
+  sample: RenderPreviewSample | null
+}
+
+export type RenderPreviewSample = {
+  subscriber: Record<string, string>
+  campaign: Record<string, string>
+}
+
+export type RenderPreviewResponse = {
+  bodyHtml: string
+  bodyText: string
+  warnings: Array<RenderWarning>
+}
+
+// Stale-row 409 payload — surfaced when ifUnmodifiedSince diverges from
+// the row's current updated_at. The SPA echoes currentUpdatedAt on the
+// "Force overwrite" path.
+export type StaleRowError = {
+  kind: "stale_row"
+  currentUpdatedAt: string
 }

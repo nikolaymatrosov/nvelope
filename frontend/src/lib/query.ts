@@ -117,4 +117,8 @@ export const queryKeys = {
   media: (slug: string) => ["t", slug, "media"] as const,
   mediaAsset: (slug: string, id: string) =>
     ["t", slug, "media", id] as const,
+
+  subscriberFields: (slug: string) =>
+    ["t", slug, "subscriber-fields"] as const,
+  mergeTags: (slug: string) => ["t", slug, "merge-tags"] as const,
 }

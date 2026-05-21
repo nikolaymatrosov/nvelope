@@ -17,11 +17,13 @@ import type {
   CampaignAnalytics,
   CampaignView,
   CreateCampaignInput,
+  CreateFieldInput,
   CreateListInput,
   CreateSubscriberInput,
   CreateTemplateInput,
   DashboardView,
   DomainView,
+  Field,
   InvitationLookup,
   InvoiceSummary,
   InvoiceView,
@@ -31,14 +33,19 @@ import type {
   MediaAssetView,
   MediaUploadResult,
   Membership,
+  MergeTagsResponse,
   Node,
   Page,
   Permission,
   PlanView,
   PlatformAccount,
+  RenderPreviewInput,
+  RenderPreviewResponse,
   Role,
   SaveBrandingInput,
   SaveSubscriptionPageInput,
+  SaveVisualCampaignInput,
+  SaveVisualTemplateInput,
   SessionResult,
   StartExportInput,
   SubscribeResult,
@@ -52,9 +59,12 @@ import type {
   TOTPEnrolment,
   TemplateView,
   UpdateCampaignInput,
+  UpdateFieldInput,
   UpdateListInput,
   UpdateSubscriberInput,
   UpdateTemplateInput,
+  VisualSaveResponse,
+  VisualTemplateSaveResponse,
   WorkspaceInfo,
   WorkspaceInvitation,
   WorkspaceSettings,
@@ -458,6 +468,74 @@ export const api = {
     save: (slug: string, body: SaveBrandingInput) =>
       request<BrandingView>("PUT", tp(slug, "/branding"), { ...body }),
   },
+
+  // ── Subscriber-field registry (Phase 7) ────────────────────────────────────
+  subscriberFields: {
+    list: (slug: string) =>
+      request<{ fields: Array<Field> }>(
+        "GET",
+        tp(slug, "/subscriber-fields"),
+      ),
+    create: (slug: string, body: CreateFieldInput) =>
+      request<Field>("POST", tp(slug, "/subscriber-fields"), { ...body }),
+    update: (slug: string, id: string, body: UpdateFieldInput) =>
+      request<Field>("PATCH", tp(slug, `/subscriber-fields/${id}`), {
+        ...body,
+      }),
+    delete: (slug: string, id: string) =>
+      request("DELETE", tp(slug, `/subscriber-fields/${id}`)),
+    reorder: (slug: string, order: Array<string>) =>
+      request<{ fields: Array<Field> }>(
+        "PATCH",
+        tp(slug, "/subscriber-fields/order"),
+        { order },
+      ),
+  },
+
+  // ── Merge-tag picker (Phase 7) ─────────────────────────────────────────────
+  mergeTags: {
+    list: (slug: string) =>
+      request<MergeTagsResponse>("GET", tp(slug, "/merge-tags")),
+  },
+
+  // ── Visual editor saves & preview (Phase 7) ────────────────────────────────
+  // The two visual-save endpoints and render-preview are hosted by the BFF
+  // (Nitro), not by Go directly — see specs/014-visual-email-editor/
+  // contracts/tenant-api.md § "Hosting tier note". The browser still uses
+  // the same /t/{slug}/api/… URL space; Nitro intercepts these three paths
+  // before the catch-all proxy. The 409 stale_row error envelope carries
+  // `{ kind: "stale_row", currentUpdatedAt }` so callers can present the
+  // Reload / Force-overwrite affordance per FR-009.
+  campaigns: {
+    saveVisual: (
+      slug: string,
+      id: string,
+      body: SaveVisualCampaignInput,
+    ) =>
+      request<VisualSaveResponse>(
+        "PUT",
+        tp(slug, `/campaigns/${id}/visual`),
+        { ...body },
+      ),
+  },
+  templates: {
+    saveVisual: (
+      slug: string,
+      id: string,
+      body: SaveVisualTemplateInput,
+    ) =>
+      request<VisualTemplateSaveResponse>(
+        "PUT",
+        tp(slug, `/templates/${id}/visual`),
+        { ...body },
+      ),
+  },
+  renderPreview: (slug: string, body: RenderPreviewInput) =>
+    request<RenderPreviewResponse>(
+      "POST",
+      tp(slug, "/render-preview"),
+      { ...body },
+    ),
 
   // ── Media library (Phase 6) ────────────────────────────────────────────────
   media: {

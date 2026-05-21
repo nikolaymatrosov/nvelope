@@ -8,13 +8,25 @@ export class ApiError extends Error {
   readonly status: number
   readonly slug: string
   readonly path: string
+  // Full parsed response body, when one came back as JSON. Screens read it to
+  // recover error-specific payload fields like the 409 stale_row's
+  // `currentUpdatedAt`. The status / slug fields above remain the
+  // canonical branching surface.
+  readonly data: Record<string, unknown> | null
 
-  constructor(status: number, slug: string, message: string, path: string) {
+  constructor(
+    status: number,
+    slug: string,
+    message: string,
+    path: string,
+    data: Record<string, unknown> | null = null,
+  ) {
     super(message)
     this.name = "ApiError"
     this.status = status
     this.slug = slug
     this.path = path
+    this.data = data
   }
 }
 
@@ -27,15 +39,17 @@ export function normalizeError(
 ): ApiError {
   let slug = ""
   let message = ""
+  let data: Record<string, unknown> | null = null
   if (body && typeof body === "object") {
     const env = body as ErrorEnvelope
     slug = env.error ?? ""
     message = env.message ?? ""
+    data = body as Record<string, unknown>
   } else if (typeof body === "string") {
     message = body
   }
   if (!message) message = defaultMessageFor(status)
-  return new ApiError(status, slug, message, path)
+  return new ApiError(status, slug, message, path, data)
 }
 
 function defaultMessageFor(status: number): string {

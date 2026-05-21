@@ -44,6 +44,7 @@ import { Route as TSlugCampaignsIdRouteImport } from './routes/t/$slug/campaigns
 import { Route as TSlugBillingUsageRouteImport } from './routes/t/$slug/billing/usage'
 import { Route as TSlugBillingPlansRouteImport } from './routes/t/$slug/billing/plans'
 import { Route as TSlugBillingInvoicesRouteImport } from './routes/t/$slug/billing/invoices'
+import { Route as TSlugSettingsFieldsIndexRouteImport } from './routes/t/$slug/settings/fields/index'
 import { Route as TSlugCampaignsIdAnalyticsRouteImport } from './routes/t/$slug/campaigns/$id.analytics'
 
 const SignupRoute = SignupRouteImport.update({
@@ -223,6 +224,12 @@ const TSlugBillingInvoicesRoute = TSlugBillingInvoicesRouteImport.update({
   path: '/billing/invoices',
   getParentRoute: () => TSlugRouteRoute,
 } as any)
+const TSlugSettingsFieldsIndexRoute =
+  TSlugSettingsFieldsIndexRouteImport.update({
+    id: '/settings/fields/',
+    path: '/settings/fields/',
+    getParentRoute: () => TSlugRouteRoute,
+  } as any)
 const TSlugCampaignsIdAnalyticsRoute =
   TSlugCampaignsIdAnalyticsRouteImport.update({
     id: '/analytics',
@@ -267,6 +274,7 @@ export interface FileRoutesByFullPath {
   '/t/$slug/templates/': typeof TSlugTemplatesIndexRoute
   '/t/$slug/transactional/': typeof TSlugTransactionalIndexRoute
   '/t/$slug/campaigns/$id/analytics': typeof TSlugCampaignsIdAnalyticsRoute
+  '/t/$slug/settings/fields/': typeof TSlugSettingsFieldsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -304,6 +312,7 @@ export interface FileRoutesByTo {
   '/t/$slug/templates': typeof TSlugTemplatesIndexRoute
   '/t/$slug/transactional': typeof TSlugTransactionalIndexRoute
   '/t/$slug/campaigns/$id/analytics': typeof TSlugCampaignsIdAnalyticsRoute
+  '/t/$slug/settings/fields': typeof TSlugSettingsFieldsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -343,6 +352,7 @@ export interface FileRoutesById {
   '/t/$slug/templates/': typeof TSlugTemplatesIndexRoute
   '/t/$slug/transactional/': typeof TSlugTransactionalIndexRoute
   '/t/$slug/campaigns/$id/analytics': typeof TSlugCampaignsIdAnalyticsRoute
+  '/t/$slug/settings/fields/': typeof TSlugSettingsFieldsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -383,6 +393,7 @@ export interface FileRouteTypes {
     | '/t/$slug/templates/'
     | '/t/$slug/transactional/'
     | '/t/$slug/campaigns/$id/analytics'
+    | '/t/$slug/settings/fields/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -420,6 +431,7 @@ export interface FileRouteTypes {
     | '/t/$slug/templates'
     | '/t/$slug/transactional'
     | '/t/$slug/campaigns/$id/analytics'
+    | '/t/$slug/settings/fields'
   id:
     | '__root__'
     | '/'
@@ -458,6 +470,7 @@ export interface FileRouteTypes {
     | '/t/$slug/templates/'
     | '/t/$slug/transactional/'
     | '/t/$slug/campaigns/$id/analytics'
+    | '/t/$slug/settings/fields/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -716,6 +729,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TSlugBillingInvoicesRouteImport
       parentRoute: typeof TSlugRouteRoute
     }
+    '/t/$slug/settings/fields/': {
+      id: '/t/$slug/settings/fields/'
+      path: '/settings/fields'
+      fullPath: '/t/$slug/settings/fields/'
+      preLoaderRoute: typeof TSlugSettingsFieldsIndexRouteImport
+      parentRoute: typeof TSlugRouteRoute
+    }
     '/t/$slug/campaigns/$id/analytics': {
       id: '/t/$slug/campaigns/$id/analytics'
       path: '/analytics'
@@ -767,6 +787,7 @@ interface TSlugRouteRouteChildren {
   TSlugSuppressionsIndexRoute: typeof TSlugSuppressionsIndexRoute
   TSlugTemplatesIndexRoute: typeof TSlugTemplatesIndexRoute
   TSlugTransactionalIndexRoute: typeof TSlugTransactionalIndexRoute
+  TSlugSettingsFieldsIndexRoute: typeof TSlugSettingsFieldsIndexRoute
 }
 
 const TSlugRouteRouteChildren: TSlugRouteRouteChildren = {
@@ -799,6 +820,7 @@ const TSlugRouteRouteChildren: TSlugRouteRouteChildren = {
   TSlugSuppressionsIndexRoute: TSlugSuppressionsIndexRoute,
   TSlugTemplatesIndexRoute: TSlugTemplatesIndexRoute,
   TSlugTransactionalIndexRoute: TSlugTransactionalIndexRoute,
+  TSlugSettingsFieldsIndexRoute: TSlugSettingsFieldsIndexRoute,
 }
 
 const TSlugRouteRouteWithChildren = TSlugRouteRoute._addFileChildren(
@@ -816,3 +838,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

@@ -104,6 +104,149 @@ describe("api client — error normalization", () => {
   })
 })
 
+describe("api client — visual editor (Phase 7)", () => {
+  const sampleDoc = {
+    version: 1 as const,
+    type: "doc" as const,
+    content: [],
+  }
+
+  it("GETs the subscriber-field registry under the tenant slug", async () => {
+    const calls = mockFetch(200, { fields: [] })
+    await api.subscriberFields.list("acme")
+    expect(calls[0].url).toBe("/t/acme/api/subscriber-fields")
+    expect(calls[0].init.method).toBe("GET")
+  })
+
+  it("creates a subscriber field", async () => {
+    const calls = mockFetch(201, {
+      id: "f1",
+      slug: "country",
+      displayName: "Country",
+      type: "text",
+      defaultValue: "",
+      position: 0,
+      builtIn: false,
+    })
+    await api.subscriberFields.create("acme", {
+      slug: "country",
+      displayName: "Country",
+      type: "text",
+      defaultValue: "",
+    })
+    expect(calls[0].url).toBe("/t/acme/api/subscriber-fields")
+    expect(calls[0].init.method).toBe("POST")
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({
+      slug: "country",
+      displayName: "Country",
+      type: "text",
+      defaultValue: "",
+    })
+  })
+
+  it("PATCHes a single field by id", async () => {
+    const calls = mockFetch(200, {})
+    await api.subscriberFields.update("acme", "f1", {
+      displayName: "Country / region",
+    })
+    expect(calls[0].url).toBe("/t/acme/api/subscriber-fields/f1")
+    expect(calls[0].init.method).toBe("PATCH")
+  })
+
+  it("DELETEs a field by id", async () => {
+    const calls = mockFetch(204, null)
+    await api.subscriberFields.delete("acme", "f1")
+    expect(calls[0].url).toBe("/t/acme/api/subscriber-fields/f1")
+    expect(calls[0].init.method).toBe("DELETE")
+  })
+
+  it("PATCHes the order of fields", async () => {
+    const calls = mockFetch(200, { fields: [] })
+    await api.subscriberFields.reorder("acme", ["f1", "f2"])
+    expect(calls[0].url).toBe("/t/acme/api/subscriber-fields/order")
+    expect(calls[0].init.method).toBe("PATCH")
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({
+      order: ["f1", "f2"],
+    })
+  })
+
+  it("lists merge tags", async () => {
+    const calls = mockFetch(200, { subscriber: [], campaign: [] })
+    await api.mergeTags.list("acme")
+    expect(calls[0].url).toBe("/t/acme/api/merge-tags")
+    expect(calls[0].init.method).toBe("GET")
+  })
+
+  it("PUTs the campaign visual-save with the ifUnmodifiedSince echo", async () => {
+    const calls = mockFetch(200, {
+      id: "c1",
+      subject: "s",
+      bodyHtml: "",
+      bodyText: "",
+      bodyDoc: sampleDoc,
+      theme: null,
+      warnings: [],
+      updatedAt: "2026-05-20T12:35:01Z",
+    })
+    await api.campaigns.saveVisual("acme", "c1", {
+      subject: "Hi",
+      bodyDoc: sampleDoc,
+      theme: null,
+      ifUnmodifiedSince: "2026-05-20T12:34:56Z",
+    })
+    expect(calls[0].url).toBe("/t/acme/api/campaigns/c1/visual")
+    expect(calls[0].init.method).toBe("PUT")
+    const body = JSON.parse(calls[0].init.body as string)
+    expect(body.ifUnmodifiedSince).toBe("2026-05-20T12:34:56Z")
+    expect(body.bodyDoc).toEqual(sampleDoc)
+    expect(body.theme).toBeNull()
+  })
+
+  it("PUTs the template visual-save", async () => {
+    const calls = mockFetch(200, {})
+    await api.templates.saveVisual("acme", "t1", {
+      name: "Welcome",
+      kind: "campaign",
+      subject: "Hi",
+      bodyDoc: sampleDoc,
+      theme: null,
+      ifUnmodifiedSince: "2026-05-20T12:34:56Z",
+    })
+    expect(calls[0].url).toBe("/t/acme/api/templates/t1/visual")
+    expect(calls[0].init.method).toBe("PUT")
+  })
+
+  it("POSTs render-preview tenant-scoped (no row id)", async () => {
+    const calls = mockFetch(200, { bodyHtml: "", bodyText: "", warnings: [] })
+    await api.renderPreview("acme", {
+      bodyDoc: sampleDoc,
+      theme: null,
+      sample: null,
+    })
+    expect(calls[0].url).toBe("/t/acme/api/render-preview")
+    expect(calls[0].init.method).toBe("POST")
+  })
+
+  it("surfaces the 409 stale_row payload via ApiError", async () => {
+    mockFetch(409, {
+      error: "stale_row",
+      message: "Row changed in another tab",
+      currentUpdatedAt: "2026-05-20T12:35:01Z",
+    })
+    await expect(
+      api.campaigns.saveVisual("acme", "c1", {
+        subject: "Hi",
+        bodyDoc: sampleDoc,
+        theme: null,
+        ifUnmodifiedSince: "2026-05-20T12:34:56Z",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      slug: "stale_row",
+    })
+  })
+})
+
 describe("api client — PascalCase responses pass through unchanged", () => {
   it("returns audience view fields verbatim", async () => {
     mockFetch(200, {

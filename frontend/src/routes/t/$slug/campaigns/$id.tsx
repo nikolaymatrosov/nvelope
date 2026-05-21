@@ -5,7 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { ImageIcon } from "lucide-react"
 import { CampaignStatusBadge } from "./index"
-import type { CampaignView, MediaAssetView } from "@/lib/api-types"
+import type {
+  CampaignView,
+  MediaAssetView,
+  VisualDoc,
+} from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { ApiError, errorMessage } from "@/lib/errors"
@@ -21,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { VisualEmailEditor } from "@/components/visual-editor/VisualEmailEditor"
 import {
   Card,
   CardContent,
@@ -89,6 +94,24 @@ export function CampaignDetail() {
   )
 }
 
+// Decide which editor surface to show for a campaign on first render.
+// A row with a non-null `body_doc` came back from the visual save path;
+// a fresh campaign (no doc, no html) lands in visual mode so the operator
+// can author from a blank canvas. Pre-Phase-7 raw-HTML campaigns
+// (`body_doc == null` AND `body_html` non-empty) stay in code-only mode
+// — they only switch on the explicit US4 "convert to visual" affordance.
+function initialEditorMode(campaign: CampaignView): "visual" | "code" {
+  if (campaign.body_doc) return "visual"
+  if (campaign.body_html.trim() === "") return "visual"
+  return "code"
+}
+
+const EMPTY_VISUAL_DOC: VisualDoc = {
+  version: 1,
+  type: "doc",
+  content: [{ type: "paragraph", content: [] }],
+}
+
 function CampaignEditor({
   slug,
   campaign,
@@ -112,6 +135,21 @@ function CampaignEditor({
   const bodyHtmlRef = useRef<HTMLTextAreaElement | null>(null)
   const { can } = usePermissions(slug)
   const canPickMedia = can("media:get")
+
+  // Phase 7 — visual editor surface.
+  const [editorMode] = useState<"visual" | "code">(() =>
+    initialEditorMode(campaign),
+  )
+  const [bodyDoc, setBodyDoc] = useState<VisualDoc>(
+    () => campaign.body_doc ?? EMPTY_VISUAL_DOC,
+  )
+  // Optimistic-concurrency token (FR-009). Updated every time the row's
+  // visual save returns a new `updatedAt`; on `409 stale_row` the operator
+  // can Reload (refetch + discard local edits) or Force overwrite (refetch
+  // + retry the save with the row's now-current timestamp).
+  const [ifUnmodifiedSince, setIfUnmodifiedSince] = useState<string>(
+    campaign.updated_at,
+  )
 
   const domainsQuery = useQuery({
     queryKey: queryKeys.sendingDomains(slug),
@@ -162,6 +200,94 @@ function CampaignEditor({
       toast.success("Campaign saved.")
     },
     onError: (e) => toast.error(errorMessage(e)),
+  })
+
+  async function refetchCampaign(): Promise<CampaignView | undefined> {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.campaign(slug, campaign.id),
+    })
+    const fresh = (await api.getCampaign(slug, campaign.id)).data
+    setBodyDoc(fresh.body_doc ?? EMPTY_VISUAL_DOC)
+    setIfUnmodifiedSince(fresh.updated_at)
+    return fresh
+  }
+
+  // Visual save (Phase 7). Carries the operator's structured doc, the
+  // current subject, the optional theme override, and the row's last-known
+  // `updated_at` as the FR-009 concurrency token. On `409 stale_row` the
+  // sonner toast surfaces both Reload and Force-overwrite affordances.
+  const saveVisual = useMutation({
+    mutationFn: (v: { subject: string }) =>
+      api.campaigns.saveVisual(slug, campaign.id, {
+        subject: v.subject,
+        bodyDoc,
+        theme: campaign.theme ?? null,
+        ifUnmodifiedSince,
+      }),
+    onSuccess: async (res) => {
+      setIfUnmodifiedSince(res.data.updatedAt)
+      await invalidate()
+      const warnings = res.data.warnings.length
+      if (warnings > 0) {
+        toast.warning(
+          `Campaign saved with ${warnings} content warning${warnings === 1 ? "" : "s"}.`,
+        )
+      } else {
+        toast.success("Campaign saved.")
+      }
+    },
+    onError: (e, vars) => {
+      if (e instanceof ApiError && e.status === 409 && e.slug === "stale_row") {
+        const currentUpdatedAt =
+          typeof e.data?.currentUpdatedAt === "string"
+            ? e.data.currentUpdatedAt
+            : null
+        toast.warning("Changed in another tab/session", {
+          duration: 12_000,
+          action: {
+            label: "Reload",
+            onClick: () => {
+              void refetchCampaign()
+            },
+          },
+          // sonner's secondary `cancel` slot is used for the second
+          // affordance. The operator's pending body stays in local state
+          // so Force-overwrite re-issues the same save with the fresh
+          // token.
+          cancel: {
+            label: "Force overwrite",
+            onClick: () => {
+              if (!currentUpdatedAt) {
+                void refetchCampaign().then((fresh) => {
+                  if (!fresh) return
+                  saveVisual.mutate(vars)
+                })
+                return
+              }
+              setIfUnmodifiedSince(currentUpdatedAt)
+              // Re-issue with the new token. We bypass the React state
+              // update timing by passing the token directly through a
+              // throwaway mutation call.
+              api.campaigns
+                .saveVisual(slug, campaign.id, {
+                  subject: vars.subject,
+                  bodyDoc,
+                  theme: campaign.theme ?? null,
+                  ifUnmodifiedSince: currentUpdatedAt,
+                })
+                .then(async (res) => {
+                  setIfUnmodifiedSince(res.data.updatedAt)
+                  await invalidate()
+                  toast.success("Campaign saved.")
+                })
+                .catch((err) => toast.error(errorMessage(err)))
+            },
+          },
+        })
+        return
+      }
+      toast.error(errorMessage(e))
+    },
   })
 
   const start = useMutation({
@@ -226,6 +352,20 @@ function CampaignEditor({
       fromLocalPart: campaign.from_local_part,
     },
     onSubmit: async ({ value }) => {
+      if (editorMode === "visual") {
+        // The legacy update handles name + sender + recipients (the
+        // visual save endpoint only accepts subject + bodyDoc + theme).
+        // Run both so a single click persists the full draft.
+        await save
+          .mutateAsync({
+            ...value,
+            bodyHtml: campaign.body_html,
+            bodyText: campaign.body_text,
+          })
+          .catch(() => {})
+        await saveVisual.mutateAsync({ subject: value.subject }).catch(() => {})
+        return
+      }
       await save.mutateAsync(value).catch(() => {})
     },
   })
@@ -416,69 +556,84 @@ function CampaignEditor({
                   />
                 )}
               </form.Field>
-              <form.Field name="bodyHtml">
-                {(field) => (
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="campaign-body-html">HTML body</Label>
-                      {canPickMedia && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setMediaPickerOpen(true)}
-                          data-testid="open-media-picker"
-                        >
-                          <ImageIcon /> Insert from media library
-                        </Button>
-                      )}
-                    </div>
-                    <Textarea
-                      id="campaign-body-html"
-                      ref={bodyHtmlRef}
-                      rows={8}
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                    />
-                    <MediaPicker
-                      slug={slug}
-                      open={mediaPickerOpen}
-                      onOpenChange={setMediaPickerOpen}
-                      onPick={(asset: MediaAssetView) => {
-                        const ta = bodyHtmlRef.current
-                        const value = field.state.value
-                        const insert = asset.public_url
-                        if (ta) {
-                          const start = ta.selectionStart
-                          const end = ta.selectionEnd
-                          const next =
-                            value.slice(0, start) + insert + value.slice(end)
-                          field.handleChange(next)
-                          // Restore caret after the inserted URL.
-                          requestAnimationFrame(() => {
-                            const pos = start + insert.length
-                            ta.focus()
-                            ta.setSelectionRange(pos, pos)
-                          })
-                        } else {
-                          field.handleChange(value + insert)
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-              </form.Field>
-              <form.Field name="bodyText">
-                {(field) => (
-                  <FormField label="Plain-text body">
-                    <Textarea
-                      rows={5}
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                    />
-                  </FormField>
-                )}
-              </form.Field>
+              {editorMode === "visual" && canManage ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="campaign-visual-editor">Body</Label>
+                  <VisualEmailEditor
+                    slug={slug}
+                    value={bodyDoc}
+                    onChange={setBodyDoc}
+                  />
+                </div>
+              ) : (
+                <>
+                  <form.Field name="bodyHtml">
+                    {(field) => (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="campaign-body-html">HTML body</Label>
+                          {canPickMedia && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setMediaPickerOpen(true)}
+                              data-testid="open-media-picker"
+                            >
+                              <ImageIcon /> Insert from media library
+                            </Button>
+                          )}
+                        </div>
+                        <Textarea
+                          id="campaign-body-html"
+                          ref={bodyHtmlRef}
+                          rows={8}
+                          value={field.state.value}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                        />
+                        <MediaPicker
+                          slug={slug}
+                          open={mediaPickerOpen}
+                          onOpenChange={setMediaPickerOpen}
+                          onPick={(asset: MediaAssetView) => {
+                            const ta = bodyHtmlRef.current
+                            const value = field.state.value
+                            const insert = asset.public_url
+                            if (ta) {
+                              const start = ta.selectionStart
+                              const end = ta.selectionEnd
+                              const next =
+                                value.slice(0, start) +
+                                insert +
+                                value.slice(end)
+                              field.handleChange(next)
+                              // Restore caret after the inserted URL.
+                              requestAnimationFrame(() => {
+                                const pos = start + insert.length
+                                ta.focus()
+                                ta.setSelectionRange(pos, pos)
+                              })
+                            } else {
+                              field.handleChange(value + insert)
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  </form.Field>
+                  <form.Field name="bodyText">
+                    {(field) => (
+                      <FormField label="Plain-text body">
+                        <Textarea
+                          rows={5}
+                          value={field.state.value}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                        />
+                      </FormField>
+                    )}
+                  </form.Field>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -583,8 +738,13 @@ function CampaignEditor({
 
           {canManage && (
             <div>
-              <Button type="submit" disabled={save.isPending}>
-                {save.isPending ? "Saving…" : "Save changes"}
+              <Button
+                type="submit"
+                disabled={save.isPending || saveVisual.isPending}
+              >
+                {save.isPending || saveVisual.isPending
+                  ? "Saving…"
+                  : "Save changes"}
               </Button>
             </div>
           )}
