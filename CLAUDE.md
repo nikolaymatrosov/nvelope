@@ -24,6 +24,22 @@ The platform runs four stateless Go services:
 - `cmd/consumer` — reads the Postbox delivery-feedback Yandex Data Streams topic
   and stages each notification for asynchronous attribution.
 
+Plus one Node-side tier:
+
+- `frontend/` — TanStack Start + Nitro BFF that hosts the SPA *and* intercepts
+  three Phase 7 visual-editor endpoints (`PUT /t/:slug/api/campaigns/:id/visual`,
+  `PUT /t/:slug/api/templates/:id/visual`, `POST /t/:slug/api/render-preview`)
+  before the catch-all vite proxy. For those paths the BFF renders the
+  structured `VisualDoc` to email-ready HTML + plain text via `react-email`
+  and then forwards the rendered output to Go for sanitization, validation,
+  and persistence. Render tier lives under
+  [`frontend/src/server/`](frontend/src/server/) — `render/` (react-email
+  mapping + golden tests), `validate/` (TS port of the Go validator with a
+  cross-stack drift-catcher), `clients/go-api.ts` (typed Go-API client with
+  cookie + `X-Request-Id` forwarding), and `routes/` (orchestrators + Nitro
+  file-based-routing shims). See
+  [`specs/014-visual-email-editor/research.md` § R4](specs/014-visual-email-editor/research.md).
+
 ## Running tests
 
 Run the suite with `make test` (or `go test ./...`).
