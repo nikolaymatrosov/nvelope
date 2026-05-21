@@ -11,6 +11,7 @@ Use [go-ddd-architecture](.claude/skills/go-ddd-architecture) skill when need to
 - Always pass paths relative to the project root to Bash, Read, Edit, and Write (e.g. `internal/campaign/...`, not `/Users/nikthespirit/Documents/experiment/nvelope/internal/campaign/...`). The working directory is already the project root.
 - Never prepend `cd /Users/nikthespirit/Documents/experiment/nvelope && ...` or `cd $(pwd) && ...` to a command. The compound `cd <current-dir> && X` does not match permission rules written for `X` and forces an unnecessary approval prompt.
 - `cd` is only appropriate when entering a *different* directory (e.g. `cd frontend && pnpm test`).
+- **`cd` persists between Bash calls.** Shell env/aliases reset, but `pwd` carries over. After one `cd frontend && pnpm lint`, the next call already starts inside `frontend/` — repeating `cd frontend` will fail with `no such file or directory`. Omit the `cd` on subsequent calls, or `cd ..` back to root first.
 
 ## Services
 

@@ -30,6 +30,10 @@ import {
   applyRawHTMLEdit,
 } from "./extensions/RawHTML"
 import { ImageUpload } from "./plugins/imageUpload"
+import {
+  editorCssVariables,
+  useEditorTheme,
+} from "./plugins/theming"
 import { VisualBubbleMenu } from "./ui/BubbleMenu"
 import { DragHandle } from "./ui/DragHandle"
 import { MergeTagPicker } from "./ui/MergeTagPicker"
@@ -37,10 +41,11 @@ import {
   SlashCommandExtension,
   useSlashCommandMenu,
 } from "./ui/SlashCommandMenu"
+import { ThemeControls } from "./ui/ThemeControls"
 import type { ImageBlockPickRequest } from "./extensions/ImageBlock"
 import type { RawHTMLEditRequest } from "./extensions/RawHTML"
 import type { Editor } from "@tiptap/core"
-import type { MediaAssetView, VisualDoc } from "@/lib/api-types"
+import type { MediaAssetView, Theme, VisualDoc } from "@/lib/api-types"
 import { MediaPicker } from "@/components/common/media-picker"
 import {
   Dialog,
@@ -72,6 +77,12 @@ type Props = {
   // the button when supplied; the route owns the confirmation modal and
   // the API call (clears body_doc per T093 / FR-029).
   onOptOutVisual?: () => void
+  // Optional theme override the row carries. null = inherit tenant Phase 6
+  // branding. The editor renders the ThemeControls panel when `onThemeChange`
+  // is supplied; the panel mutates this value through that callback (per
+  // FR-022 / FR-023 / FR-024 — see T108).
+  theme?: Theme | null
+  onThemeChange?: (next: Theme | null) => void
 }
 
 const EMPTY_DOC: VisualDoc = {
@@ -88,7 +99,20 @@ export function VisualEmailEditor({
   editable = true,
   onSwitchToCodeView,
   onOptOutVisual,
+  theme = null,
+  onThemeChange,
 }: Props) {
+  // Resolve the effective theme. When the row carries a pinned override the
+  // resolved theme is the override itself; otherwise we read tenant branding
+  // and derive defaults (T107). The result feeds both the in-canvas CSS
+  // variables (so a freshly inserted button immediately matches the brand)
+  // and the ThemeControls panel's "Pin a theme override" copy-from-resolved
+  // pattern.
+  const { theme: resolvedTheme } = useEditorTheme(slug, theme)
+  const themeStyles = useMemo(
+    () => editorCssVariables(resolvedTheme),
+    [resolvedTheme],
+  )
   // The slash-command menu's React state is exposed via an imperative ref
   // (see ./ui/SlashCommandMenu). The extension consumes the same `api`
   // object so the React UI stays out of the suggestion plugin's hot path.
@@ -238,7 +262,11 @@ export function VisualEmailEditor({
   const showToolbar = Boolean(onSwitchToCodeView || onOptOutVisual)
 
   return (
-    <div className="ve-root" data-testid="visual-email-editor">
+    <div
+      className="ve-root"
+      data-testid="visual-email-editor"
+      style={themeStyles}
+    >
       {showToolbar && (
         <div className="ve-toolbar" data-testid="ve-toolbar">
           {onSwitchToCodeView && (
@@ -262,6 +290,14 @@ export function VisualEmailEditor({
             </button>
           )}
         </div>
+      )}
+      {onThemeChange && (
+        <ThemeControls
+          value={theme}
+          resolved={resolvedTheme}
+          onChange={onThemeChange}
+          disabled={!editable}
+        />
       )}
       <EditorContent editor={editor} />
       <VisualBubbleMenu editor={editor} />

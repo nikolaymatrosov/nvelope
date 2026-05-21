@@ -233,3 +233,119 @@
 .ve-toolbar__btn:hover {
   background: #f3f4f6;
 }
+
+.ve-theme-controls {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 13px;
+}
+
+.ve-theme-controls__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ve-theme-controls__title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.ve-theme-controls__inherit-badge,
+.ve-theme-controls__pinned-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.ve-theme-controls__inherit-badge {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.ve-theme-controls__pinned-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.ve-theme-controls__hint {
+  margin: 0 0 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.ve-theme-controls__pin,
+.ve-theme-controls__unpin {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.ve-theme-controls__pin:hover,
+.ve-theme-controls__unpin:hover {
+  background: #f3f4f6;
+}
+
+.ve-theme-controls__pin:disabled,
+.ve-theme-controls__unpin:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ve-theme-controls__body {
+  display: grid;
+  gap: 6px;
+}
+
+.ve-theme-controls__row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.ve-theme-controls__label {
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.ve-theme-controls__color-pair {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ve-theme-controls__color-swatch {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ve-theme-controls__color-text,
+.ve-theme-controls__text-input,
+.ve-theme-controls__number-input {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  min-width: 0;
+}
+
+.ve-theme-controls__number-input {
+  width: 100px;
+}

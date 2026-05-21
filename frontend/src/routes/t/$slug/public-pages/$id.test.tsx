@@ -155,7 +155,7 @@ describe("SubscriptionPageEdit", () => {
 
 // Smoke-test the ApiError mapping by exercising the create path directly.
 describe("SubscriptionPageEdit — save error mapping", () => {
-  it("re-throws ApiError shape through the mutation", async () => {
+  it("re-throws ApiError shape through the mutation", () => {
     const err = new ApiError(400, "validation_failed", "slug taken", "/x")
     expect(err.slug).toBe("validation_failed")
     expect(err.status).toBe(400)

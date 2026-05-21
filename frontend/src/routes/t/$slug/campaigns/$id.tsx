@@ -8,6 +8,7 @@ import { CampaignStatusBadge } from "./index"
 import type {
   CampaignView,
   MediaAssetView,
+  Theme,
   VisualDoc,
 } from "@/lib/api-types"
 import { api } from "@/lib/api"
@@ -154,6 +155,13 @@ function CampaignEditor({
   const [bodyDoc, setBodyDoc] = useState<VisualDoc>(
     () => campaign.body_doc ?? EMPTY_VISUAL_DOC,
   )
+  // Theme override for the row. null = inherit tenant branding; an object =
+  // pinned override. The ThemeControls panel inside VisualEmailEditor mutates
+  // this via `setThemeOverride`; it is forwarded to the visual save body
+  // (per FR-022 / FR-023 / FR-024 — T109).
+  const [themeOverride, setThemeOverride] = useState<Theme | null>(
+    () => campaign.theme ?? null,
+  )
   // Optimistic-concurrency token (FR-009). Updated every time the row's
   // visual save returns a new `updatedAt`; on `409 stale_row` the operator
   // can Reload (refetch + discard local edits) or Force overwrite (refetch
@@ -219,6 +227,7 @@ function CampaignEditor({
     })
     const fresh = (await api.getCampaign(slug, campaign.id)).data
     setBodyDoc(fresh.body_doc ?? EMPTY_VISUAL_DOC)
+    setThemeOverride(fresh.theme ?? null)
     setIfUnmodifiedSince(fresh.updated_at)
     return fresh
   }
@@ -232,7 +241,7 @@ function CampaignEditor({
       api.campaigns.saveVisual(slug, campaign.id, {
         subject: v.subject,
         bodyDoc,
-        theme: campaign.theme ?? null,
+        theme: themeOverride,
         ifUnmodifiedSince,
       }),
     onSuccess: async (res) => {
@@ -283,7 +292,7 @@ function CampaignEditor({
                 .saveVisual(slug, campaign.id, {
                   subject: vars.subject,
                   bodyDoc,
-                  theme: campaign.theme ?? null,
+                  theme: themeOverride,
                   ifUnmodifiedSince: currentUpdatedAt,
                 })
                 .then(async (res) => {
@@ -613,6 +622,8 @@ function CampaignEditor({
                     slug={slug}
                     value={bodyDoc}
                     onChange={setBodyDoc}
+                    theme={themeOverride}
+                    onThemeChange={setThemeOverride}
                     onOptOutVisual={
                       campaign.body_doc
                         ? () => setConfirmOptOut(true)
@@ -671,16 +682,16 @@ function CampaignEditor({
                             const value = field.state.value
                             const insert = asset.public_url
                             if (ta) {
-                              const start = ta.selectionStart
-                              const end = ta.selectionEnd
+                              const selStart = ta.selectionStart
+                              const selEnd = ta.selectionEnd
                               const next =
-                                value.slice(0, start) +
+                                value.slice(0, selStart) +
                                 insert +
-                                value.slice(end)
+                                value.slice(selEnd)
                               field.handleChange(next)
                               // Restore caret after the inserted URL.
                               requestAnimationFrame(() => {
-                                const pos = start + insert.length
+                                const pos = selStart + insert.length
                                 ta.focus()
                                 ta.setSelectionRange(pos, pos)
                               })

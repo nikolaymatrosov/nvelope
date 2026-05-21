@@ -3,7 +3,7 @@ import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import type { TemplateView, VisualDoc } from "@/lib/api-types"
+import type { TemplateView, Theme, VisualDoc } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { ApiError, errorMessage } from "@/lib/errors"
@@ -112,6 +112,11 @@ function EditTemplateCard({
   const [bodyDoc, setBodyDoc] = useState<VisualDoc>(
     () => template.body_doc ?? EMPTY_VISUAL_DOC,
   )
+  // Theme override for the template. null = inherit tenant branding; an
+  // object = pinned override (per FR-022 / FR-023 / FR-024 — T109).
+  const [themeOverride, setThemeOverride] = useState<Theme | null>(
+    () => template.theme ?? null,
+  )
   // Optimistic-concurrency token (FR-009). Updated every time the row's
   // visual save returns a new `updatedAt`; on 409 stale_row the operator
   // can Reload (refetch + discard local edits) or Force overwrite (refetch
@@ -193,6 +198,7 @@ function EditTemplateCard({
     })
     const fresh = (await api.getTemplate(slug, template.id)).data
     setBodyDoc(fresh.body_doc ?? EMPTY_VISUAL_DOC)
+    setThemeOverride(fresh.theme ?? null)
     setIfUnmodifiedSince(fresh.updated_at)
     return fresh
   }
@@ -209,7 +215,7 @@ function EditTemplateCard({
         kind: template.kind,
         subject: v.subject,
         bodyDoc,
-        theme: template.theme ?? null,
+        theme: themeOverride,
         ifUnmodifiedSince,
       }),
     onSuccess: async (res) => {
@@ -255,7 +261,7 @@ function EditTemplateCard({
                   kind: template.kind,
                   subject: vars.subject,
                   bodyDoc,
-                  theme: template.theme ?? null,
+                  theme: themeOverride,
                   ifUnmodifiedSince: currentUpdatedAt,
                 })
                 .then(async (res) => {
@@ -359,6 +365,8 @@ function EditTemplateCard({
                 slug={slug}
                 value={bodyDoc}
                 onChange={setBodyDoc}
+                theme={themeOverride}
+                onThemeChange={setThemeOverride}
                 onOptOutVisual={
                   template.body_doc
                     ? () => setConfirmOptOut(true)
