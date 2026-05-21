@@ -18,13 +18,18 @@ import StarterKit from "@tiptap/starter-kit"
 import { Button } from "./extensions/Button"
 import { Column, Columns } from "./extensions/Columns"
 import { Divider } from "./extensions/Divider"
-import { ImageBlock } from "./extensions/ImageBlock"
+import {
+  IMAGEBLOCK_PICK_EVENT,
+  ImageBlock,
+  applyImageBlockPick,
+} from "./extensions/ImageBlock"
 import { MergeTag } from "./extensions/MergeTag"
 import {
   RAWHTML_EDIT_EVENT,
   RawHTML,
   applyRawHTMLEdit,
 } from "./extensions/RawHTML"
+import { ImageUpload } from "./plugins/imageUpload"
 import { VisualBubbleMenu } from "./ui/BubbleMenu"
 import { DragHandle } from "./ui/DragHandle"
 import { MergeTagPicker } from "./ui/MergeTagPicker"
@@ -32,9 +37,11 @@ import {
   SlashCommandExtension,
   useSlashCommandMenu,
 } from "./ui/SlashCommandMenu"
+import type { ImageBlockPickRequest } from "./extensions/ImageBlock"
 import type { RawHTMLEditRequest } from "./extensions/RawHTML"
 import type { Editor } from "@tiptap/core"
-import type { VisualDoc } from "@/lib/api-types"
+import type { MediaAssetView, VisualDoc } from "@/lib/api-types"
+import { MediaPicker } from "@/components/common/media-picker"
 import {
   Dialog,
   DialogContent,
@@ -111,6 +118,7 @@ export function VisualEmailEditor({
       Button,
       Divider,
       ImageBlock,
+      ImageUpload.configure({ slug }),
       MergeTag,
       RawHTML,
       DragHandle,
@@ -123,7 +131,7 @@ export function VisualEmailEditor({
         },
       }),
     ]
-  }, [])
+  }, [slug])
 
   const editor = useEditor({
     extensions,
@@ -191,6 +199,42 @@ export function VisualEmailEditor({
     closeRawHTMLModal()
   }, [editor, rawHTMLEdit, rawHTMLDraft, closeRawHTMLModal])
 
+  // ImageBlock picker — the extension's NodeView dispatches a CustomEvent
+  // when the operator presses "Pick from media library" (or "Replace") on
+  // an image. We host the MediaPicker here and, on pick, update the node's
+  // attrs in-place via applyImageBlockPick.
+  const [imagePick, setImagePick] = useState<ImageBlockPickRequest | null>(
+    null,
+  )
+
+  useEffect(() => {
+    const root = editor.view.dom
+    const onPickRequest = (event: Event) => {
+      const detail = (event as CustomEvent<ImageBlockPickRequest>).detail
+      setImagePick(detail)
+    }
+    root.addEventListener(IMAGEBLOCK_PICK_EVENT, onPickRequest)
+    return () => {
+      root.removeEventListener(IMAGEBLOCK_PICK_EVENT, onPickRequest)
+    }
+  }, [editor])
+
+  const closeImagePicker = useCallback(() => setImagePick(null), [])
+
+  const onImagePicked = useCallback(
+    (asset: MediaAssetView) => {
+      if (imagePick === null) return
+      applyImageBlockPick(
+        editor,
+        imagePick.pos,
+        asset.public_url,
+        asset.filename,
+      )
+      setImagePick(null)
+    },
+    [editor, imagePick],
+  )
+
   const showToolbar = Boolean(onSwitchToCodeView || onOptOutVisual)
 
   return (
@@ -223,6 +267,14 @@ export function VisualEmailEditor({
       <VisualBubbleMenu editor={editor} />
       {slashMenu}
       <MergeTagPicker slug={slug} editor={editor} />
+      <MediaPicker
+        slug={slug}
+        open={imagePick !== null}
+        onOpenChange={(open) => {
+          if (!open) closeImagePicker()
+        }}
+        onPick={onImagePicked}
+      />
       <Dialog
         open={rawHTMLEdit !== null}
         onOpenChange={(open) => {

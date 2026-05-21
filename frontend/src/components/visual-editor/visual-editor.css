@@ -58,6 +58,79 @@
   display: block;
 }
 
+.ve-image-block {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.ve-image-block__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border: 1px dashed #c7d2fe;
+  border-radius: 6px;
+  background: #f5f3ff;
+  color: #4338ca;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ve-image-block__pick:hover {
+  background: #ede9fe;
+}
+
+.ve-image-block__replace {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid rgba(31, 41, 55, 0.5);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1f2937;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 80ms ease-in;
+}
+
+.ve-image-block:hover .ve-image-block__replace {
+  opacity: 1;
+}
+
+.ve-image-block__pending {
+  padding: 12px 16px;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.ve-image-block__missing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px dashed #fca5a5;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  max-width: 320px;
+}
+
+.ve-image-block__missing-label {
+  font-weight: 600;
+}
+
+.ve-image-block__missing-hint {
+  color: #b91c1c;
+  font-size: 12px;
+}
+
 .ve-columns {
   border: 1px dashed #c7d2fe;
   border-radius: 4px;
