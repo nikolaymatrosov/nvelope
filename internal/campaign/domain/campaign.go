@@ -302,6 +302,24 @@ func (c *Campaign) Recompose(name, subject, bodyHTML, bodyText, fromName, fromLo
 	return nil
 }
 
+// OptOutVisual clears the campaign's structured visual document and theme
+// override, leaving body_html / body_text intact so the campaign remains
+// sendable as a code-only campaign (per FR-029 / contracts/tenant-api.md
+// "opt-out-visual"). Only a draft campaign may be edited; the method is a
+// no-op rejection (ErrCampaignNotEditable) otherwise. Idempotent: calling
+// it on a row that already has no body_doc is a no-op success.
+func (c *Campaign) OptOutVisual() error {
+	if c.status != CampaignDraft {
+		return ErrCampaignNotEditable
+	}
+	c.bodyDoc = nil
+	c.theme = nil
+	c.bodyDocJSON = nil
+	c.themeJSON = nil
+	c.warnings = nil
+	return nil
+}
+
 // ApplyVisualSave replaces a draft campaign's editable visual content with a
 // validated, pre-rendered, and sanitized snapshot. The caller (the
 // SaveVisualCampaign command) supplies the BFF-rendered HTML/text that

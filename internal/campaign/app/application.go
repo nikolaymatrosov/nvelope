@@ -31,6 +31,11 @@ type Commands struct {
 
 	SaveVisualCampaign decorator.ResultCommandHandler[command.SaveVisualCampaign, command.SaveVisualCampaignResult]
 	SaveVisualTemplate decorator.ResultCommandHandler[command.SaveVisualTemplate, command.SaveVisualTemplateResult]
+
+	ConvertCampaignToVisual decorator.ResultCommandHandler[command.ConvertCampaignToVisual, command.ConvertedDocResult]
+	ConvertTemplateToVisual decorator.ResultCommandHandler[command.ConvertTemplateToVisual, command.ConvertedDocResult]
+	OptOutVisualCampaign    decorator.CommandHandler[command.OptOutVisualCampaign]
+	OptOutVisualTemplate    decorator.CommandHandler[command.OptOutVisualTemplate]
 }
 
 // Queries gathers the campaign context's read-only handlers.

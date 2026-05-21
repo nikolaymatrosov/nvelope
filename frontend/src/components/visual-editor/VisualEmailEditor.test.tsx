@@ -16,6 +16,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -25,6 +26,7 @@ import StarterKit from "@tiptap/starter-kit"
 import { VisualEmailEditor } from "./VisualEmailEditor"
 import { buildColumnsNode } from "./extensions/Columns"
 import { MergeTag, placeholderOf } from "./extensions/MergeTag"
+import { RAWHTML_EDIT_EVENT } from "./extensions/RawHTML"
 import type { VisualDoc } from "@/lib/api-types"
 import { renderWithClient } from "@/test/render"
 
@@ -107,6 +109,104 @@ describe("Columns helper", () => {
         expect(col.type).toBe("column")
       }
     }
+  })
+})
+
+// T095 — a RawHTML block in the visual editor surfaces the "Edit HTML"
+// affordance, and edits made through the modal round-trip back into the
+// same block on save.
+//
+// CodeMirror is mocked here as a plain textarea so the test can drive
+// changes without depending on jsdom's incomplete contenteditable support.
+// The integration between the modal and applyRawHTMLEdit is what we are
+// asserting; CodeMirror's own widget is covered by upstream tests.
+vi.mock("@/components/code-editor/CodeView", () => ({
+  CodeView: ({
+    value,
+    onChange,
+    testId,
+  }: {
+    value: string
+    onChange: (next: string) => void
+    testId?: string
+  }) => (
+    <textarea
+      data-testid={testId ?? "code-view"}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}))
+
+describe("RawHTML block (T089, T095)", () => {
+  const docWithRawHTML: VisualDoc = {
+    version: 1,
+    type: "doc",
+    content: [
+      {
+        type: "rawHtml",
+        attrs: { html: "<p>opaque region</p>" },
+      },
+    ],
+  }
+
+  it("renders the Edit-HTML affordance for a RawHTML block", async () => {
+    renderWithClient(
+      <VisualEmailEditor
+        slug="acme"
+        value={docWithRawHTML}
+        onChange={vi.fn()}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId("ve-rawhtml-edit")).toBeTruthy()
+      expect(screen.getByTestId("ve-rawhtml-preview")).toBeTruthy()
+    })
+  })
+
+  it("round-trips edits made in the modal back into the same RawHTML block", async () => {
+    const onChange = vi.fn<(doc: VisualDoc) => void>()
+    renderWithClient(
+      <VisualEmailEditor
+        slug="acme"
+        value={docWithRawHTML}
+        onChange={onChange}
+      />,
+    )
+
+    // Dispatch the edit-request event the NodeView would emit so the test
+    // doesn't depend on jsdom's contenteditable click forwarding.
+    const editorRoot = await screen.findByTestId("ve-editor")
+    editorRoot.dispatchEvent(
+      new CustomEvent(RAWHTML_EDIT_EVENT, {
+        detail: { html: "<p>opaque region</p>", pos: 0 },
+        bubbles: true,
+      }),
+    )
+
+    const codeView = await screen.findByTestId("ve-rawhtml-codeview")
+    // Replace the html with new content via the mocked CodeView textarea.
+    fireEvent.change(codeView, {
+      target: { value: "<p>edited region</p>" },
+    })
+
+    const saveBtn = await screen.findByTestId("ve-rawhtml-modal-save")
+    fireEvent.click(saveBtn)
+
+    // After save the modal closes and onChange fires with the updated
+    // RawHTML attrs.html. We assert against the last emission since
+    // TipTap may surface intermediate updates as content settles.
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls.at(-1)
+      expect(lastCall).toBeDefined()
+      const doc = lastCall![0]
+      const block = doc.content[0] as {
+        type: string
+        attrs?: { html?: string }
+      }
+      expect(block.type).toBe("rawHtml")
+      expect(block.attrs?.html).toBe("<p>edited region</p>")
+    })
   })
 })
 

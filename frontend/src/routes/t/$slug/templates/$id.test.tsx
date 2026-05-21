@@ -23,7 +23,11 @@ vi.mock("@/lib/api", () => ({
     me: vi.fn(),
     tenant: vi.fn(),
     listRoles: vi.fn(),
-    templates: { saveVisual: vi.fn() },
+    templates: {
+      saveVisual: vi.fn(),
+      convertToVisual: vi.fn(),
+      optOutVisual: vi.fn(),
+    },
   },
 }))
 
@@ -212,6 +216,104 @@ describe("TemplateDetail — visual editor surface (T082)", () => {
         expect.objectContaining({
           ifUnmodifiedSince: "2026-05-20T12:34:56Z",
         }),
+      ),
+    )
+  })
+})
+
+// T094 — convert legacy raw-HTML → visual, opt out of visual mode.
+describe("TemplateDetail — convert / opt-out (T094)", () => {
+  it("shows the Convert-to-visual button on a legacy raw-HTML template and converts on click", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockResolvedValue(
+      ok(
+        template({
+          body_doc: null,
+          body_html: "<p>legacy html body</p>",
+        }),
+      ),
+    )
+    vi.mocked(api.templates.convertToVisual).mockResolvedValue(
+      ok({
+        bodyDoc: visualDoc,
+        warnings: [],
+      }),
+    )
+
+    renderWithClient(<TemplateDetail />)
+
+    // Code editor is visible, visual editor is not.
+    expect(await screen.findByTestId("convert-to-visual")).toBeTruthy()
+    expect(screen.queryByTestId("visual-email-editor")).toBeNull()
+
+    const convertBtn = await screen.findByTestId("convert-to-visual")
+    fireEvent.click(convertBtn)
+
+    await waitFor(() =>
+      expect(api.templates.convertToVisual).toHaveBeenCalledWith(
+        "acme",
+        "tpl-1",
+      ),
+    )
+    const editor = await screen.findByTestId("visual-email-editor")
+    expect(editor.getAttribute("data-doc-blocks")).toBe("1")
+  })
+
+  it("hides the Convert-to-visual button on transactional templates", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockResolvedValue(
+      ok(template({ kind: "transactional", body_doc: null })),
+    )
+    renderWithClient(<TemplateDetail />)
+    // Wait for the route to settle (the "Save changes" button is rendered
+    // once the template loads). Then assert the convert button is absent.
+    await screen.findByRole("button", { name: /save changes/i })
+    expect(screen.queryByTestId("convert-to-visual")).toBeNull()
+  })
+
+  it("opens the opt-out confirmation modal from the editor toolbar and clears body_doc on confirm", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockResolvedValue(
+      ok(template({ body_doc: visualDoc, body_html: "<p>kept</p>" })),
+    )
+    vi.mocked(api.templates.optOutVisual).mockResolvedValue(
+      ok(template({ body_doc: null, body_html: "<p>kept</p>" })),
+    )
+
+    vi.doMock("@/components/visual-editor/VisualEmailEditor", () => ({
+      VisualEmailEditor: ({
+        onOptOutVisual,
+      }: {
+        onOptOutVisual?: () => void
+      }) => (
+        <div data-testid="visual-email-editor">
+          {onOptOutVisual && (
+            <button
+              type="button"
+              data-testid="ve-opt-out-visual"
+              onClick={onOptOutVisual}
+            >
+              Edit as HTML only
+            </button>
+          )}
+        </div>
+      ),
+    }))
+    vi.resetModules()
+    const { TemplateDetail: ReloadedDetail } = await import("./$id")
+
+    renderWithClient(<ReloadedDetail />)
+
+    const optOutBtn = await screen.findByTestId("ve-opt-out-visual")
+    fireEvent.click(optOutBtn)
+
+    const confirm = await screen.findByTestId("opt-out-visual-confirm")
+    fireEvent.click(confirm)
+
+    await waitFor(() =>
+      expect(api.templates.optOutVisual).toHaveBeenCalledWith(
+        "acme",
+        "tpl-1",
       ),
     )
   })

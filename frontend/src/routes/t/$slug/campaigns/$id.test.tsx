@@ -38,7 +38,11 @@ vi.mock("@/lib/api", () => ({
     listRoles: vi.fn(),
     media: { list: vi.fn() },
     mergeTags: { list: vi.fn() },
-    campaigns: { saveVisual: vi.fn() },
+    campaigns: {
+      saveVisual: vi.fn(),
+      convertToVisual: vi.fn(),
+      optOutVisual: vi.fn(),
+    },
   },
 }))
 
@@ -347,6 +351,107 @@ describe("CampaignDetail — visual editor surface (T070, T127)", () => {
     renderWithClient(<CampaignDetail />)
     expect(await screen.findByTestId("visual-email-editor")).toBeTruthy()
     expect(screen.queryByTestId("open-media-picker")).toBeNull()
+  })
+
+  // T094 — code ↔ visual round-trip + legacy / convert / opt-out flows.
+
+  it("shows the Convert-to-visual button on a legacy raw-HTML row and converts on click", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(
+        campaign({
+          body_doc: null,
+          body_html: "<p>legacy html body</p>",
+        }),
+      ),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    vi.mocked(api.campaigns.convertToVisual).mockResolvedValue(
+      ok({
+        bodyDoc: visualDoc,
+        warnings: [
+          {
+            kind: "rawhtml_block",
+            detail: "table preserved verbatim",
+            path: "nodes[1]",
+          },
+        ],
+      }),
+    )
+
+    renderWithClient(<CampaignDetail />)
+
+    // Legacy code editor is visible; visual editor is not.
+    expect(await screen.findByTestId("open-media-picker")).toBeTruthy()
+    expect(screen.queryByTestId("visual-email-editor")).toBeNull()
+
+    const convertBtn = await screen.findByTestId("convert-to-visual")
+    fireEvent.click(convertBtn)
+
+    await waitFor(() =>
+      expect(api.campaigns.convertToVisual).toHaveBeenCalledWith(
+        "acme",
+        "camp-1",
+      ),
+    )
+    // After conversion the visual editor is mounted with the candidate
+    // doc loaded into state (data-doc-blocks reflects content.length).
+    const editor = await screen.findByTestId("visual-email-editor")
+    expect(editor.getAttribute("data-doc-blocks")).toBe("1")
+  })
+
+  it("opens the opt-out confirmation modal from the editor toolbar and clears body_doc on confirm", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(campaign({ body_doc: visualDoc, body_html: "<p>kept</p>" })),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    vi.mocked(api.campaigns.optOutVisual).mockResolvedValue(
+      ok(campaign({ body_doc: null, body_html: "<p>kept</p>" })),
+    )
+
+    // For this test we need the real <VisualEmailEditor /> to render the
+    // toolbar's "Edit as HTML only" button. The unit-level editor test
+    // covers the TipTap integration; here we only assert the toolbar's
+    // wiring, so use the existing module mock to surface the button.
+    vi.doMock("@/components/visual-editor/VisualEmailEditor", () => ({
+      VisualEmailEditor: ({
+        onOptOutVisual,
+      }: {
+        onOptOutVisual?: () => void
+      }) => (
+        <div data-testid="visual-email-editor">
+          {onOptOutVisual && (
+            <button
+              type="button"
+              data-testid="ve-opt-out-visual"
+              onClick={onOptOutVisual}
+            >
+              Edit as HTML only
+            </button>
+          )}
+        </div>
+      ),
+    }))
+    vi.resetModules()
+    const { CampaignDetail: ReloadedDetail } = await import("./$id")
+
+    renderWithClient(<ReloadedDetail />)
+
+    const optOutBtn = await screen.findByTestId("ve-opt-out-visual")
+    fireEvent.click(optOutBtn)
+
+    const dialog = await screen.findByTestId("opt-out-visual-dialog")
+    expect(dialog).toBeTruthy()
+    const confirm = within(dialog).getByTestId("opt-out-visual-confirm")
+    fireEvent.click(confirm)
+
+    await waitFor(() =>
+      expect(api.campaigns.optOutVisual).toHaveBeenCalledWith(
+        "acme",
+        "camp-1",
+      ),
+    )
   })
 
   it("surfaces a stale_row 409 as an ApiError that the route can handle", async () => {

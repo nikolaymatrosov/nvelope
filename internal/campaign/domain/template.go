@@ -213,6 +213,21 @@ func (t *Template) Recompose(name, subject, bodyHTML, bodyText string) error {
 	return nil
 }
 
+// OptOutVisual clears the template's structured visual document and theme
+// override, leaving body_html / body_text intact so the template remains
+// usable as a code-only template (per FR-029 / contracts/tenant-api.md
+// "opt-out-visual"). Idempotent: calling it on a row that already has no
+// body_doc is a no-op success. Templates have no draft gate — every
+// template is editable like the existing Recompose method.
+func (t *Template) OptOutVisual() error {
+	t.bodyDoc = nil
+	t.theme = nil
+	t.bodyDocJSON = nil
+	t.themeJSON = nil
+	t.warnings = nil
+	return nil
+}
+
 // ApplyVisualSave replaces a template's editable visual content with a
 // validated, pre-rendered, and sanitized snapshot. The caller (the
 // SaveVisualTemplate command) supplies the BFF-rendered HTML/text that

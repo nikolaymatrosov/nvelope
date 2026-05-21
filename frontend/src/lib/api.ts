@@ -16,6 +16,7 @@ import type {
   BrandingView,
   CampaignAnalytics,
   CampaignView,
+  ConvertToVisualResponse,
   CreateCampaignInput,
   CreateFieldInput,
   CreateListInput,
@@ -517,6 +518,16 @@ export const api = {
         tp(slug, `/campaigns/${id}/visual`),
         { ...body },
       ),
+    convertToVisual: (slug: string, id: string) =>
+      request<ConvertToVisualResponse>(
+        "POST",
+        tp(slug, `/campaigns/${id}/convert-to-visual`),
+      ),
+    optOutVisual: (slug: string, id: string) =>
+      request<CampaignView>(
+        "POST",
+        tp(slug, `/campaigns/${id}/opt-out-visual`),
+      ),
   },
   templates: {
     saveVisual: (
@@ -528,6 +539,16 @@ export const api = {
         "PUT",
         tp(slug, `/templates/${id}/visual`),
         { ...body },
+      ),
+    convertToVisual: (slug: string, id: string) =>
+      request<ConvertToVisualResponse>(
+        "POST",
+        tp(slug, `/templates/${id}/convert-to-visual`),
+      ),
+    optOutVisual: (slug: string, id: string) =>
+      request<TemplateView>(
+        "POST",
+        tp(slug, `/templates/${id}/opt-out-visual`),
       ),
   },
   renderPreview: (slug: string, body: RenderPreviewInput) =>

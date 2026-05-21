@@ -475,6 +475,18 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 			SaveVisualTemplate: decorator.ApplyResultCommandDecorators(
 				campaigncommand.NewSaveVisualTemplateHandler(templates, fields, mediaRefs),
 				"SaveVisualTemplate", logger),
+			ConvertCampaignToVisual: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewConvertCampaignToVisualHandler(campaigns, mediaRefs),
+				"ConvertCampaignToVisual", logger),
+			ConvertTemplateToVisual: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewConvertTemplateToVisualHandler(templates, mediaRefs),
+				"ConvertTemplateToVisual", logger),
+			OptOutVisualCampaign: decorator.ApplyCommandDecorators(
+				campaigncommand.NewOptOutVisualCampaignHandler(campaigns),
+				"OptOutVisualCampaign", logger),
+			OptOutVisualTemplate: decorator.ApplyCommandDecorators(
+				campaigncommand.NewOptOutVisualTemplateHandler(templates),
+				"OptOutVisualTemplate", logger),
 		},
 		Queries: campaignapp.Queries{
 			ListTemplates: decorator.ApplyQueryDecorators(

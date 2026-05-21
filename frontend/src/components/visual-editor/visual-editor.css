@@ -92,3 +92,71 @@
   background: #f3f4f6;
   color: #374151;
 }
+
+.ve-rawhtml {
+  border: 1px dashed #9ca3af;
+  border-radius: 4px;
+  padding: 8px;
+  background: #fafafa;
+  user-select: none;
+}
+
+.ve-rawhtml__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px dotted #d1d5db;
+}
+
+.ve-rawhtml__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ve-rawhtml__edit {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.ve-rawhtml__edit:hover {
+  background: #f3f4f6;
+}
+
+.ve-rawhtml__preview {
+  pointer-events: none;
+  font-size: 13px;
+  color: #4b5563;
+  overflow: hidden;
+  max-height: 180px;
+}
+
+.ve-toolbar {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 6px 0;
+}
+
+.ve-toolbar__btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.ve-toolbar__btn:hover {
+  background: #f3f4f6;
+}

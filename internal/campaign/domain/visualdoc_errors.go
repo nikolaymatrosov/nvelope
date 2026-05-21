@@ -43,4 +43,11 @@ var (
 	// not fall back to a RawHTML block. Reserved for future use.
 	ErrUnsupportedNode = apperr.NewIncorrectInput("unsupported_node",
 		"the node cannot be converted to a visual block")
+
+	// ErrAlreadyVisual is returned by the convert-to-visual endpoints when
+	// the row already carries a structured body_doc, so there is nothing
+	// to convert and the operator should open the visual editor directly
+	// (per contracts/tenant-api.md "already_visual").
+	ErrAlreadyVisual = apperr.NewConflict("already_visual",
+		"the row already has a visual document and does not need conversion")
 )

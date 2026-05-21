@@ -937,3 +937,19 @@ export type StaleRowError = {
   kind: "stale_row"
   currentUpdatedAt: string
 }
+
+// Convert-to-visual — non-persisting response from
+// POST /campaigns/{id}/convert-to-visual and the templates counterpart.
+// `bodyDoc` is the candidate VisualDoc the converter produced;
+// `warnings` lists every RawHTML fallback the operator should review
+// before saving with the regular visual PUT.
+export type ConvertToVisualResponse = {
+  bodyDoc: VisualDoc
+  warnings: Array<ConvertWarning>
+}
+
+export type ConvertWarning = {
+  kind: "rawhtml_block"
+  detail: string
+  path: string
+}

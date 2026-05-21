@@ -19,6 +19,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { AsyncState } from "@/components/common/async-state"
 import { FormField, compose, fieldError, rules } from "@/components/common/form-field"
 
@@ -93,7 +101,14 @@ function EditTemplateCard({
 }) {
   const queryClient = useQueryClient()
 
-  const editorMode = initialTemplateEditorMode(template)
+  // Mode is mutable so the operator can convert a legacy raw-HTML
+  // template to visual (T092) or opt out of the visual editor on a
+  // visual row (T093 / FR-029). Transactional templates never enter
+  // visual mode — the convert button is gated on kind === "campaign".
+  const [editorMode, setEditorMode] = useState<"visual" | "code">(() =>
+    initialTemplateEditorMode(template),
+  )
+  const [confirmOptOut, setConfirmOptOut] = useState(false)
   const [bodyDoc, setBodyDoc] = useState<VisualDoc>(
     () => template.body_doc ?? EMPTY_VISUAL_DOC,
   )
@@ -132,6 +147,44 @@ function EditTemplateCard({
       toast.success("Template saved.")
     },
     onError: (e) => toast.error(errorMessage(e)),
+  })
+
+  // Convert legacy raw-HTML → VisualDoc (T092). Non-persisting: the
+  // returned doc lands in local state and the editor swaps into visual
+  // mode; the operator reviews any rawhtml-fallback warnings and saves
+  // through the regular visual PUT.
+  const convertToVisual = useMutation({
+    mutationFn: () => api.templates.convertToVisual(slug, template.id),
+    onSuccess: (res) => {
+      setBodyDoc(res.data.bodyDoc)
+      setEditorMode("visual")
+      const warnings = res.data.warnings.length
+      if (warnings > 0) {
+        toast.warning(
+          `Converted to visual editor with ${warnings} block${warnings === 1 ? "" : "s"} preserved as raw HTML. Review and save to keep the visual document.`,
+          { duration: 12_000 },
+        )
+      } else {
+        toast.success("Converted to visual editor. Review and save to keep it.")
+      }
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+
+  // Opt out of the visual editor (T093 / FR-029). Persists immediately —
+  // clears body_doc + theme so the row reverts to a code-only template.
+  const optOutVisual = useMutation({
+    mutationFn: () => api.templates.optOutVisual(slug, template.id),
+    onSuccess: async () => {
+      setEditorMode("code")
+      setConfirmOptOut(false)
+      await invalidate()
+      toast.success("Switched to HTML-only mode. The structured document was cleared.")
+    },
+    onError: (e) => {
+      setConfirmOptOut(false)
+      toast.error(errorMessage(e))
+    },
   })
 
   async function refetchTemplate(): Promise<TemplateView | undefined> {
@@ -306,19 +359,44 @@ function EditTemplateCard({
                 slug={slug}
                 value={bodyDoc}
                 onChange={setBodyDoc}
+                onOptOutVisual={
+                  template.body_doc
+                    ? () => setConfirmOptOut(true)
+                    : undefined
+                }
               />
             </div>
           ) : (
             <>
               <form.Field name="bodyHtml">
                 {(field) => (
-                  <FormField label="HTML body">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label>HTML body</Label>
+                      {canManage &&
+                        template.kind === "campaign" &&
+                        field.state.value.trim() !== "" &&
+                        !template.body_doc && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={convertToVisual.isPending}
+                            onClick={() => convertToVisual.mutate()}
+                            data-testid="convert-to-visual"
+                          >
+                            {convertToVisual.isPending
+                              ? "Converting…"
+                              : "Convert to visual editor"}
+                          </Button>
+                        )}
+                    </div>
                     <Textarea
                       rows={8}
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                     />
-                  </FormField>
+                  </div>
                 )}
               </form.Field>
               <form.Field name="bodyText">
@@ -348,6 +426,38 @@ function EditTemplateCard({
           )}
         </form>
       </CardContent>
+
+      <Dialog open={confirmOptOut} onOpenChange={setConfirmOptOut}>
+        <DialogContent data-testid="opt-out-visual-dialog">
+          <DialogHeader>
+            <DialogTitle>Switch to HTML-only editing?</DialogTitle>
+            <DialogDescription>
+              Your structured visual document will be discarded. The last
+              saved HTML body stays intact so the template remains usable,
+              but blocks, columns, and merge-tag chips will no longer be
+              available unless you convert back later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOptOut(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={optOutVisual.isPending}
+              onClick={() => optOutVisual.mutate()}
+              data-testid="opt-out-visual-confirm"
+            >
+              {optOutVisual.isPending ? "Switching…" : "Switch to HTML only"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

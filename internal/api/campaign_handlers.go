@@ -431,6 +431,101 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// handleConvertCampaignToVisual is the Go tail of the
+// POST /campaigns/{id}/convert-to-visual endpoint (per
+// specs/014-visual-email-editor/contracts/tenant-api.md). It runs the
+// best-effort raw-HTML → VisualDoc converter (research.md § R6) over the
+// campaign's persisted body_html and returns the candidate doc plus any
+// rawhtml-fallback warnings the operator should review. The endpoint does
+// not persist — the operator opens the candidate doc in the visual editor
+// and saves through the regular PUT /campaigns/{id}/visual.
+func (s *Server) handleConvertCampaignToVisual(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	res, err := s.campaign.Commands.ConvertCampaignToVisual.Handle(r.Context(),
+		campaigncommand.ConvertCampaignToVisual{
+			TenantID:   ws.ID,
+			CampaignID: chi.URLParam(r, "id"),
+		})
+	if err != nil {
+		s.fail(w, "convert campaign to visual", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"bodyDoc":  res.BodyDoc,
+		"warnings": res.Warnings,
+	})
+}
+
+// handleOptOutCampaignVisual is the Go tail of the
+// POST /campaigns/{id}/opt-out-visual endpoint. Clears the campaign's
+// body_doc and theme override so the row reverts to a code-only campaign
+// per FR-029; body_html / body_text stay intact so the campaign remains
+// sendable.
+func (s *Server) handleOptOutCampaignVisual(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	if err := s.campaign.Commands.OptOutVisualCampaign.Handle(r.Context(),
+		campaigncommand.OptOutVisualCampaign{
+			TenantID:   ws.ID,
+			CampaignID: chi.URLParam(r, "id"),
+		}); err != nil {
+		s.fail(w, "opt out of visual campaign", err)
+		return
+	}
+	s.respondCampaign(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK)
+}
+
+// handleConvertTemplateToVisual mirrors handleConvertCampaignToVisual for
+// templates.
+func (s *Server) handleConvertTemplateToVisual(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	res, err := s.campaign.Commands.ConvertTemplateToVisual.Handle(r.Context(),
+		campaigncommand.ConvertTemplateToVisual{
+			TenantID:   ws.ID,
+			TemplateID: chi.URLParam(r, "id"),
+		})
+	if err != nil {
+		s.fail(w, "convert template to visual", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"bodyDoc":  res.BodyDoc,
+		"warnings": res.Warnings,
+	})
+}
+
+// handleOptOutTemplateVisual mirrors handleOptOutCampaignVisual for templates.
+func (s *Server) handleOptOutTemplateVisual(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	if err := s.campaign.Commands.OptOutVisualTemplate.Handle(r.Context(),
+		campaigncommand.OptOutVisualTemplate{
+			TenantID:   ws.ID,
+			TemplateID: chi.URLParam(r, "id"),
+		}); err != nil {
+		s.fail(w, "opt out of visual template", err)
+		return
+	}
+	view, err := s.campaign.Queries.GetTemplate.Handle(r.Context(), campaignquery.GetTemplate{
+		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
+	})
+	if err != nil {
+		s.fail(w, "opt out of visual template", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
 // respondCampaign fetches and writes a campaign view.
 func (s *Server) respondCampaign(w http.ResponseWriter, r *http.Request, tenantID, id string, status int) {
 	view, err := s.campaign.Queries.GetCampaign.Handle(r.Context(), campaignquery.GetCampaign{
