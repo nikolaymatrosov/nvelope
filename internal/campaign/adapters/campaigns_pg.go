@@ -79,11 +79,24 @@ func (r *Campaigns) Add(ctx context.Context, tenantID string, c *domain.Campaign
 			`INSERT INTO campaigns
 			    (tenant_id, name, subject, body_html, body_text, from_name, from_local_part,
 			     sending_domain_id, template_id, status, max_send_errors, body_doc, theme)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
-			tenantID, c.Name(), c.Subject(), c.BodyHTML(), c.BodyText(), c.FromName(),
-			c.FromLocalPart(), nullableString(c.SendingDomainID()), nullableString(c.TemplateID()),
-			string(c.Status()), c.MaxSendErrors(),
-			nullableJSON(c.BodyDocJSON()), nullableJSON(c.ThemeJSON())).Scan(&id)
+			 VALUES (@tenant_id, @name, @subject, @body_html, @body_text, @from_name, @from_local_part,
+			         @sending_domain_id, @template_id, @status, @max_send_errors, @body_doc, @theme)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":         tenantID,
+				"name":              c.Name(),
+				"subject":           c.Subject(),
+				"body_html":         c.BodyHTML(),
+				"body_text":         c.BodyText(),
+				"from_name":         c.FromName(),
+				"from_local_part":   c.FromLocalPart(),
+				"sending_domain_id": nullableString(c.SendingDomainID()),
+				"template_id":       nullableString(c.TemplateID()),
+				"status":            string(c.Status()),
+				"max_send_errors":   c.MaxSendErrors(),
+				"body_doc":          nullableJSON(c.BodyDocJSON()),
+				"theme":             nullableJSON(c.ThemeJSON()),
+			}).Scan(&id)
 		if err != nil {
 			return fmt.Errorf("inserting campaign: %w", err)
 		}
@@ -123,18 +136,37 @@ func (r *Campaigns) Update(ctx context.Context, tenantID, id string,
 			return err
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE campaigns SET name = $1, subject = $2, body_html = $3, body_text = $4,
-			    from_name = $5, from_local_part = $6, sending_domain_id = $7, status = $8,
-			    max_send_errors = $9, sent_count = $10, failed_count = $11, recipient_count = $12,
-			    started_at = $13, finished_at = $14, archive_visible = $15, archived_at = $16,
-			    body_doc = $17, theme = $18, updated_at = now() WHERE id = $19`,
-			updated.Name(), updated.Subject(), updated.BodyHTML(), updated.BodyText(),
-			updated.FromName(), updated.FromLocalPart(), nullableString(updated.SendingDomainID()),
-			string(updated.Status()), updated.MaxSendErrors(), updated.SentCount(),
-			updated.FailedCount(), updated.RecipientCount(),
-			updated.StartedAt(), updated.FinishedAt(),
-			updated.ArchiveVisible(), updated.ArchivedAt(),
-			nullableJSON(updated.BodyDocJSON()), nullableJSON(updated.ThemeJSON()), id)
+			`UPDATE campaigns SET
+			    name = @name, subject = @subject, body_html = @body_html, body_text = @body_text,
+			    from_name = @from_name, from_local_part = @from_local_part,
+			    sending_domain_id = @sending_domain_id, status = @status,
+			    max_send_errors = @max_send_errors, sent_count = @sent_count,
+			    failed_count = @failed_count, recipient_count = @recipient_count,
+			    started_at = @started_at, finished_at = @finished_at,
+			    archive_visible = @archive_visible, archived_at = @archived_at,
+			    body_doc = @body_doc, theme = @theme, updated_at = now()
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"name":              updated.Name(),
+				"subject":           updated.Subject(),
+				"body_html":         updated.BodyHTML(),
+				"body_text":         updated.BodyText(),
+				"from_name":         updated.FromName(),
+				"from_local_part":   updated.FromLocalPart(),
+				"sending_domain_id": nullableString(updated.SendingDomainID()),
+				"status":            string(updated.Status()),
+				"max_send_errors":   updated.MaxSendErrors(),
+				"sent_count":        updated.SentCount(),
+				"failed_count":      updated.FailedCount(),
+				"recipient_count":   updated.RecipientCount(),
+				"started_at":        updated.StartedAt(),
+				"finished_at":       updated.FinishedAt(),
+				"archive_visible":   updated.ArchiveVisible(),
+				"archived_at":       updated.ArchivedAt(),
+				"body_doc":          nullableJSON(updated.BodyDocJSON()),
+				"theme":             nullableJSON(updated.ThemeJSON()),
+				"id":                id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating campaign: %w", err)
 		}
@@ -219,8 +251,13 @@ func (r *Campaigns) SaveTargets(ctx context.Context, tenantID, campaignID string
 		for _, t := range targets {
 			_, err := tx.Exec(ctx,
 				`INSERT INTO campaign_lists (campaign_id, tenant_id, list_id, segment_query)
-				 VALUES ($1, $2, $3, $4)`,
-				campaignID, tenantID, nullableString(t.ListID), nullableJSON(t.SegmentQuery))
+				 VALUES (@campaign_id, @tenant_id, @list_id, @segment_query)`,
+				pgx.NamedArgs{
+					"campaign_id":   campaignID,
+					"tenant_id":     tenantID,
+					"list_id":       nullableString(t.ListID),
+					"segment_query": nullableJSON(t.SegmentQuery),
+				})
 			if err != nil {
 				return fmt.Errorf("inserting campaign target: %w", err)
 			}

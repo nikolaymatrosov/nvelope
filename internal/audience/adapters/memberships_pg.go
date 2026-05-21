@@ -32,9 +32,14 @@ func (r *Memberships) Attach(ctx context.Context, tenantID, subscriberID, listID
 	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx,
 			`INSERT INTO subscriber_lists (tenant_id, subscriber_id, list_id, subscription_status)
-			 VALUES ($1, $2, $3, $4)
+			 VALUES (@tenant_id, @subscriber_id, @list_id, @subscription_status)
 			 ON CONFLICT (subscriber_id, list_id) DO NOTHING`,
-			tenantID, subscriberID, listID, string(status))
+			pgx.NamedArgs{
+				"tenant_id":           tenantID,
+				"subscriber_id":       subscriberID,
+				"list_id":             listID,
+				"subscription_status": string(status),
+			})
 		if db.IsInvalidInput(err) {
 			return domain.ErrSubscriberNotFound
 		}

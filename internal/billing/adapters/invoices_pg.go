@@ -51,12 +51,21 @@ func (r *Invoices) AddOrGet(ctx context.Context, i *domain.Invoice) (*domain.Inv
 			`INSERT INTO invoices
 			    (tenant_id, subscription_id, period_start, period_end, total_minor,
 			     currency, status, attempt_count, issued_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			 VALUES (@tenant_id, @subscription_id, @period_start, @period_end, @total_minor,
+			         @currency, @status, @attempt_count, @issued_at)
 			 ON CONFLICT (subscription_id, period_start) DO NOTHING
 			 RETURNING id`,
-			i.TenantID(), i.SubscriptionID(), i.PeriodStart(), i.PeriodEnd(),
-			i.Total().Minor(), i.Currency(), string(i.Status()), i.AttemptCount(),
-			i.IssuedAt()).Scan(&id)
+			pgx.NamedArgs{
+				"tenant_id":       i.TenantID(),
+				"subscription_id": i.SubscriptionID(),
+				"period_start":    i.PeriodStart(),
+				"period_end":      i.PeriodEnd(),
+				"total_minor":     i.Total().Minor(),
+				"currency":        i.Currency(),
+				"status":          string(i.Status()),
+				"attempt_count":   i.AttemptCount(),
+				"issued_at":       i.IssuedAt(),
+			}).Scan(&id)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			// The invoice for this period already exists — load it.
@@ -119,12 +128,18 @@ func (r *Invoices) Update(ctx context.Context, tenantID, id string,
 			return err
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE invoices
-			 SET total_minor = $1, status = $2, attempt_count = $3,
-			     next_attempt_at = $4, paid_at = $5, updated_at = now()
-			 WHERE id = $6`,
-			updated.Total().Minor(), string(updated.Status()), updated.AttemptCount(),
-			updated.NextAttemptAt(), updated.PaidAt(), id)
+			`UPDATE invoices SET
+			    total_minor = @total_minor, status = @status, attempt_count = @attempt_count,
+			    next_attempt_at = @next_attempt_at, paid_at = @paid_at, updated_at = now()
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"total_minor":     updated.Total().Minor(),
+				"status":          string(updated.Status()),
+				"attempt_count":   updated.AttemptCount(),
+				"next_attempt_at": updated.NextAttemptAt(),
+				"paid_at":         updated.PaidAt(),
+				"id":              id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating invoice: %w", err)
 		}
@@ -261,9 +276,15 @@ func (r *Invoices) AddAttempt(ctx context.Context, a *domain.PaymentAttempt) err
 		_, err := tx.Exec(ctx,
 			`INSERT INTO payment_attempts
 			    (tenant_id, invoice_id, attempt_number, status, gateway_reference, failure_reason)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			a.TenantID(), a.InvoiceID(), a.AttemptNumber(), string(a.Status()),
-			nullable(a.GatewayReference()), nullable(a.FailureReason()))
+			 VALUES (@tenant_id, @invoice_id, @attempt_number, @status, @gateway_reference, @failure_reason)`,
+			pgx.NamedArgs{
+				"tenant_id":         a.TenantID(),
+				"invoice_id":        a.InvoiceID(),
+				"attempt_number":    a.AttemptNumber(),
+				"status":            string(a.Status()),
+				"gateway_reference": nullable(a.GatewayReference()),
+				"failure_reason":    nullable(a.FailureReason()),
+			})
 		if err != nil {
 			return fmt.Errorf("inserting payment attempt: %w", err)
 		}
@@ -289,10 +310,22 @@ func insertInvoiceTx(ctx context.Context, tx pgx.Tx, i *domain.Invoice) (string,
 		`INSERT INTO invoices
 		    (tenant_id, subscription_id, period_start, period_end, total_minor,
 		     currency, status, attempt_count, next_attempt_at, issued_at, paid_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
-		i.TenantID(), i.SubscriptionID(), i.PeriodStart(), i.PeriodEnd(),
-		i.Total().Minor(), i.Currency(), string(i.Status()), i.AttemptCount(),
-		i.NextAttemptAt(), i.IssuedAt(), i.PaidAt()).Scan(&id)
+		 VALUES (@tenant_id, @subscription_id, @period_start, @period_end, @total_minor,
+		         @currency, @status, @attempt_count, @next_attempt_at, @issued_at, @paid_at)
+		 RETURNING id`,
+		pgx.NamedArgs{
+			"tenant_id":       i.TenantID(),
+			"subscription_id": i.SubscriptionID(),
+			"period_start":    i.PeriodStart(),
+			"period_end":      i.PeriodEnd(),
+			"total_minor":     i.Total().Minor(),
+			"currency":        i.Currency(),
+			"status":          string(i.Status()),
+			"attempt_count":   i.AttemptCount(),
+			"next_attempt_at": i.NextAttemptAt(),
+			"issued_at":       i.IssuedAt(),
+			"paid_at":         i.PaidAt(),
+		}).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("inserting invoice: %w", err)
 	}
@@ -308,9 +341,16 @@ func insertLineItemsTx(ctx context.Context, tx pgx.Tx, invoiceID string, i *doma
 		_, err := tx.Exec(ctx,
 			`INSERT INTO invoice_line_items
 			    (tenant_id, invoice_id, kind, description, quantity, unit_price_minor, amount_minor)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			i.TenantID(), invoiceID, string(li.Kind()), li.Description(),
-			li.Quantity(), li.UnitPrice().Minor(), li.Amount().Minor())
+			 VALUES (@tenant_id, @invoice_id, @kind, @description, @quantity, @unit_price_minor, @amount_minor)`,
+			pgx.NamedArgs{
+				"tenant_id":        i.TenantID(),
+				"invoice_id":       invoiceID,
+				"kind":             string(li.Kind()),
+				"description":      li.Description(),
+				"quantity":         li.Quantity(),
+				"unit_price_minor": li.UnitPrice().Minor(),
+				"amount_minor":     li.Amount().Minor(),
+			})
 		if err != nil {
 			return fmt.Errorf("inserting invoice line item: %w", err)
 		}

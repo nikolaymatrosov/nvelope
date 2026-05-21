@@ -33,8 +33,13 @@ func (r *TransactionalMessages) Record(ctx context.Context, tenantID, templateID
 		_, err := tx.Exec(ctx,
 			`INSERT INTO transactional_messages
 			   (tenant_id, template_id, provider_message_id, recipient_email)
-			 VALUES ($1, $2, $3, $4)`,
-			tenantID, nullableString(templateID), providerMessageID, recipientEmail)
+			 VALUES (@tenant_id, @template_id, @provider_message_id, @recipient_email)`,
+			pgx.NamedArgs{
+				"tenant_id":           tenantID,
+				"template_id":         nullableString(templateID),
+				"provider_message_id": providerMessageID,
+				"recipient_email":     recipientEmail,
+			})
 		if err != nil {
 			return fmt.Errorf("recording transactional message: %w", err)
 		}

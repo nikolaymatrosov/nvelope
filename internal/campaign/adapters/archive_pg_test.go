@@ -31,10 +31,15 @@ func insertArchivedCampaign(t *testing.T, pool *pgxpool.Pool, tenantID, name str
 				`INSERT INTO campaigns (tenant_id, name, subject, body_html, body_text,
 				    from_name, from_local_part, status, max_send_errors,
 				    archive_visible, archived_at, started_at)
-				 VALUES ($1, $2, 'subject', '<p>hi</p>', '', 'Acme', 'hello',
-				    'finished', 100, $3, $4, now())
+				 VALUES (@tenant_id, @name, 'subject', '<p>hi</p>', '', 'Acme', 'hello',
+				    'finished', 100, @archive_visible, @archived_at, now())
 				 RETURNING id`,
-				tenantID, name, visible, archivedAtArg).Scan(&id)
+				pgx.NamedArgs{
+					"tenant_id":       tenantID,
+					"name":            name,
+					"archive_visible": visible,
+					"archived_at":     archivedAtArg,
+				}).Scan(&id)
 		}))
 	return id
 }

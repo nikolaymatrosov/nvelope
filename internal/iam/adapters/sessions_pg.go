@@ -46,8 +46,15 @@ func (r *Sessions) Add(ctx context.Context, tenantID string, s *domain.Session) 
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
 			`INSERT INTO sessions (tenant_id, user_id, token_hash, state, expires_at)
-			 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-			tenantID, s.UserID(), s.TokenHash(), string(s.State()), s.ExpiresAt()).Scan(&id)
+			 VALUES (@tenant_id, @user_id, @token_hash, @state, @expires_at)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":  tenantID,
+				"user_id":    s.UserID(),
+				"token_hash": s.TokenHash(),
+				"state":      string(s.State()),
+				"expires_at": s.ExpiresAt(),
+			}).Scan(&id)
 	})
 	if err != nil {
 		return "", fmt.Errorf("inserting session: %w", err)

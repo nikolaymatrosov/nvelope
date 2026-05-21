@@ -35,9 +35,14 @@ func (r *Recipients) BulkInsert(ctx context.Context, tenantID, campaignID string
 		for _, rec := range rs {
 			tag, err := tx.Exec(ctx,
 				`INSERT INTO campaign_recipients (tenant_id, campaign_id, subscriber_id, email)
-				 VALUES ($1, $2, $3, $4)
+				 VALUES (@tenant_id, @campaign_id, @subscriber_id, @email)
 				 ON CONFLICT (campaign_id, email) DO NOTHING`,
-				tenantID, campaignID, rec.SubscriberID(), rec.Email())
+				pgx.NamedArgs{
+					"tenant_id":     tenantID,
+					"campaign_id":   campaignID,
+					"subscriber_id": rec.SubscriberID(),
+					"email":         rec.Email(),
+				})
 			if err != nil {
 				return fmt.Errorf("inserting recipient: %w", err)
 			}

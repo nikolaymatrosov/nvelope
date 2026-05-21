@@ -56,9 +56,18 @@ func (r *Assets) Add(ctx context.Context, a *domain.MediaAsset) error {
 			`INSERT INTO media_assets
 			   (id, tenant_id, filename, content_type, size_bytes,
 			    storage_key, public_url, uploaded_by)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			a.ID(), a.TenantID(), a.Filename(), a.ContentType(), a.SizeBytes(),
-			a.StorageKey(), a.PublicURL(), uploadedBy)
+			 VALUES (@id, @tenant_id, @filename, @content_type, @size_bytes,
+			         @storage_key, @public_url, @uploaded_by)`,
+			pgx.NamedArgs{
+				"id":           a.ID(),
+				"tenant_id":    a.TenantID(),
+				"filename":     a.Filename(),
+				"content_type": a.ContentType(),
+				"size_bytes":   a.SizeBytes(),
+				"storage_key":  a.StorageKey(),
+				"public_url":   a.PublicURL(),
+				"uploaded_by":  uploadedBy,
+			})
 		if err != nil {
 			return fmt.Errorf("inserting media asset: %w", err)
 		}

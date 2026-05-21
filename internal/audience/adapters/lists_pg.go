@@ -50,9 +50,16 @@ func (r *Lists) Add(ctx context.Context, tenantID string, l *domain.List) (strin
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		err := tx.QueryRow(ctx,
 			`INSERT INTO lists (tenant_id, name, description, visibility, optin, tags)
-			 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-			tenantID, l.Name(), l.Description(), string(l.Visibility()), string(l.OptIn()), l.Tags()).
-			Scan(&id)
+			 VALUES (@tenant_id, @name, @description, @visibility, @optin, @tags)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":   tenantID,
+				"name":        l.Name(),
+				"description": l.Description(),
+				"visibility":  string(l.Visibility()),
+				"optin":       string(l.OptIn()),
+				"tags":        l.Tags(),
+			}).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrListNameTaken
 		}
@@ -78,10 +85,18 @@ func (r *Lists) Update(ctx context.Context, tenantID, id string,
 			return err
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE lists SET name = $1, description = $2, visibility = $3, optin = $4,
-			        tags = $5, updated_at = now() WHERE id = $6`,
-			updated.Name(), updated.Description(), string(updated.Visibility()),
-			string(updated.OptIn()), updated.Tags(), id)
+			`UPDATE lists SET
+			    name = @name, description = @description, visibility = @visibility, optin = @optin,
+			    tags = @tags, updated_at = now()
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"name":        updated.Name(),
+				"description": updated.Description(),
+				"visibility":  string(updated.Visibility()),
+				"optin":       string(updated.OptIn()),
+				"tags":        updated.Tags(),
+				"id":          id,
+			})
 		if db.IsUniqueViolation(err) {
 			return domain.ErrListNameTaken
 		}

@@ -65,9 +65,20 @@ func (r *SubscriptionPages) Add(ctx context.Context, tenantID string,
 			`INSERT INTO subscription_pages
 			   (tenant_id, slug, title, target_list_ids, fields, sending_domain_id,
 			    from_name, from_local_part, active)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-			tenantID, p.Slug(), p.Title(), p.TargetListIDs(), fields, p.SendingDomainID(),
-			p.FromName(), p.FromLocalPart(), p.Active()).Scan(&id)
+			 VALUES (@tenant_id, @slug, @title, @target_list_ids, @fields, @sending_domain_id,
+			         @from_name, @from_local_part, @active)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":         tenantID,
+				"slug":              p.Slug(),
+				"title":             p.Title(),
+				"target_list_ids":   p.TargetListIDs(),
+				"fields":            fields,
+				"sending_domain_id": p.SendingDomainID(),
+				"from_name":         p.FromName(),
+				"from_local_part":   p.FromLocalPart(),
+				"active":            p.Active(),
+			}).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrSubscriptionPageSlugTaken
 		}
@@ -97,12 +108,23 @@ func (r *SubscriptionPages) Update(ctx context.Context, tenantID, id string,
 			return fmt.Errorf("encoding subscription page fields: %w", err)
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE subscription_pages SET slug = $1, title = $2, target_list_ids = $3,
-			        fields = $4, sending_domain_id = $5, from_name = $6, from_local_part = $7,
-			        active = $8, updated_at = now() WHERE id = $9`,
-			updated.Slug(), updated.Title(), updated.TargetListIDs(), fields,
-			updated.SendingDomainID(), updated.FromName(), updated.FromLocalPart(),
-			updated.Active(), id)
+			`UPDATE subscription_pages SET
+			    slug = @slug, title = @title, target_list_ids = @target_list_ids,
+			    fields = @fields, sending_domain_id = @sending_domain_id,
+			    from_name = @from_name, from_local_part = @from_local_part,
+			    active = @active, updated_at = now()
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"slug":              updated.Slug(),
+				"title":             updated.Title(),
+				"target_list_ids":   updated.TargetListIDs(),
+				"fields":            fields,
+				"sending_domain_id": updated.SendingDomainID(),
+				"from_name":         updated.FromName(),
+				"from_local_part":   updated.FromLocalPart(),
+				"active":            updated.Active(),
+				"id":                id,
+			})
 		if db.IsUniqueViolation(err) {
 			return domain.ErrSubscriptionPageSlugTaken
 		}

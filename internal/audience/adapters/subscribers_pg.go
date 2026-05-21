@@ -68,8 +68,15 @@ func (r *Subscribers) Add(ctx context.Context, tenantID string, s *domain.Subscr
 	err = tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		err := tx.QueryRow(ctx,
 			`INSERT INTO subscribers (tenant_id, email, name, state, attributes)
-			 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-			tenantID, s.Email(), s.Name(), string(s.State()), attrs).Scan(&id)
+			 VALUES (@tenant_id, @email, @name, @state, @attributes)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":  tenantID,
+				"email":      s.Email(),
+				"name":       s.Name(),
+				"state":      string(s.State()),
+				"attributes": attrs,
+			}).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrSubscriberEmailTaken
 		}
@@ -113,11 +120,17 @@ func (r *Subscribers) UpsertByEmail(ctx context.Context, tenantID string,
 		var inserted bool
 		err := tx.QueryRow(ctx,
 			`INSERT INTO subscribers (tenant_id, email, name, state, attributes)
-			 VALUES ($1, $2, $3, $4, $5)
+			 VALUES (@tenant_id, @email, @name, @state, @attributes)
 			 ON CONFLICT (tenant_id, email) DO UPDATE
 			   SET name = EXCLUDED.name, attributes = EXCLUDED.attributes, updated_at = now()
 			 RETURNING (xmax = 0)`,
-			tenantID, s.Email(), s.Name(), string(s.State()), attrs).Scan(&inserted)
+			pgx.NamedArgs{
+				"tenant_id":  tenantID,
+				"email":      s.Email(),
+				"name":       s.Name(),
+				"state":      string(s.State()),
+				"attributes": attrs,
+			}).Scan(&inserted)
 		if err != nil {
 			return fmt.Errorf("upserting subscriber: %w", err)
 		}
@@ -323,9 +336,15 @@ func writeSubscriber(ctx context.Context, tx pgx.Tx, id string, s *domain.Subscr
 		return err
 	}
 	_, err = tx.Exec(ctx,
-		`UPDATE subscribers SET name = $1, state = $2, attributes = $3, updated_at = now()
-		 WHERE id = $4`,
-		s.Name(), string(s.State()), attrs, id)
+		`UPDATE subscribers SET
+		    name = @name, state = @state, attributes = @attributes, updated_at = now()
+		 WHERE id = @id`,
+		pgx.NamedArgs{
+			"name":       s.Name(),
+			"state":      string(s.State()),
+			"attributes": attrs,
+			"id":         id,
+		})
 	if err != nil {
 		return fmt.Errorf("updating subscriber: %w", err)
 	}

@@ -41,9 +41,17 @@ func (r *Subscriptions) Add(ctx context.Context, s *domain.Subscription) (string
 			`INSERT INTO tenant_subscriptions
 			    (tenant_id, plan_id, state, current_period_start, current_period_end,
 			     cancel_at_period_end)
-			 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-			s.TenantID(), s.PlanID(), string(s.State()),
-			s.CurrentPeriodStart(), s.CurrentPeriodEnd(), s.CancelAtPeriodEnd()).Scan(&id)
+			 VALUES (@tenant_id, @plan_id, @state, @current_period_start, @current_period_end,
+			         @cancel_at_period_end)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":            s.TenantID(),
+				"plan_id":              s.PlanID(),
+				"state":                string(s.State()),
+				"current_period_start": s.CurrentPeriodStart(),
+				"current_period_end":   s.CurrentPeriodEnd(),
+				"cancel_at_period_end": s.CancelAtPeriodEnd(),
+			}).Scan(&id)
 		if isUniqueViolation(err) {
 			return domain.ErrSubscriptionExists
 		}
@@ -117,12 +125,22 @@ func (r *Subscriptions) Update(ctx context.Context, tenantID, id string,
 			return err
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE tenant_subscriptions
-			 SET state = $1, current_period_start = $2, current_period_end = $3,
-			     cancel_at_period_end = $4, canceled_at = $5, updated_at = now()
-			 WHERE id = $6`,
-			string(updated.State()), updated.CurrentPeriodStart(), updated.CurrentPeriodEnd(),
-			updated.CancelAtPeriodEnd(), updated.CanceledAt(), id)
+			`UPDATE tenant_subscriptions SET
+			    state = @state,
+			    current_period_start = @current_period_start,
+			    current_period_end = @current_period_end,
+			    cancel_at_period_end = @cancel_at_period_end,
+			    canceled_at = @canceled_at,
+			    updated_at = now()
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"state":                string(updated.State()),
+				"current_period_start": updated.CurrentPeriodStart(),
+				"current_period_end":   updated.CurrentPeriodEnd(),
+				"cancel_at_period_end": updated.CancelAtPeriodEnd(),
+				"canceled_at":          updated.CanceledAt(),
+				"id":                   id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating subscription: %w", err)
 		}

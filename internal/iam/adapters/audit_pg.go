@@ -34,8 +34,15 @@ func (r *Audit) Record(ctx context.Context, tenantID string, rec domain.AuditRec
 	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO audit_log (tenant_id, actor_id, actor_kind, action, target, metadata)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			tenantID, rec.ActorID, string(rec.ActorKind), rec.Action, rec.Target, metadata)
+			 VALUES (@tenant_id, @actor_id, @actor_kind, @action, @target, @metadata)`,
+			pgx.NamedArgs{
+				"tenant_id":  tenantID,
+				"actor_id":   rec.ActorID,
+				"actor_kind": string(rec.ActorKind),
+				"action":     rec.Action,
+				"target":     rec.Target,
+				"metadata":   metadata,
+			})
 		if err != nil {
 			return fmt.Errorf("inserting audit record: %w", err)
 		}

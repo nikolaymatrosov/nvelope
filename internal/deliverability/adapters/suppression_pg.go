@@ -32,10 +32,15 @@ func (r *Suppressions) Upsert(ctx context.Context, e *domain.SuppressionEntry) e
 	return tenantdb.WithTenant(ctx, r.pool, e.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO suppression_list (tenant_id, email, reason, source_event_id, note)
-			 VALUES ($1, $2, $3, $4, $5)
+			 VALUES (@tenant_id, @email, @reason, @source_event_id, @note)
 			 ON CONFLICT (tenant_id, email) DO NOTHING`,
-			e.TenantID(), e.Email(), string(e.Reason()),
-			nullString(e.SourceEventID()), e.Note())
+			pgx.NamedArgs{
+				"tenant_id":       e.TenantID(),
+				"email":           e.Email(),
+				"reason":          string(e.Reason()),
+				"source_event_id": nullString(e.SourceEventID()),
+				"note":            e.Note(),
+			})
 		if err != nil {
 			return fmt.Errorf("upserting suppression entry: %w", err)
 		}

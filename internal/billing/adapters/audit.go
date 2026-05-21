@@ -27,8 +27,13 @@ func (a *AuditLog) Record(ctx context.Context, tenantID, actorID, action, target
 	return tenantdb.WithTenant(ctx, a.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO audit_log (tenant_id, actor_id, actor_kind, action, target, metadata)
-			 VALUES ($1, $2, 'session', $3, $4, '{}'::jsonb)`,
-			tenantID, actorID, action, target)
+			 VALUES (@tenant_id, @actor_id, 'session', @action, @target, '{}'::jsonb)`,
+			pgx.NamedArgs{
+				"tenant_id": tenantID,
+				"actor_id":  actorID,
+				"action":    action,
+				"target":    target,
+			})
 		if err != nil {
 			return fmt.Errorf("recording audit entry: %w", err)
 		}

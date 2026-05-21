@@ -65,9 +65,17 @@ func (r *SendingDomains) Add(ctx context.Context, tenantID string, d *domain.Sen
 		err := tx.QueryRow(ctx,
 			`INSERT INTO sending_domains
 			    (tenant_id, domain, status, dkim_records, spf_record, dmarc_record, postbox_identity_ref)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-			tenantID, d.Domain(), string(d.Status()), dkimJSON, d.SPFRecord(),
-			d.DMARCRecord(), d.IdentityRef()).Scan(&id)
+			 VALUES (@tenant_id, @domain, @status, @dkim_records, @spf_record, @dmarc_record, @postbox_identity_ref)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":            tenantID,
+				"domain":               d.Domain(),
+				"status":               string(d.Status()),
+				"dkim_records":         dkimJSON,
+				"spf_record":           d.SPFRecord(),
+				"dmarc_record":         d.DMARCRecord(),
+				"postbox_identity_ref": d.IdentityRef(),
+			}).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrDomainAlreadyExists
 		}
@@ -114,12 +122,23 @@ func (r *SendingDomains) Update(ctx context.Context, tenantID, id string,
 			return fmt.Errorf("encoding dkim records: %w", err)
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE sending_domains SET status = $1, dkim_records = $2, spf_record = $3,
-			    dmarc_record = $4, postbox_identity_ref = $5, failure_reason = $6,
-			    verified_at = $7, last_checked_at = $8 WHERE id = $9`,
-			string(updated.Status()), dkimJSON, updated.SPFRecord(), updated.DMARCRecord(),
-			updated.IdentityRef(), updated.FailureReason(), updated.VerifiedAt(),
-			updated.LastCheckedAt(), id)
+			`UPDATE sending_domains SET
+			    status = @status, dkim_records = @dkim_records, spf_record = @spf_record,
+			    dmarc_record = @dmarc_record, postbox_identity_ref = @postbox_identity_ref,
+			    failure_reason = @failure_reason,
+			    verified_at = @verified_at, last_checked_at = @last_checked_at
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"status":               string(updated.Status()),
+				"dkim_records":         dkimJSON,
+				"spf_record":           updated.SPFRecord(),
+				"dmarc_record":         updated.DMARCRecord(),
+				"postbox_identity_ref": updated.IdentityRef(),
+				"failure_reason":       updated.FailureReason(),
+				"verified_at":          updated.VerifiedAt(),
+				"last_checked_at":      updated.LastCheckedAt(),
+				"id":                   id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating sending domain: %w", err)
 		}

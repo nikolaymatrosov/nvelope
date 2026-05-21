@@ -67,8 +67,13 @@ func (r *Tracking) RecordClick(ctx context.Context, tenantID, linkID, recipientI
 		}
 		_, err = tx.Exec(ctx,
 			`INSERT INTO link_clicks (tenant_id, link_id, campaign_id, recipient_id)
-			 VALUES ($1, $2, $3, $4)`,
-			tenantID, linkID, campaignID, recipientID)
+			 VALUES (@tenant_id, @link_id, @campaign_id, @recipient_id)`,
+			pgx.NamedArgs{
+				"tenant_id":    tenantID,
+				"link_id":      linkID,
+				"campaign_id":  campaignID,
+				"recipient_id": recipientID,
+			})
 		if err != nil {
 			return fmt.Errorf("recording click: %w", err)
 		}

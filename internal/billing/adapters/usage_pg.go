@@ -36,10 +36,16 @@ func (r *Usage) RecordEvents(ctx context.Context, tenantID string, events []*dom
 			_, err := tx.Exec(ctx,
 				`INSERT INTO usage_events
 				    (tenant_id, event_type, quantity, source_ref, occurred_at, period_start)
-				 VALUES ($1, $2, $3, $4, $5, $6)
+				 VALUES (@tenant_id, @event_type, @quantity, @source_ref, @occurred_at, @period_start)
 				 ON CONFLICT (tenant_id, event_type, source_ref) DO NOTHING`,
-				tenantID, string(e.EventType()), e.Quantity(), e.SourceRef(),
-				e.OccurredAt(), e.PeriodStart())
+				pgx.NamedArgs{
+					"tenant_id":    tenantID,
+					"event_type":   string(e.EventType()),
+					"quantity":     e.Quantity(),
+					"source_ref":   e.SourceRef(),
+					"occurred_at":  e.OccurredAt(),
+					"period_start": e.PeriodStart(),
+				})
 			if err != nil {
 				return fmt.Errorf("recording usage event: %w", err)
 			}
@@ -88,20 +94,35 @@ func (r *Usage) Rollup(ctx context.Context, tenantID string, allowance int64,
 			err := tx.QueryRow(ctx,
 				`INSERT INTO usage_counters
 				    (tenant_id, period_start, period_end, event_type, total_quantity)
-				 VALUES ($1, $2, $3, $4, $5)
+				 VALUES (@tenant_id, @period_start, @period_end, @event_type, @total_quantity)
 				 ON CONFLICT (tenant_id, period_start, event_type)
 				 DO UPDATE SET total_quantity = usage_counters.total_quantity + EXCLUDED.total_quantity,
 				               updated_at = now()
 				 RETURNING total_quantity`,
-				tenantID, g.periodStart, periodEnd, g.eventType, g.sum).Scan(&newTotal)
+				pgx.NamedArgs{
+					"tenant_id":      tenantID,
+					"period_start":   g.periodStart,
+					"period_end":     periodEnd,
+					"event_type":     g.eventType,
+					"total_quantity": g.sum,
+				}).Scan(&newTotal)
 			if err != nil {
 				return fmt.Errorf("upserting usage counter: %w", err)
 			}
 			included, overage := domain.SplitUsage(newTotal, allowance)
 			if _, err := tx.Exec(ctx,
-				`UPDATE usage_counters SET included_quantity = $1, overage_quantity = $2
-				 WHERE tenant_id = $3 AND period_start = $4 AND event_type = $5`,
-				included, overage, tenantID, g.periodStart, g.eventType); err != nil {
+				`UPDATE usage_counters
+				    SET included_quantity = @included_quantity, overage_quantity = @overage_quantity
+				 WHERE tenant_id = @tenant_id
+				   AND period_start = @period_start
+				   AND event_type = @event_type`,
+				pgx.NamedArgs{
+					"included_quantity": included,
+					"overage_quantity":  overage,
+					"tenant_id":         tenantID,
+					"period_start":      g.periodStart,
+					"event_type":        g.eventType,
+				}); err != nil {
 				return fmt.Errorf("recomputing usage counter split: %w", err)
 			}
 		}

@@ -48,8 +48,15 @@ func seedCampaignRecipient(t *testing.T, pool *pgxpool.Pool, tenantID, providerM
 			return tx.QueryRow(ctx,
 				`INSERT INTO campaign_recipients
 				   (tenant_id, campaign_id, subscriber_id, email, status, sent_at, provider_message_id)
-				 VALUES ($1, $2, $3, $4, 'sent', now(), $5) RETURNING id`,
-				tenantID, campaignID, subscriberID, "rcpt@acme.com", providerMsgID).Scan(&recipientID)
+				 VALUES (@tenant_id, @campaign_id, @subscriber_id, @email, 'sent', now(), @provider_message_id)
+				 RETURNING id`,
+				pgx.NamedArgs{
+					"tenant_id":           tenantID,
+					"campaign_id":         campaignID,
+					"subscriber_id":       subscriberID,
+					"email":               "rcpt@acme.com",
+					"provider_message_id": providerMsgID,
+				}).Scan(&recipientID)
 		}))
 	return campaignID, recipientID
 }

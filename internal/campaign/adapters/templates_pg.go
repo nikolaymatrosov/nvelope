@@ -51,9 +51,18 @@ func (r *Templates) Add(ctx context.Context, tenantID string, t *domain.Template
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		err := tx.QueryRow(ctx,
 			`INSERT INTO templates (tenant_id, name, kind, subject, body_html, body_text, body_doc, theme)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-			tenantID, t.Name(), string(t.Kind()), t.Subject(), t.BodyHTML(), t.BodyText(),
-			nullableJSON(t.BodyDocJSON()), nullableJSON(t.ThemeJSON())).Scan(&id)
+			 VALUES (@tenant_id, @name, @kind, @subject, @body_html, @body_text, @body_doc, @theme)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id": tenantID,
+				"name":      t.Name(),
+				"kind":      string(t.Kind()),
+				"subject":   t.Subject(),
+				"body_html": t.BodyHTML(),
+				"body_text": t.BodyText(),
+				"body_doc":  nullableJSON(t.BodyDocJSON()),
+				"theme":     nullableJSON(t.ThemeJSON()),
+			}).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrTemplateNameTaken
 		}
@@ -96,10 +105,19 @@ func (r *Templates) Update(ctx context.Context, tenantID, id string,
 			return err
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE templates SET name = $1, subject = $2, body_html = $3, body_text = $4,
-			    body_doc = $5, theme = $6, updated_at = now() WHERE id = $7`,
-			updated.Name(), updated.Subject(), updated.BodyHTML(), updated.BodyText(),
-			nullableJSON(updated.BodyDocJSON()), nullableJSON(updated.ThemeJSON()), id)
+			`UPDATE templates SET
+			    name = @name, subject = @subject, body_html = @body_html, body_text = @body_text,
+			    body_doc = @body_doc, theme = @theme, updated_at = now()
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"name":      updated.Name(),
+				"subject":   updated.Subject(),
+				"body_html": updated.BodyHTML(),
+				"body_text": updated.BodyText(),
+				"body_doc":  nullableJSON(updated.BodyDocJSON()),
+				"theme":     nullableJSON(updated.ThemeJSON()),
+				"id":        id,
+			})
 		if db.IsUniqueViolation(err) {
 			return domain.ErrTemplateNameTaken
 		}

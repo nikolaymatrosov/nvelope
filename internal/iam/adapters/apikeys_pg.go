@@ -48,8 +48,15 @@ func (r *APIKeys) Add(ctx context.Context, tenantID string, k *domain.APIKey) (s
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
 			`INSERT INTO api_keys (tenant_id, name, token_hash, permissions, created_by)
-			 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-			tenantID, k.Name(), k.TokenHash(), permStrings(k.Permissions()), k.CreatedBy()).Scan(&id)
+			 VALUES (@tenant_id, @name, @token_hash, @permissions, @created_by)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":   tenantID,
+				"name":        k.Name(),
+				"token_hash":  k.TokenHash(),
+				"permissions": permStrings(k.Permissions()),
+				"created_by":  k.CreatedBy(),
+			}).Scan(&id)
 	})
 	if err != nil {
 		return "", fmt.Errorf("inserting API key: %w", err)

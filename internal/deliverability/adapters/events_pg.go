@@ -46,11 +46,18 @@ func (r *Events) StageInbound(ctx context.Context, n domain.InboundNotification)
 		`INSERT INTO inbound_feedback_events
 		   (dedupe_key, event_kind, provider_message_id,
 		    recipient_email, occurred_at, raw_payload)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		 VALUES (@dedupe_key, @event_kind, @provider_message_id,
+		         @recipient_email, @occurred_at, @raw_payload)
 		 ON CONFLICT (dedupe_key) DO NOTHING
 		 RETURNING id`,
-		n.DedupeKey, string(n.Kind), n.ProviderMessageID,
-		n.RecipientEmail, n.OccurredAt, n.RawPayload).Scan(&id)
+		pgx.NamedArgs{
+			"dedupe_key":          n.DedupeKey,
+			"event_kind":          string(n.Kind),
+			"provider_message_id": n.ProviderMessageID,
+			"recipient_email":     n.RecipientEmail,
+			"occurred_at":         n.OccurredAt,
+			"raw_payload":         n.RawPayload,
+		}).Scan(&id)
 	if err == nil {
 		return id, true, nil
 	}
@@ -152,11 +159,21 @@ func (r *Events) RecordEvent(ctx context.Context, e *domain.DeliveryEvent) (bool
 			   (tenant_id, inbound_event_id, event_kind, recipient_email,
 			    campaign_id, campaign_recipient_id, transactional_message_id,
 			    provider_message_id, occurred_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			 VALUES (@tenant_id, @inbound_event_id, @event_kind, @recipient_email,
+			         @campaign_id, @campaign_recipient_id, @transactional_message_id,
+			         @provider_message_id, @occurred_at)
 			 ON CONFLICT (inbound_event_id) DO NOTHING`,
-			e.TenantID(), e.InboundEventID(), string(e.Kind()), e.RecipientEmail(),
-			nullString(e.CampaignID()), nullString(e.CampaignRecipientID()),
-			nullString(e.TransactionalMessageID()), e.ProviderMessageID(), e.OccurredAt())
+			pgx.NamedArgs{
+				"tenant_id":                e.TenantID(),
+				"inbound_event_id":         e.InboundEventID(),
+				"event_kind":               string(e.Kind()),
+				"recipient_email":          e.RecipientEmail(),
+				"campaign_id":              nullString(e.CampaignID()),
+				"campaign_recipient_id":    nullString(e.CampaignRecipientID()),
+				"transactional_message_id": nullString(e.TransactionalMessageID()),
+				"provider_message_id":      e.ProviderMessageID(),
+				"occurred_at":              e.OccurredAt(),
+			})
 		if err != nil {
 			return fmt.Errorf("recording delivery event: %w", err)
 		}

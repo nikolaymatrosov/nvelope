@@ -37,8 +37,13 @@ func seedBillingSubscription(t *testing.T, pool *pgxpool.Pool, tenantID, mode st
 			_, err := tx.Exec(ctx,
 				`INSERT INTO tenant_subscriptions
 				    (tenant_id, plan_id, state, current_period_start, current_period_end)
-				 VALUES ($1, $2, 'active', $3, $4)`,
-				tenantID, planID, start, start.AddDate(0, 1, 0))
+				 VALUES (@tenant_id, @plan_id, 'active', @current_period_start, @current_period_end)`,
+				pgx.NamedArgs{
+					"tenant_id":            tenantID,
+					"plan_id":              planID,
+					"current_period_start": start,
+					"current_period_end":   start.AddDate(0, 1, 0),
+				})
 			return err
 		}))
 }

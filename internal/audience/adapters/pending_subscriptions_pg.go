@@ -65,7 +65,8 @@ func (r *PendingSubscriptions) Upsert(ctx context.Context, tenantID string,
 			`INSERT INTO pending_subscriptions
 			   (tenant_id, subscription_page_id, email, attributes, target_list_ids,
 			    confirmation_token_hash, expires_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			 VALUES (@tenant_id, @subscription_page_id, @email, @attributes, @target_list_ids,
+			         @confirmation_token_hash, @expires_at)
 			 ON CONFLICT (tenant_id, email, subscription_page_id) DO UPDATE
 			   SET attributes = EXCLUDED.attributes,
 			       target_list_ids = EXCLUDED.target_list_ids,
@@ -73,8 +74,15 @@ func (r *PendingSubscriptions) Upsert(ctx context.Context, tenantID string,
 			       expires_at = EXCLUDED.expires_at,
 			       created_at = now()
 			 RETURNING id`,
-			tenantID, p.SubscriptionPageID(), p.Email(), attrs, p.TargetListIDs(),
-			p.ConfirmationTokenHash(), p.ExpiresAt()).Scan(&id)
+			pgx.NamedArgs{
+				"tenant_id":               tenantID,
+				"subscription_page_id":    p.SubscriptionPageID(),
+				"email":                   p.Email(),
+				"attributes":              attrs,
+				"target_list_ids":         p.TargetListIDs(),
+				"confirmation_token_hash": p.ConfirmationTokenHash(),
+				"expires_at":              p.ExpiresAt(),
+			}).Scan(&id)
 		if err != nil {
 			return fmt.Errorf("upserting pending subscription: %w", err)
 		}

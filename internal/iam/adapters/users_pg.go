@@ -49,9 +49,18 @@ func (r *Users) Add(ctx context.Context, tenantID string, u *domain.TenantUser) 
 		return tx.QueryRow(ctx,
 			`INSERT INTO users (tenant_id, platform_user_id, email, name, status,
 			        totp_enabled, totp_secret)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-			tenantID, u.PlatformUserID(), u.Email(), u.Name(), string(u.Status()),
-			u.TOTPEnabled(), u.TOTPSecret()).Scan(&id)
+			 VALUES (@tenant_id, @platform_user_id, @email, @name, @status,
+			         @totp_enabled, @totp_secret)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":        tenantID,
+				"platform_user_id": u.PlatformUserID(),
+				"email":            u.Email(),
+				"name":             u.Name(),
+				"status":           string(u.Status()),
+				"totp_enabled":     u.TOTPEnabled(),
+				"totp_secret":      u.TOTPSecret(),
+			}).Scan(&id)
 	})
 	if err != nil {
 		return "", fmt.Errorf("inserting user: %w", err)
@@ -73,10 +82,17 @@ func (r *Users) Update(ctx context.Context, tenantID, id string,
 			return err
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE users SET name = $1, status = $2, totp_enabled = $3, totp_secret = $4,
-			        updated_at = now() WHERE id = $5`,
-			updated.Name(), string(updated.Status()), updated.TOTPEnabled(),
-			updated.TOTPSecret(), id)
+			`UPDATE users SET
+			    name = @name, status = @status, totp_enabled = @totp_enabled, totp_secret = @totp_secret,
+			    updated_at = now()
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"name":         updated.Name(),
+				"status":       string(updated.Status()),
+				"totp_enabled": updated.TOTPEnabled(),
+				"totp_secret":  updated.TOTPSecret(),
+				"id":           id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating user: %w", err)
 		}

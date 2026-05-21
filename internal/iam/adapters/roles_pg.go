@@ -185,9 +185,14 @@ func (r *Roles) AssignListRole(ctx context.Context, tenantID, userID, listID, ro
 	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO user_list_roles (tenant_id, user_id, list_id, role_id)
-			 VALUES ($1, $2, $3, $4)
+			 VALUES (@tenant_id, @user_id, @list_id, @role_id)
 			 ON CONFLICT (tenant_id, user_id, list_id) DO UPDATE SET role_id = EXCLUDED.role_id`,
-			tenantID, userID, listID, roleID)
+			pgx.NamedArgs{
+				"tenant_id": tenantID,
+				"user_id":   userID,
+				"list_id":   listID,
+				"role_id":   roleID,
+			})
 		if db.IsInvalidInput(err) {
 			return domain.ErrRoleNotFound
 		}

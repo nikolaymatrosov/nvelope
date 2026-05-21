@@ -52,8 +52,16 @@ func (r *Jobs) AddImport(ctx context.Context, tenantID string, j *domain.ImportJ
 		return tx.QueryRow(ctx,
 			`INSERT INTO import_export_jobs (tenant_id, kind, requested_by, status, params,
 			        file_name, file_bytes)
-			 VALUES ($1, 'import', $2, $3, $4, $5, $6) RETURNING id`,
-			tenantID, j.RequestedBy(), string(j.Status()), params, j.FileName(), fileBytes).Scan(&id)
+			 VALUES (@tenant_id, 'import', @requested_by, @status, @params, @file_name, @file_bytes)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":    tenantID,
+				"requested_by": j.RequestedBy(),
+				"status":       string(j.Status()),
+				"params":       params,
+				"file_name":    j.FileName(),
+				"file_bytes":   fileBytes,
+			}).Scan(&id)
 	})
 	if err != nil {
 		return "", fmt.Errorf("inserting import job: %w", err)
@@ -76,8 +84,14 @@ func (r *Jobs) AddExport(ctx context.Context, tenantID string, j *domain.ExportJ
 	err = tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx,
 			`INSERT INTO import_export_jobs (tenant_id, kind, requested_by, status, params)
-			 VALUES ($1, 'export', $2, $3, $4) RETURNING id`,
-			tenantID, j.RequestedBy(), string(j.Status()), params).Scan(&id)
+			 VALUES (@tenant_id, 'export', @requested_by, @status, @params)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":    tenantID,
+				"requested_by": j.RequestedBy(),
+				"status":       string(j.Status()),
+				"params":       params,
+			}).Scan(&id)
 	})
 	if err != nil {
 		return "", fmt.Errorf("inserting export job: %w", err)
@@ -209,11 +223,21 @@ func (r *Jobs) UpdateImport(ctx context.Context, tenantID, id string,
 			return fmt.Errorf("encoding failures: %w", err)
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE import_export_jobs SET status = $1, created_count = $2, updated_count = $3,
-			        failed_count = $4, failures = $5, started_at = $6, finished_at = $7
-			 WHERE id = $8`,
-			string(updated.Status()), created, upd, failed, failures,
-			updated.StartedAt(), updated.FinishedAt(), id)
+			`UPDATE import_export_jobs SET
+			    status = @status, created_count = @created_count, updated_count = @updated_count,
+			    failed_count = @failed_count, failures = @failures,
+			    started_at = @started_at, finished_at = @finished_at
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"status":        string(updated.Status()),
+				"created_count": created,
+				"updated_count": upd,
+				"failed_count":  failed,
+				"failures":      failures,
+				"started_at":    updated.StartedAt(),
+				"finished_at":   updated.FinishedAt(),
+				"id":            id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating import job: %w", err)
 		}
@@ -243,10 +267,17 @@ func (r *Jobs) UpdateExport(ctx context.Context, tenantID, id string,
 			return err
 		}
 		_, err = tx.Exec(ctx,
-			`UPDATE import_export_jobs SET status = $1, row_count = $2,
-			        started_at = $3, finished_at = $4 WHERE id = $5`,
-			string(updated.Status()), updated.RowCount(),
-			updated.StartedAt(), updated.FinishedAt(), id)
+			`UPDATE import_export_jobs SET
+			    status = @status, row_count = @row_count,
+			    started_at = @started_at, finished_at = @finished_at
+			 WHERE id = @id`,
+			pgx.NamedArgs{
+				"status":      string(updated.Status()),
+				"row_count":   updated.RowCount(),
+				"started_at":  updated.StartedAt(),
+				"finished_at": updated.FinishedAt(),
+				"id":          id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating export job: %w", err)
 		}

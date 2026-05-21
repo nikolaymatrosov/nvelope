@@ -35,10 +35,15 @@ func (r *Invitations) Create(ctx context.Context, inv *domain.Invitation, tokenH
 	)
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO invitations (tenant_id, email, token_hash, invited_by, expires_at)
-		 VALUES ($1, $2, $3, $4, $5)
+		 VALUES (@tenant_id, @email, @token_hash, @invited_by, @expires_at)
 		 RETURNING id, tenant_id, email, status, invited_by, created_at, expires_at`,
-		inv.TenantID(), inv.Email().String(), tokenHash, inv.InvitedBy(), inv.ExpiresAt()).
-		Scan(&id, &tenantID, &email, &status, &invitedBy, &createdAt, &expiresAt)
+		pgx.NamedArgs{
+			"tenant_id":  inv.TenantID(),
+			"email":      inv.Email().String(),
+			"token_hash": tokenHash,
+			"invited_by": inv.InvitedBy(),
+			"expires_at": inv.ExpiresAt(),
+		}).Scan(&id, &tenantID, &email, &status, &invitedBy, &createdAt, &expiresAt)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return nil, domain.ErrInvitationExists

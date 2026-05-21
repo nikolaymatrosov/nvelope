@@ -51,9 +51,16 @@ func (r *Fields) Add(ctx context.Context, tenantID string, f *domain.Field) (str
 		err := tx.QueryRow(ctx,
 			`INSERT INTO subscriber_fields
 			    (tenant_id, slug, display_name, type, default_value, position)
-			 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-			tenantID, f.Slug(), f.DisplayName(), string(f.Type()),
-			f.DefaultValue(), f.Position()).Scan(&id)
+			 VALUES (@tenant_id, @slug, @display_name, @type, @default_value, @position)
+			 RETURNING id`,
+			pgx.NamedArgs{
+				"tenant_id":     tenantID,
+				"slug":          f.Slug(),
+				"display_name":  f.DisplayName(),
+				"type":          string(f.Type()),
+				"default_value": f.DefaultValue(),
+				"position":      f.Position(),
+			}).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrFieldSlugTaken
 		}
@@ -97,11 +104,16 @@ func (r *Fields) Update(ctx context.Context, tenantID, id string,
 		}
 		_, err = tx.Exec(ctx,
 			`UPDATE subscriber_fields
-			    SET display_name = $1, type = $2, default_value = $3,
-			        position = $4, updated_at = now()
-			  WHERE id = $5`,
-			updated.DisplayName(), string(updated.Type()), updated.DefaultValue(),
-			updated.Position(), id)
+			    SET display_name = @display_name, type = @type, default_value = @default_value,
+			        position = @position, updated_at = now()
+			  WHERE id = @id`,
+			pgx.NamedArgs{
+				"display_name":  updated.DisplayName(),
+				"type":          string(updated.Type()),
+				"default_value": updated.DefaultValue(),
+				"position":      updated.Position(),
+				"id":            id,
+			})
 		if err != nil {
 			return fmt.Errorf("updating subscriber field: %w", err)
 		}

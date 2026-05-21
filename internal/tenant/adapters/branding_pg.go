@@ -57,13 +57,18 @@ func (r *Branding) Save(ctx context.Context, b *domain.TenantBranding) error {
 	return tenantdb.WithTenant(ctx, r.pool, b.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO tenant_branding (tenant_id, logo_url, primary_color, custom_css)
-			 VALUES ($1, $2, $3, $4)
+			 VALUES (@tenant_id, @logo_url, @primary_color, @custom_css)
 			 ON CONFLICT (tenant_id) DO UPDATE
 			   SET logo_url = EXCLUDED.logo_url,
 			       primary_color = EXCLUDED.primary_color,
 			       custom_css = EXCLUDED.custom_css,
 			       updated_at = now()`,
-			b.TenantID(), b.LogoURL(), b.PrimaryColor(), b.CustomCSS())
+			pgx.NamedArgs{
+				"tenant_id":     b.TenantID(),
+				"logo_url":      b.LogoURL(),
+				"primary_color": b.PrimaryColor(),
+				"custom_css":    b.CustomCSS(),
+			})
 		if err != nil {
 			return fmt.Errorf("saving tenant branding: %w", err)
 		}
