@@ -3,21 +3,28 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 )
 
-// TemplateView is the read model of a template.
+// TemplateView is the read model of a template. BodyDoc and Theme carry the
+// JSON pass-through of the structured visual document and the operator's
+// pinned theme override; both are nil for legacy raw-HTML / code-only
+// templates so the SPA can decide between the visual and the code editor
+// without a second request (per T074).
 type TemplateView struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Kind      string    `json:"kind"`
-	Subject   string    `json:"subject"`
-	BodyHTML  string    `json:"body_html"`
-	BodyText  string    `json:"body_text"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Kind      string          `json:"kind"`
+	Subject   string          `json:"subject"`
+	BodyHTML  string          `json:"body_html"`
+	BodyText  string          `json:"body_text"`
+	BodyDoc   json.RawMessage `json:"body_doc,omitempty"`
+	Theme     json.RawMessage `json:"theme,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 // templateView projects a Template aggregate onto its read model.
@@ -25,6 +32,7 @@ func templateView(t *domain.Template) TemplateView {
 	return TemplateView{
 		ID: t.ID(), Name: t.Name(), Kind: string(t.Kind()), Subject: t.Subject(),
 		BodyHTML: t.BodyHTML(), BodyText: t.BodyText(),
+		BodyDoc: t.BodyDocJSON(), Theme: t.ThemeJSON(),
 		CreatedAt: t.CreatedAt(), UpdatedAt: t.UpdatedAt(),
 	}
 }

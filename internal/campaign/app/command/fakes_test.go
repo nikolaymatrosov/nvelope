@@ -25,7 +25,7 @@ func (r *fakeCampaignRepo) Add(_ context.Context, tenantID string, c *domain.Cam
 	id := "camp-" + string(rune('a'+r.nextID))
 	r.byID[id] = domain.HydrateCampaign(id, tenantID, c.Name(), c.Subject(), c.BodyHTML(),
 		c.BodyText(), c.FromName(), c.FromLocalPart(), c.SendingDomainID(), c.TemplateID(),
-		c.Status(), c.MaxSendErrors(), 0, 0, 0, c.BodyDoc(), c.Theme(),
+		c.Status(), c.MaxSendErrors(), 0, 0, 0, c.BodyDocJSON(), c.ThemeJSON(),
 		c.CreatedAt(), c.UpdatedAt(), nil, nil, false, nil)
 	return id, nil
 }
@@ -83,7 +83,8 @@ func (r *fakeTemplateRepo) Add(_ context.Context, tenantID string, t *domain.Tem
 	r.nextID++
 	id := "tpl-" + string(rune('a'+r.nextID))
 	r.byID[id] = domain.HydrateTemplate(id, tenantID, t.Name(), t.Kind(), t.Subject(),
-		t.BodyHTML(), t.BodyText(), t.BodyDoc(), t.Theme(), t.CreatedAt(), t.UpdatedAt())
+		t.BodyHTML(), t.BodyText(), t.BodyDocJSON(), t.ThemeJSON(),
+		t.CreatedAt(), t.UpdatedAt())
 	return id, nil
 }
 

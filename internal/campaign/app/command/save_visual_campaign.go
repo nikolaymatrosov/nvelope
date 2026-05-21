@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -35,6 +36,10 @@ type MediaRefValidator interface {
 // responsibility is to re-validate the doc against the registry (defense
 // in depth), sanitize the rendered HTML, enforce the optimistic-concurrency
 // gate from FR-009, and persist all three pieces atomically.
+//
+// Doc / PinnedTheme are the typed forms used for save-time validation.
+// DocJSON / ThemeJSON are the raw wire bytes the BFF sent — they reach
+// the row verbatim so the editor reloads losslessly.
 type SaveVisualCampaign struct {
 	TenantID          string
 	CampaignID        string
@@ -43,6 +48,8 @@ type SaveVisualCampaign struct {
 	BodyHTML          string
 	BodyText          string
 	PinnedTheme       *domain.Theme
+	DocJSON           json.RawMessage
+	ThemeJSON         json.RawMessage
 	IfUnmodifiedSince time.Time
 }
 
@@ -109,7 +116,8 @@ func (h SaveVisualCampaignHandler) Handle(ctx context.Context,
 			}
 			if err := c.ApplyVisualSave(
 				cmd.Subject, cmd.Doc, cmd.PinnedTheme,
-				sanitizedHTML, cmd.BodyText, warnings,
+				sanitizedHTML, cmd.BodyText,
+				cmd.DocJSON, cmd.ThemeJSON, warnings,
 				slugSetFieldSet(slugs), h.mediaRefs,
 			); err != nil {
 				return nil, err

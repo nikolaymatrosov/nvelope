@@ -472,6 +472,9 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 			SaveVisualCampaign: decorator.ApplyResultCommandDecorators(
 				campaigncommand.NewSaveVisualCampaignHandler(campaigns, fields, mediaRefs),
 				"SaveVisualCampaign", logger),
+			SaveVisualTemplate: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewSaveVisualTemplateHandler(templates, fields, mediaRefs),
+				"SaveVisualTemplate", logger),
 		},
 		Queries: campaignapp.Queries{
 			ListTemplates: decorator.ApplyQueryDecorators(

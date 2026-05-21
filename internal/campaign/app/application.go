@@ -30,6 +30,7 @@ type Commands struct {
 	SetArchiveVisibility decorator.CommandHandler[command.SetArchiveVisibility]
 
 	SaveVisualCampaign decorator.ResultCommandHandler[command.SaveVisualCampaign, command.SaveVisualCampaignResult]
+	SaveVisualTemplate decorator.ResultCommandHandler[command.SaveVisualTemplate, command.SaveVisualTemplateResult]
 }
 
 // Queries gathers the campaign context's read-only handlers.

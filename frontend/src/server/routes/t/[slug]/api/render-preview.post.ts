@@ -7,11 +7,9 @@
 // 2026-05-20 N4 clarification).
 
 import { defineHandler } from "nitro"
-import { runRenderPreview } from "../../../render-preview"
-import type {
-  RenderPreviewSample,
-} from "../../../render-preview"
-import type { Theme, VisualDoc } from "../../../../render/types"
+import type { Theme, VisualDoc } from "@/server/render/types"
+import type { RenderPreviewSample } from "@/server/routes/render-preview"
+import { runRenderPreview } from "@/server/routes/render-preview"
 
 type IncomingBody = {
   bodyDoc?: unknown

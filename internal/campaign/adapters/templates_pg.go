@@ -30,18 +30,19 @@ func NewTemplates(pool *pgxpool.Pool) *Templates {
 	return &Templates{pool: pool}
 }
 
-const templateColumns = "id, tenant_id, name, kind, subject, body_html, body_text, created_at, updated_at"
+const templateColumns = "id, tenant_id, name, kind, subject, body_html, body_text, body_doc, theme, created_at, updated_at"
 
 // scanTemplateRow reads one template row in templateColumns order.
 func scanTemplateRow(row pgx.Row) (*domain.Template, error) {
 	var id, tenantID, name, kind, subject, bodyHTML, bodyText string
+	var bodyDoc, theme []byte
 	var createdAt, updatedAt time.Time
 	if err := row.Scan(&id, &tenantID, &name, &kind, &subject, &bodyHTML, &bodyText,
-		&createdAt, &updatedAt); err != nil {
+		&bodyDoc, &theme, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
 	return domain.HydrateTemplate(id, tenantID, name, domain.Kind(kind), subject,
-		bodyHTML, bodyText, nil, nil, createdAt, updatedAt), nil
+		bodyHTML, bodyText, bodyDoc, theme, createdAt, updatedAt), nil
 }
 
 // Add persists a new template and returns its database-assigned id.
@@ -49,9 +50,10 @@ func (r *Templates) Add(ctx context.Context, tenantID string, t *domain.Template
 	var id string
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		err := tx.QueryRow(ctx,
-			`INSERT INTO templates (tenant_id, name, kind, subject, body_html, body_text)
-			 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-			tenantID, t.Name(), string(t.Kind()), t.Subject(), t.BodyHTML(), t.BodyText()).Scan(&id)
+			`INSERT INTO templates (tenant_id, name, kind, subject, body_html, body_text, body_doc, theme)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+			tenantID, t.Name(), string(t.Kind()), t.Subject(), t.BodyHTML(), t.BodyText(),
+			nullableJSON(t.BodyDocJSON()), nullableJSON(t.ThemeJSON())).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrTemplateNameTaken
 		}
@@ -95,8 +97,9 @@ func (r *Templates) Update(ctx context.Context, tenantID, id string,
 		}
 		_, err = tx.Exec(ctx,
 			`UPDATE templates SET name = $1, subject = $2, body_html = $3, body_text = $4,
-			    updated_at = now() WHERE id = $5`,
-			updated.Name(), updated.Subject(), updated.BodyHTML(), updated.BodyText(), id)
+			    body_doc = $5, theme = $6, updated_at = now() WHERE id = $7`,
+			updated.Name(), updated.Subject(), updated.BodyHTML(), updated.BodyText(),
+			nullableJSON(updated.BodyDocJSON()), nullableJSON(updated.ThemeJSON()), id)
 		if db.IsUniqueViolation(err) {
 			return domain.ErrTemplateNameTaken
 		}

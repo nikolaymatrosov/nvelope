@@ -58,7 +58,8 @@ func TestNewVisualTemplate_HappyPath(t *testing.T) {
 	tpl, err := domain.NewVisualTemplate(
 		"tenant-1", "Welcome", domain.KindCampaign, "Hi there",
 		minimalDoc(), nil,
-		renderedHTML, renderedText, nil,
+		renderedHTML, renderedText,
+		nil, nil, nil,
 		tenantFields(), tenantMedia(),
 	)
 	require.NoError(t, err)
@@ -75,7 +76,8 @@ func TestNewVisualTemplate_PassesThroughHtmlAndWarnings(t *testing.T) {
 	tpl, err := domain.NewVisualTemplate(
 		"tenant-1", "Welcome", domain.KindCampaign, "Hi",
 		minimalDoc(), nil,
-		"<p>ok</p>", "ok", warnings,
+		"<p>ok</p>", "ok",
+		nil, nil, warnings,
 		tenantFields(), tenantMedia(),
 	)
 	require.NoError(t, err)
@@ -89,7 +91,8 @@ func TestNewVisualTemplate_RejectsUnknownSlug(t *testing.T) {
 	_, err := domain.NewVisualTemplate(
 		"tenant-1", "Welcome", domain.KindCampaign, "Hi",
 		docWithUnknownSlug(), nil,
-		renderedHTML, renderedText, nil,
+		renderedHTML, renderedText,
+		nil, nil, nil,
 		tenantFields(), tenantMedia(),
 	)
 	require.ErrorIs(t, err, domain.ErrUnknownSlug)
@@ -100,7 +103,8 @@ func TestNewVisualTemplate_RejectsForeignImage(t *testing.T) {
 	_, err := domain.NewVisualTemplate(
 		"tenant-1", "Welcome", domain.KindCampaign, "Hi",
 		docWithForeignImage(), nil,
-		renderedHTML, renderedText, nil,
+		renderedHTML, renderedText,
+		nil, nil, nil,
 		tenantFields(), tenantMedia(),
 	)
 	require.ErrorIs(t, err, domain.ErrInvalidMediaRef)
@@ -126,7 +130,8 @@ func TestNewVisualTemplate_RejectsMissingPieces(t *testing.T) {
 			_, err := domain.NewVisualTemplate(
 				tc.tenant, tc.tname, tc.kind, tc.subject,
 				tc.doc, nil,
-				renderedHTML, renderedText, nil,
+				renderedHTML, renderedText,
+				nil, nil, nil,
 				tenantFields(), tenantMedia(),
 			)
 			require.Error(t, err)
@@ -139,7 +144,8 @@ func TestNewVisualCampaign_HappyPath(t *testing.T) {
 	c, err := domain.NewVisualCampaign(
 		"tenant-1", "Spring promo", "Save 10%",
 		minimalDoc(), nil,
-		renderedHTML, renderedText, nil,
+		renderedHTML, renderedText,
+		nil, nil, nil,
 		"Alice", "promo", "", "", 0,
 		tenantFields(), tenantMedia(),
 	)
@@ -154,7 +160,8 @@ func TestNewVisualCampaign_RejectsBadLocalPart(t *testing.T) {
 	_, err := domain.NewVisualCampaign(
 		"tenant-1", "Spring promo", "Save 10%",
 		minimalDoc(), nil,
-		renderedHTML, renderedText, nil,
+		renderedHTML, renderedText,
+		nil, nil, nil,
 		"Alice", "not valid!", "", "", 0,
 		tenantFields(), tenantMedia(),
 	)
@@ -166,7 +173,8 @@ func TestNewVisualCampaign_RejectsUnknownSlug(t *testing.T) {
 	_, err := domain.NewVisualCampaign(
 		"tenant-1", "Spring promo", "Save 10%",
 		docWithUnknownSlug(), nil,
-		renderedHTML, renderedText, nil,
+		renderedHTML, renderedText,
+		nil, nil, nil,
 		"", "", "", "", 0,
 		tenantFields(), tenantMedia(),
 	)
@@ -178,7 +186,8 @@ func TestNewVisualCampaign_DefaultsMaxSendErrors(t *testing.T) {
 	c, err := domain.NewVisualCampaign(
 		"tenant-1", "Spring promo", "Save 10%",
 		minimalDoc(), nil,
-		renderedHTML, renderedText, nil,
+		renderedHTML, renderedText,
+		nil, nil, nil,
 		"", "", "", "", 0,
 		tenantFields(), tenantMedia(),
 	)

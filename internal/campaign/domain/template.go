@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -31,18 +32,20 @@ func validKind(k Kind) bool {
 // theme is nil the renderer inherits the tenant's Phase 6 branding defaults
 // at render time.
 type Template struct {
-	id        string
-	tenantID  string
-	name      string
-	kind      Kind
-	subject   string
-	bodyHTML  string
-	bodyText  string
-	bodyDoc   *VisualDoc
-	theme     *Theme
-	warnings  []RenderWarning
-	createdAt time.Time
-	updatedAt time.Time
+	id          string
+	tenantID    string
+	name        string
+	kind        Kind
+	subject     string
+	bodyHTML    string
+	bodyText    string
+	bodyDoc     *VisualDoc
+	theme       *Theme
+	bodyDocJSON json.RawMessage
+	themeJSON   json.RawMessage
+	warnings    []RenderWarning
+	createdAt   time.Time
+	updatedAt   time.Time
 }
 
 // NewTemplate builds a template, rejecting any invariant violation.
@@ -71,17 +74,21 @@ func NewTemplate(tenantID, name string, kind Kind, subject, bodyHTML, bodyText s
 }
 
 // HydrateTemplate reconstructs a template from a persisted row. Persistence
-// only — it performs no validation. bodyDoc and theme are nil for legacy
-// raw-HTML rows that predate Phase 7 or for rows where the operator opted
-// out of the visual editor.
+// only — it performs no validation. bodyDocJSON and themeJSON are the raw
+// jsonb column bytes (nil for legacy raw-HTML rows that predate Phase 7 or
+// for rows where the operator opted out of the visual editor); the typed
+// bodyDoc and theme pointers are not reconstructed from the bytes — the
+// editor reloads from the JSON via the query view, and save-time validation
+// runs against the freshly-decoded BFF payload.
 func HydrateTemplate(id, tenantID, name string, kind Kind, subject, bodyHTML, bodyText string,
-	bodyDoc *VisualDoc, theme *Theme,
+	bodyDocJSON, themeJSON json.RawMessage,
 	createdAt, updatedAt time.Time) *Template {
 	return &Template{
 		id: id, tenantID: tenantID, name: name, kind: kind,
 		subject: subject, bodyHTML: bodyHTML, bodyText: bodyText,
-		bodyDoc: bodyDoc, theme: theme,
-		createdAt: createdAt, updatedAt: updatedAt,
+		bodyDocJSON: normalizeRawJSON(bodyDocJSON),
+		themeJSON:   normalizeRawJSON(themeJSON),
+		createdAt:   createdAt, updatedAt: updatedAt,
 	}
 }
 
@@ -95,6 +102,11 @@ func HydrateTemplate(id, tenantID, name string, kind Kind, subject, bodyHTML, bo
 // defense in depth and returns the populated aggregate with all three
 // pieces (body_doc, body_html, body_text) atomically.
 //
+// docJSON and themeJSON are the raw wire bytes the BFF sent — persisted
+// pass-through so the editor reloads losslessly from the JSON form. The
+// typed doc is held only for the lifetime of this construction (for
+// save-time validation); the wire bytes are what reach the row.
+//
 // pinnedTheme is the operator's explicit theme override and may be nil —
 // when nil the row persists a NULL theme and inherits tenant branding at
 // future render time. warnings are the sanitizer-emitted notes from the
@@ -103,7 +115,9 @@ func HydrateTemplate(id, tenantID, name string, kind Kind, subject, bodyHTML, bo
 func NewVisualTemplate(
 	tenantID, name string, kind Kind, subject string,
 	doc *VisualDoc, pinnedTheme *Theme,
-	bodyHTML, bodyText string, warnings []RenderWarning,
+	bodyHTML, bodyText string,
+	docJSON, themeJSON json.RawMessage,
+	warnings []RenderWarning,
 	fields FieldSet, mediaRefs MediaRefValidator,
 ) (*Template, error) {
 	if tenantID == "" {
@@ -129,7 +143,10 @@ func NewVisualTemplate(
 	return &Template{
 		tenantID: tenantID, name: name, kind: kind,
 		subject: subject, bodyHTML: bodyHTML, bodyText: bodyText,
-		bodyDoc: doc, theme: pinnedTheme, warnings: warnings,
+		bodyDoc: doc, theme: pinnedTheme,
+		bodyDocJSON: normalizeRawJSON(docJSON),
+		themeJSON:   normalizeRawJSON(themeJSON),
+		warnings:    warnings,
 	}, nil
 }
 
@@ -158,9 +175,19 @@ func (t *Template) BodyText() string { return t.bodyText }
 // raw-HTML / code-only templates.
 func (t *Template) BodyDoc() *VisualDoc { return t.bodyDoc }
 
+// BodyDocJSON returns the persisted JSON bytes of the visual document, or
+// nil for legacy raw-HTML / code-only templates. The bytes are the same
+// shape the BFF sent on the most recent visual save — the read view
+// passes them through verbatim so the editor reloads losslessly.
+func (t *Template) BodyDocJSON() json.RawMessage { return t.bodyDocJSON }
+
 // Theme returns the explicit theme override, or nil when the row inherits
 // tenant Phase 6 branding defaults at render time.
 func (t *Template) Theme() *Theme { return t.theme }
+
+// ThemeJSON returns the persisted JSON bytes of the operator's pinned
+// theme override, or nil when the row inherits tenant branding defaults.
+func (t *Template) ThemeJSON() json.RawMessage { return t.themeJSON }
 
 // RenderWarnings returns the non-fatal warnings emitted by the most recent
 // NewVisualTemplate construction. Empty for hydrated rows.
@@ -183,5 +210,44 @@ func (t *Template) Recompose(name, subject, bodyHTML, bodyText string) error {
 	t.subject = updated.subject
 	t.bodyHTML = updated.bodyHTML
 	t.bodyText = updated.bodyText
+	return nil
+}
+
+// ApplyVisualSave replaces a template's editable visual content with a
+// validated, pre-rendered, and sanitized snapshot. The caller (the
+// SaveVisualTemplate command) supplies the BFF-rendered HTML/text that
+// has already been run through the Go-side sanitizer, plus any warnings
+// the sanitizer emitted; this method revalidates the doc against the
+// registry and media-ref rules as defense in depth and applies all
+// pieces atomically.
+//
+// docJSON and themeJSON are the raw wire bytes the BFF sent — persisted
+// pass-through so the editor reloads losslessly. Subject is required;
+// the template's name and kind are preserved.
+func (t *Template) ApplyVisualSave(
+	subject string, doc *VisualDoc, pinnedTheme *Theme,
+	bodyHTML, bodyText string,
+	docJSON, themeJSON json.RawMessage,
+	warnings []RenderWarning,
+	fields FieldSet, mediaRefs MediaRefValidator,
+) error {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return ErrTemplateInvalid.WithMessage("template subject is required")
+	}
+	if doc == nil {
+		return ErrVisualDocInvalid.WithMessage("document is required")
+	}
+	if err := Validate(doc, ValidateContext{Fields: fields, MediaRefs: mediaRefs}); err != nil {
+		return err
+	}
+	t.subject = subject
+	t.bodyDoc = doc
+	t.theme = pinnedTheme
+	t.bodyHTML = bodyHTML
+	t.bodyText = bodyText
+	t.bodyDocJSON = normalizeRawJSON(docJSON)
+	t.themeJSON = normalizeRawJSON(themeJSON)
+	t.warnings = warnings
 	return nil
 }

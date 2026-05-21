@@ -11,13 +11,17 @@ import (
 // CampaignView is the read model of a campaign, including its send progress.
 // ListIDs and Segments carry the campaign's send targets; they are populated
 // by the single-campaign query (GetCampaign) only, so the editor can show and
-// preserve the current targeting.
+// preserve the current targeting. BodyDoc and Theme carry the JSON
+// pass-through of the structured visual document and the operator's pinned
+// theme override; both are nil for legacy raw-HTML / code-only campaigns.
 type CampaignView struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Subject         string            `json:"subject"`
 	BodyHTML        string            `json:"body_html"`
 	BodyText        string            `json:"body_text"`
+	BodyDoc         json.RawMessage   `json:"body_doc,omitempty"`
+	Theme           json.RawMessage   `json:"theme,omitempty"`
 	FromName        string            `json:"from_name"`
 	FromLocalPart   string            `json:"from_local_part"`
 	SendingDomainID string            `json:"sending_domain_id,omitempty"`
@@ -40,6 +44,7 @@ func campaignView(c *domain.Campaign) CampaignView {
 	return CampaignView{
 		ID: c.ID(), Name: c.Name(), Subject: c.Subject(),
 		BodyHTML: c.BodyHTML(), BodyText: c.BodyText(),
+		BodyDoc: c.BodyDocJSON(), Theme: c.ThemeJSON(),
 		FromName: c.FromName(), FromLocalPart: c.FromLocalPart(),
 		SendingDomainID: c.SendingDomainID(), TemplateID: c.TemplateID(),
 		Status: string(c.Status()), MaxSendErrors: c.MaxSendErrors(),

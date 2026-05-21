@@ -53,9 +53,13 @@ func NewCreateCampaignHandler(campaigns domain.CampaignRepository,
 }
 
 // Handle inherits any omitted content from the origin template, validates the
-// campaign, and persists it with its targets.
+// campaign, and persists it with its targets. When the template is
+// visually-authored (BodyDocJSON is non-nil), the campaign also inherits
+// the structured document and the operator's pinned theme override so the
+// campaign editor opens visually (per T076).
 func (h CreateCampaignHandler) Handle(ctx context.Context, cmd CreateCampaign) (CreateCampaignResult, error) {
 	subject, bodyHTML, bodyText := cmd.Subject, cmd.BodyHTML, cmd.BodyText
+	var tplBodyDocJSON, tplThemeJSON []byte
 	if cmd.TemplateID != "" {
 		tpl, err := h.templates.Get(ctx, cmd.TenantID, cmd.TemplateID)
 		if err != nil {
@@ -74,12 +78,17 @@ func (h CreateCampaignHandler) Handle(ctx context.Context, cmd CreateCampaign) (
 		if strings.TrimSpace(bodyText) == "" {
 			bodyText = tpl.BodyText()
 		}
+		tplBodyDocJSON = tpl.BodyDocJSON()
+		tplThemeJSON = tpl.ThemeJSON()
 	}
 
 	c, err := domain.NewCampaign(cmd.TenantID, cmd.Name, subject, bodyHTML, bodyText,
 		cmd.FromName, cmd.FromLocalPart, cmd.SendingDomainID, cmd.TemplateID, cmd.MaxSendErrors)
 	if err != nil {
 		return CreateCampaignResult{}, err
+	}
+	if len(tplBodyDocJSON) > 0 || len(tplThemeJSON) > 0 {
+		c.AttachVisualContent(tplBodyDocJSON, tplThemeJSON)
 	}
 	id, err := h.campaigns.Add(ctx, cmd.TenantID, c)
 	if err != nil {

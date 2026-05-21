@@ -287,20 +287,23 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
 		return
 	}
+	// Wire shape: BodyDoc + Theme arrive as raw JSON the BFF rendered; the
+	// typed forms are decoded separately for save-time validation while the
+	// raw bytes flow through to persistence so the editor reloads losslessly.
 	var req struct {
-		Subject           string                    `json:"subject"`
-		BodyDoc           *campaigndomain.VisualDoc `json:"bodyDoc"`
-		BodyHTML          string                    `json:"bodyHtml"`
-		BodyText          string                    `json:"bodyText"`
-		Theme             *campaigndomain.Theme     `json:"theme"`
-		IfUnmodifiedSince time.Time                 `json:"ifUnmodifiedSince"`
+		Subject           string          `json:"subject"`
+		BodyDocRaw        json.RawMessage `json:"bodyDoc"`
+		BodyHTML          string          `json:"bodyHtml"`
+		BodyText          string          `json:"bodyText"`
+		ThemeRaw          json.RawMessage `json:"theme"`
+		IfUnmodifiedSince time.Time       `json:"ifUnmodifiedSince"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	if req.BodyDoc == nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "bodyDoc is required")
+	doc, theme, ok := s.decodeVisualPayload(w, req.BodyDocRaw, req.ThemeRaw)
+	if !ok {
 		return
 	}
 	if req.BodyHTML == "" || req.BodyText == "" {
@@ -314,10 +317,12 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 	res, err := s.campaign.Commands.SaveVisualCampaign.Handle(r.Context(), campaigncommand.SaveVisualCampaign{
 		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
 		Subject:           req.Subject,
-		Doc:               req.BodyDoc,
+		Doc:               doc,
 		BodyHTML:          req.BodyHTML,
 		BodyText:          req.BodyText,
-		PinnedTheme:       req.Theme,
+		PinnedTheme:       theme,
+		DocJSON:           req.BodyDocRaw,
+		ThemeJSON:         req.ThemeRaw,
 		IfUnmodifiedSince: req.IfUnmodifiedSince,
 	})
 	if err != nil {
@@ -341,6 +346,86 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"campaign":  view,
+		"warnings":  res.Warnings,
+		"updatedAt": res.UpdatedAt,
+	})
+}
+
+// handleSaveVisualTemplate persists a visually-authored template (T073).
+// This endpoint is the Go tail of the BFF-hosted PUT /templates/{id}/visual
+// route (see specs/014-visual-email-editor/contracts/tenant-api.md). The
+// BFF has already rendered the structured document to HTML and plain text
+// via @react-email/components; this handler validates the doc (defense in
+// depth), sanitizes the rendered HTML, enforces the FR-009 optimistic-
+// concurrency gate, and persists all three pieces atomically.
+//
+// The Go-internal body requires bodyHtml, bodyText, and ifUnmodifiedSince;
+// any missing piece is rejected with 400 invalid_body before the command
+// runs (the BFF is the only legitimate caller and must always supply them).
+func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermCampaignsManage); !ok {
+		return
+	}
+	// Template name + kind appear on the browser-facing wire shape (see the
+	// contracts doc) but are immutable post-create — the handler decodes
+	// only the editable pieces.
+	var req struct {
+		Subject           string          `json:"subject"`
+		BodyDocRaw        json.RawMessage `json:"bodyDoc"`
+		BodyHTML          string          `json:"bodyHtml"`
+		BodyText          string          `json:"bodyText"`
+		ThemeRaw          json.RawMessage `json:"theme"`
+		IfUnmodifiedSince time.Time       `json:"ifUnmodifiedSince"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	doc, theme, ok := s.decodeVisualPayload(w, req.BodyDocRaw, req.ThemeRaw)
+	if !ok {
+		return
+	}
+	if req.BodyHTML == "" || req.BodyText == "" {
+		writeError(w, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
+		return
+	}
+	if req.IfUnmodifiedSince.IsZero() {
+		writeError(w, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
+		return
+	}
+	res, err := s.campaign.Commands.SaveVisualTemplate.Handle(r.Context(), campaigncommand.SaveVisualTemplate{
+		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
+		Subject:           req.Subject,
+		Doc:               doc,
+		BodyHTML:          req.BodyHTML,
+		BodyText:          req.BodyText,
+		PinnedTheme:       theme,
+		DocJSON:           req.BodyDocRaw,
+		ThemeJSON:         req.ThemeRaw,
+		IfUnmodifiedSince: req.IfUnmodifiedSince,
+	})
+	if err != nil {
+		if errors.Is(err, campaigndomain.ErrStaleRow) {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":            "stale_row",
+				"kind":             "stale_row",
+				"currentUpdatedAt": res.CurrentUpdatedAt,
+			})
+			return
+		}
+		s.fail(w, "save visual template", err)
+		return
+	}
+	view, err := s.campaign.Queries.GetTemplate.Handle(r.Context(), campaignquery.GetTemplate{
+		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
+	})
+	if err != nil {
+		s.fail(w, "save visual template", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"template":  view,
 		"warnings":  res.Warnings,
 		"updatedAt": res.UpdatedAt,
 	})

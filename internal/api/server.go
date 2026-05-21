@@ -171,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/templates", s.handleListTemplates)
 			r.Get("/templates/{id}", s.handleGetTemplate)
 			r.Put("/templates/{id}", s.handleUpdateTemplate)
+			r.Put("/templates/{id}/visual", s.handleSaveVisualTemplate)
 			r.Delete("/templates/{id}", s.handleDeleteTemplate)
 			r.Post("/campaigns", s.handleCreateCampaign)
 			r.Get("/campaigns", s.handleListCampaigns)

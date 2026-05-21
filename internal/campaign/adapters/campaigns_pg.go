@@ -28,7 +28,8 @@ func NewCampaigns(pool *pgxpool.Pool) *Campaigns {
 
 const campaignColumns = `id, tenant_id, name, subject, body_html, body_text, from_name,
 	from_local_part, sending_domain_id, template_id, status, max_send_errors,
-	sent_count, failed_count, recipient_count, created_at, updated_at, started_at, finished_at,
+	sent_count, failed_count, recipient_count, body_doc, theme,
+	created_at, updated_at, started_at, finished_at,
 	archive_visible, archived_at`
 
 // nullableString maps "" to nil for a nullable text/uuid column.
@@ -52,19 +53,21 @@ func scanCampaignRow(row pgx.Row) (*domain.Campaign, error) {
 	var id, tenantID, name, subject, bodyHTML, bodyText, fromName, fromLocalPart, status string
 	var sendingDomainID, templateID *string
 	var maxSendErrors, sentCount, failedCount, recipientCount int
+	var bodyDoc, theme []byte
 	var createdAt, updatedAt time.Time
 	var startedAt, finishedAt, archivedAt *time.Time
 	var archiveVisible bool
 	if err := row.Scan(&id, &tenantID, &name, &subject, &bodyHTML, &bodyText, &fromName,
 		&fromLocalPart, &sendingDomainID, &templateID, &status, &maxSendErrors,
-		&sentCount, &failedCount, &recipientCount, &createdAt, &updatedAt,
+		&sentCount, &failedCount, &recipientCount, &bodyDoc, &theme,
+		&createdAt, &updatedAt,
 		&startedAt, &finishedAt, &archiveVisible, &archivedAt); err != nil {
 		return nil, err
 	}
 	return domain.HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName,
 		fromLocalPart, deref(sendingDomainID), deref(templateID), domain.CampaignStatus(status),
 		maxSendErrors, sentCount, failedCount, recipientCount,
-		nil, nil,
+		bodyDoc, theme,
 		createdAt, updatedAt, startedAt, finishedAt, archiveVisible, archivedAt), nil
 }
 
@@ -75,11 +78,12 @@ func (r *Campaigns) Add(ctx context.Context, tenantID string, c *domain.Campaign
 		err := tx.QueryRow(ctx,
 			`INSERT INTO campaigns
 			    (tenant_id, name, subject, body_html, body_text, from_name, from_local_part,
-			     sending_domain_id, template_id, status, max_send_errors)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+			     sending_domain_id, template_id, status, max_send_errors, body_doc, theme)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
 			tenantID, c.Name(), c.Subject(), c.BodyHTML(), c.BodyText(), c.FromName(),
 			c.FromLocalPart(), nullableString(c.SendingDomainID()), nullableString(c.TemplateID()),
-			string(c.Status()), c.MaxSendErrors()).Scan(&id)
+			string(c.Status()), c.MaxSendErrors(),
+			nullableJSON(c.BodyDocJSON()), nullableJSON(c.ThemeJSON())).Scan(&id)
 		if err != nil {
 			return fmt.Errorf("inserting campaign: %w", err)
 		}
@@ -123,13 +127,14 @@ func (r *Campaigns) Update(ctx context.Context, tenantID, id string,
 			    from_name = $5, from_local_part = $6, sending_domain_id = $7, status = $8,
 			    max_send_errors = $9, sent_count = $10, failed_count = $11, recipient_count = $12,
 			    started_at = $13, finished_at = $14, archive_visible = $15, archived_at = $16,
-			    updated_at = now() WHERE id = $17`,
+			    body_doc = $17, theme = $18, updated_at = now() WHERE id = $19`,
 			updated.Name(), updated.Subject(), updated.BodyHTML(), updated.BodyText(),
 			updated.FromName(), updated.FromLocalPart(), nullableString(updated.SendingDomainID()),
 			string(updated.Status()), updated.MaxSendErrors(), updated.SentCount(),
 			updated.FailedCount(), updated.RecipientCount(),
 			updated.StartedAt(), updated.FinishedAt(),
-			updated.ArchiveVisible(), updated.ArchivedAt(), id)
+			updated.ArchiveVisible(), updated.ArchivedAt(),
+			nullableJSON(updated.BodyDocJSON()), nullableJSON(updated.ThemeJSON()), id)
 		if err != nil {
 			return fmt.Errorf("updating campaign: %w", err)
 		}

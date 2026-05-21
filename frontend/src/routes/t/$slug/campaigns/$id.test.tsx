@@ -323,6 +323,32 @@ describe("CampaignDetail — visual editor surface (T070, T127)", () => {
     )
   })
 
+  // T083 — picking a visually-authored template at campaign-creation time
+  // pre-fills body_doc on the new campaign, and the editor opens visually
+  // when the operator lands on the campaign detail page. The Go-side
+  // inheritance lives in CreateCampaign.Handle (T076 verifies it
+  // end-to-end against Postgres); this test fixes the route-level
+  // expectation that a campaign carrying both template_id and body_doc
+  // mounts <VisualEmailEditor /> on first render.
+  it("opens visually when the row was created from a visual template", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(
+        campaign({
+          template_id: "tpl-1",
+          subject: "From template subject",
+          body_html: "<p>template body</p>",
+          body_text: "template body",
+          body_doc: visualDoc,
+        }),
+      ),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    renderWithClient(<CampaignDetail />)
+    expect(await screen.findByTestId("visual-email-editor")).toBeTruthy()
+    expect(screen.queryByTestId("open-media-picker")).toBeNull()
+  })
+
   it("surfaces a stale_row 409 as an ApiError that the route can handle", async () => {
     setupOwner()
     vi.mocked(api.getCampaign).mockResolvedValue(

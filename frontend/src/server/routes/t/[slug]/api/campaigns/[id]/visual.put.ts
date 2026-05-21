@@ -3,8 +3,8 @@
 // ../../../../../visual-save.ts, maps the result back to an h3 response.
 
 import { defineHandler } from "nitro"
-import { runVisualCampaignSave } from "../../../../../visual-save"
-import type { Theme, VisualDoc } from "../../../../../../render/types"
+import type { Theme, VisualDoc } from "@/server/render/types"
+import { runVisualCampaignSave } from "@/server/routes/visual-save"
 
 type IncomingBody = {
   subject?: unknown

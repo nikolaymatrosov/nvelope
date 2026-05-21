@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 	"time"
@@ -44,6 +45,8 @@ type Campaign struct {
 	bodyText        string
 	bodyDoc         *VisualDoc
 	theme           *Theme
+	bodyDocJSON     json.RawMessage
+	themeJSON       json.RawMessage
 	warnings        []RenderWarning
 	fromName        string
 	fromLocalPart   string
@@ -93,21 +96,25 @@ func NewCampaign(tenantID, name, subject, bodyHTML, bodyText, fromName, fromLoca
 }
 
 // HydrateCampaign reconstructs a campaign from a persisted row. Persistence
-// only — it performs no validation. bodyDoc and theme are nil for legacy
-// raw-HTML rows that predate Phase 7 or for rows the operator opted out of
-// the visual editor on.
+// only — it performs no validation. bodyDocJSON and themeJSON are the raw
+// jsonb column bytes (nil for legacy raw-HTML rows that predate Phase 7 or
+// for rows the operator opted out of the visual editor on); the typed
+// VisualDoc / Theme pointers are not reconstructed from the bytes — the
+// editor reloads from the JSON via the query view, and save-time validation
+// runs against the freshly-decoded BFF payload.
 func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, fromLocalPart,
 	sendingDomainID, templateID string, status CampaignStatus,
 	maxSendErrors, sentCount, failedCount, recipientCount int,
-	bodyDoc *VisualDoc, theme *Theme,
+	bodyDocJSON, themeJSON json.RawMessage,
 	createdAt, updatedAt time.Time, startedAt, finishedAt *time.Time,
 	archiveVisible bool, archivedAt *time.Time) *Campaign {
 
 	return &Campaign{
 		id: id, tenantID: tenantID, name: name, subject: subject,
 		bodyHTML: bodyHTML, bodyText: bodyText,
-		bodyDoc: bodyDoc, theme: theme,
-		fromName: fromName, fromLocalPart: fromLocalPart,
+		bodyDocJSON: normalizeRawJSON(bodyDocJSON),
+		themeJSON:   normalizeRawJSON(themeJSON),
+		fromName:    fromName, fromLocalPart: fromLocalPart,
 		sendingDomainID: sendingDomainID, templateID: templateID,
 		status: status, maxSendErrors: maxSendErrors,
 		sentCount: sentCount, failedCount: failedCount, recipientCount: recipientCount,
@@ -127,6 +134,9 @@ func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, 
 // defense in depth and returns the populated aggregate with all three
 // pieces (body_doc, body_html, body_text) atomically.
 //
+// docJSON and themeJSON are the raw wire bytes the BFF sent — persisted
+// pass-through so the editor reloads losslessly from the JSON form.
+//
 // pinnedTheme is the operator's explicit override and may be nil; the row
 // then persists a NULL theme and inherits tenant branding at future
 // render time. warnings are the sanitizer-emitted notes from the
@@ -135,7 +145,9 @@ func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, 
 func NewVisualCampaign(
 	tenantID, name, subject string,
 	doc *VisualDoc, pinnedTheme *Theme,
-	bodyHTML, bodyText string, warnings []RenderWarning,
+	bodyHTML, bodyText string,
+	docJSON, themeJSON json.RawMessage,
+	warnings []RenderWarning,
 	fromName, fromLocalPart, sendingDomainID, templateID string, maxSendErrors int,
 	fields FieldSet, mediaRefs MediaRefValidator,
 ) (*Campaign, error) {
@@ -163,8 +175,11 @@ func NewVisualCampaign(
 	return &Campaign{
 		tenantID: tenantID, name: name, subject: subject,
 		bodyHTML: bodyHTML, bodyText: bodyText,
-		bodyDoc: doc, theme: pinnedTheme, warnings: warnings,
-		fromName: strings.TrimSpace(fromName), fromLocalPart: fromLocalPart,
+		bodyDoc: doc, theme: pinnedTheme,
+		bodyDocJSON: normalizeRawJSON(docJSON),
+		themeJSON:   normalizeRawJSON(themeJSON),
+		warnings:    warnings,
+		fromName:    strings.TrimSpace(fromName), fromLocalPart: fromLocalPart,
 		sendingDomainID: sendingDomainID, templateID: templateID,
 		status: CampaignDraft, maxSendErrors: maxSendErrors,
 	}, nil
@@ -192,9 +207,29 @@ func (c *Campaign) BodyText() string { return c.bodyText }
 // raw-HTML / code-only campaigns.
 func (c *Campaign) BodyDoc() *VisualDoc { return c.bodyDoc }
 
+// BodyDocJSON returns the persisted JSON bytes of the visual document, or
+// nil for legacy raw-HTML / code-only campaigns. The bytes are the same
+// shape the BFF sent on the most recent visual save — the read view
+// passes them through verbatim so the editor reloads losslessly.
+func (c *Campaign) BodyDocJSON() json.RawMessage { return c.bodyDocJSON }
+
 // Theme returns the explicit theme override, or nil when the row inherits
 // tenant Phase 6 branding defaults at render time.
 func (c *Campaign) Theme() *Theme { return c.theme }
+
+// ThemeJSON returns the persisted JSON bytes of the operator's pinned
+// theme override, or nil when the row inherits tenant branding defaults.
+func (c *Campaign) ThemeJSON() json.RawMessage { return c.themeJSON }
+
+// AttachVisualContent copies a template's pre-rendered visual content onto
+// this campaign at create-from-template time. Persistence pass-through —
+// the bytes reach the row on Add(). Used by CreateCampaign to inherit the
+// origin template's body_doc + theme alongside the existing subject /
+// body_html / body_text inheritance (per T076).
+func (c *Campaign) AttachVisualContent(bodyDocJSON, themeJSON json.RawMessage) {
+	c.bodyDocJSON = normalizeRawJSON(bodyDocJSON)
+	c.themeJSON = normalizeRawJSON(themeJSON)
+}
 
 // RenderWarnings returns the non-fatal warnings emitted by the most recent
 // NewVisualCampaign construction. Empty for hydrated rows.
@@ -275,12 +310,17 @@ func (c *Campaign) Recompose(name, subject, bodyHTML, bodyText, fromName, fromLo
 // registry and media-ref rules as defense in depth and applies all
 // pieces atomically.
 //
+// docJSON and themeJSON are the raw wire bytes the BFF sent — persisted
+// pass-through so the editor reloads losslessly.
+//
 // Only a draft campaign may be edited; the method is a no-op rejection
 // (ErrCampaignNotEditable) otherwise. Subject is required; the campaign's
 // name, From-address, sending domain, and targets are preserved.
 func (c *Campaign) ApplyVisualSave(
 	subject string, doc *VisualDoc, pinnedTheme *Theme,
-	bodyHTML, bodyText string, warnings []RenderWarning,
+	bodyHTML, bodyText string,
+	docJSON, themeJSON json.RawMessage,
+	warnings []RenderWarning,
 	fields FieldSet, mediaRefs MediaRefValidator,
 ) error {
 	if c.status != CampaignDraft {
@@ -301,6 +341,8 @@ func (c *Campaign) ApplyVisualSave(
 	c.theme = pinnedTheme
 	c.bodyHTML = bodyHTML
 	c.bodyText = bodyText
+	c.bodyDocJSON = normalizeRawJSON(docJSON)
+	c.themeJSON = normalizeRawJSON(themeJSON)
 	c.warnings = warnings
 	return nil
 }

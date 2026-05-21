@@ -28,7 +28,12 @@ import {
 } from "../clients/go-api"
 import { PlatformDefaultTheme, renderVisualDoc } from "../render"
 import { ValidatorError, validateVisualDoc } from "../validate"
-import type {BrandingResponse, PutVisualPayload, PutVisualResponse} from "../clients/go-api";
+import type {
+  BrandingResponse,
+  PutVisualPayload,
+  PutVisualResponse,
+  PutVisualTemplatePayload,
+} from "../clients/go-api";
 import type { Theme, VisualDoc } from "../render/types"
 
 export type VisualSaveInput = {
@@ -140,6 +145,119 @@ export async function runVisualCampaignSave(input: VisualSaveInput): Promise<Vis
       return { kind: "go_error", status: err.status, body: err.body }
     }
     return badGateway(err, "forwarding save to Go", logFields, input.log)
+  }
+}
+
+// VisualTemplateSaveInput mirrors VisualSaveInput but carries the
+// template-specific name + kind that the browser → BFF body includes (and
+// that the BFF forwards verbatim to Go's PUT /templates/{id}/visual).
+export type VisualTemplateSaveInput = {
+  slug: string
+  templateId: string
+  cookie: string
+  requestId: string
+  goApiBaseUrl?: string
+  mediaUrlPrefix: string
+  body: {
+    name: string
+    kind: "campaign" | "transactional"
+    subject: string
+    bodyDoc: VisualDoc
+    theme: Theme | null
+    ifUnmodifiedSince: string
+  }
+  log?: (
+    level: "info" | "warn" | "error",
+    event: string,
+    fields: Record<string, unknown>,
+  ) => void
+  fetchImpl?: typeof fetch
+}
+
+// runVisualTemplateSave is the templates equivalent of runVisualCampaignSave
+// (T077). Same orchestration shape — fetch fields → validate → fetch
+// branding if theme is null → render via @react-email → forward to Go.
+// Fail-closed `502 bad_gateway` on any side-call failure (per the
+// 2026-05-20 clarification).
+export async function runVisualTemplateSave(input: VisualTemplateSaveInput): Promise<VisualSaveResult> {
+  const client = createGoApiClient({
+    baseUrl: input.goApiBaseUrl,
+    requestId: input.requestId,
+    fetchImpl: input.fetchImpl,
+  })
+
+  const logFields = {
+    tenant_slug: input.slug,
+    template_id: input.templateId,
+    request_id: input.requestId,
+  }
+
+  let fields: { fields: Array<{ slug: string }> }
+  try {
+    fields = await client.listSubscriberFields(input.cookie, input.slug)
+  } catch (err) {
+    return badGateway(err, "fetching subscriber fields", logFields, input.log)
+  }
+
+  const knownSlugs = new Set(fields.fields.map((f) => f.slug))
+  try {
+    validateVisualDoc(input.body.bodyDoc, {
+      knownSlugs,
+      mediaUrlPrefix: input.mediaUrlPrefix,
+    })
+  } catch (err) {
+    if (err instanceof ValidatorError) {
+      return {
+        kind: "validation_error",
+        status: 400,
+        body: {
+          error: err.kind,
+          kind: err.kind,
+          ...(err.placeholders.length > 0 ? { placeholders: err.placeholders } : {}),
+        },
+      }
+    }
+    throw err
+  }
+
+  let effectiveTheme: Theme
+  if (input.body.theme) {
+    effectiveTheme = input.body.theme
+  } else {
+    let branding: BrandingResponse
+    try {
+      branding = await client.getBranding(input.cookie, input.slug)
+    } catch (err) {
+      return badGateway(err, "fetching branding", logFields, input.log)
+    }
+    effectiveTheme = themeFromBranding(branding)
+  }
+
+  const { bodyHtml, bodyText } = await renderVisualDoc(input.body.bodyDoc, effectiveTheme)
+
+  const payload: PutVisualTemplatePayload = {
+    name: input.body.name,
+    kind: input.body.kind,
+    subject: input.body.subject,
+    bodyDoc: input.body.bodyDoc,
+    bodyHtml,
+    bodyText,
+    // Persist null when the operator did not pin a theme so future branding
+    // changes propagate on next save (per FR-022 / plan.md US3).
+    theme: input.body.theme,
+    ifUnmodifiedSince: input.body.ifUnmodifiedSince,
+  }
+
+  try {
+    const goRes = await client.putTemplateVisual(input.cookie, input.slug, input.templateId, payload)
+    input.log?.("info", "template_visual_save.ok", { ...logFields, warnings_count: goRes.warnings.length })
+    return { kind: "ok", status: 200, body: goRes }
+  } catch (err) {
+    if (err instanceof GoApiError) {
+      input.log?.("warn", "template_visual_save.go_error", { ...logFields, status: err.status })
+      return { kind: "go_error", status: err.status, body: err.body }
+    }
+    return badGateway(err, "forwarding template save to Go", logFields, input.log)
   }
 }
 
