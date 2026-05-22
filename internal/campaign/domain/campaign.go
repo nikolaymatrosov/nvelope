@@ -129,7 +129,7 @@ func HydrateCampaign(id, tenantID, name, subject, bodyHTML, bodyText, fromName, 
 // to HTML and plain text — typically by side-calling the BFF render tier
 // (see specs/014-visual-email-editor/research.md § R4) and then running
 // the BFF-rendered HTML through the Go-side bluemonday sanitizer
-// (internal/campaign/adapters/visualrender.Sanitize). This constructor
+// (internal/campaign/visualrender.Sanitize). This constructor
 // revalidates the doc against the registry and media-ref rules as
 // defense in depth and returns the populated aggregate with all three
 // pieces (body_doc, body_html, body_text) atomically.

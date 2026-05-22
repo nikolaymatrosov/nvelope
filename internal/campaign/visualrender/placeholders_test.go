@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters/visualrender"
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/campaign/visualrender"
 )
 
 type stubFields map[string]bool

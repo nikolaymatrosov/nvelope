@@ -157,3 +157,41 @@ type SuppressionLookup interface {
 	// list, mapped to the reason each was suppressed.
 	Suppressed(ctx context.Context, tenantID string, emails []string) (map[string]string, error)
 }
+
+// ConfirmationEmail is one rendered double-opt-in confirmation message handed
+// to the mailer for delivery. FromAddress is already composed from the page's
+// local part and its verified sending domain.
+type ConfirmationEmail struct {
+	FromName    string
+	FromAddress string
+	To          string
+	Subject     string
+	HTMLBody    string
+	TextBody    string
+	Headers     map[string]string
+}
+
+// ConfirmationMailer delivers double-opt-in confirmation emails. It is
+// declared here, by the opt-in worker that depends on it, and implemented by
+// a composition-root bridge over the campaign context's messenger — so the
+// audience context depends on an interface it owns, not on the campaign
+// package.
+type ConfirmationMailer interface {
+	// Send delivers one confirmation message.
+	Send(ctx context.Context, msg ConfirmationEmail) error
+}
+
+// SendingDomainInfo is the subset of a tenant's sending domain the opt-in
+// worker needs: the domain name and whether it is verified for sending.
+type SendingDomainInfo struct {
+	Domain   string
+	Verified bool
+}
+
+// SendingDomainResolver resolves a tenant's sending domain by id. It is
+// declared here, by the opt-in worker that depends on it, and implemented by
+// a composition-root bridge over the sending context's repository.
+type SendingDomainResolver interface {
+	// Resolve returns the sending domain identified by domainID.
+	Resolve(ctx context.Context, tenantID, domainID string) (SendingDomainInfo, error)
+}

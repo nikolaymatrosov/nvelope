@@ -10,9 +10,7 @@ import (
 	"github.com/riverqueue/river"
 
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
-	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
-	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
 )
 
 // OptinWorker is the River worker that sends one double-opt-in confirmation
@@ -23,22 +21,22 @@ type OptinWorker struct {
 	river.WorkerDefaults[jobs.OptinSendArgs]
 	pending       domain.PendingSubscriptionRepository
 	pages         domain.SubscriptionPageRepository
-	domains       sendingdomain.SendingDomainRepository
-	messenger     campaigndomain.Messenger
+	domains       domain.SendingDomainResolver
+	mailer        domain.ConfirmationMailer
 	publicBaseURL string
 }
 
 // NewOptinWorker builds the opt-in worker, failing fast on a nil dependency.
 func NewOptinWorker(pending domain.PendingSubscriptionRepository,
-	pages domain.SubscriptionPageRepository, domains sendingdomain.SendingDomainRepository,
-	messenger campaigndomain.Messenger, publicBaseURL string) *OptinWorker {
+	pages domain.SubscriptionPageRepository, domains domain.SendingDomainResolver,
+	mailer domain.ConfirmationMailer, publicBaseURL string) *OptinWorker {
 
-	if pending == nil || pages == nil || domains == nil || messenger == nil {
+	if pending == nil || pages == nil || domains == nil || mailer == nil {
 		panic("nil dependency")
 	}
 	return &OptinWorker{
 		pending: pending, pages: pages, domains: domains,
-		messenger: messenger, publicBaseURL: publicBaseURL,
+		mailer: mailer, publicBaseURL: publicBaseURL,
 	}
 }
 
@@ -59,19 +57,19 @@ func (w *OptinWorker) Work(ctx context.Context, job *river.Job[jobs.OptinSendArg
 		return err
 	}
 
-	sendingDomain, err := w.domains.Get(ctx, tenantID, page.SendingDomainID())
+	sendingDomain, err := w.domains.Resolve(ctx, tenantID, page.SendingDomainID())
 	if err != nil {
 		return err
 	}
-	if !sendingDomain.IsVerified() {
-		return fmt.Errorf("sending domain %s is not verified", sendingDomain.Domain())
+	if !sendingDomain.Verified {
+		return fmt.Errorf("sending domain %s is not verified", sendingDomain.Domain)
 	}
 
 	confirmURL := strings.TrimRight(w.publicBaseURL, "/") +
 		"/t/" + job.Args.TenantSlug + "/confirm/" + job.Args.ConfirmationToken
-	fromAddress := page.FromLocalPart() + "@" + sendingDomain.Domain()
+	fromAddress := page.FromLocalPart() + "@" + sendingDomain.Domain
 
-	_, err = w.messenger.Send(ctx, campaigndomain.OutboundMessage{
+	if err := w.mailer.Send(ctx, domain.ConfirmationEmail{
 		FromName:    page.FromName(),
 		FromAddress: fromAddress,
 		To:          pending.Email(),
@@ -79,8 +77,7 @@ func (w *OptinWorker) Work(ctx context.Context, job *river.Job[jobs.OptinSendArg
 		HTMLBody:    confirmationHTML(page.Title(), confirmURL),
 		TextBody:    confirmationText(page.Title(), confirmURL),
 		Headers:     map[string]string{"X-Tenant": tenantID},
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("sending confirmation email: %w", err)
 	}
 	return nil

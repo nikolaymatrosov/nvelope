@@ -106,7 +106,8 @@ func main() {
 	river.AddWorker(workers, audienceadapters.NewImportWorker(jobRepo, subscribers, memberships))
 	river.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
 	river.AddWorker(workers, audienceadapters.NewOptinWorker(pendingSubscriptions, subscriptionPages,
-		sendingDomains, messenger, cfg.PublicBaseURL))
+		service.NewSendingDomainResolver(sendingDomains), service.NewConfirmationMailer(messenger),
+		cfg.PublicBaseURL))
 	river.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
 		cfg.SendingDomainVerifyInterval, cfg.SendingDomainVerifyWindow))
 	campaignSuppression := deliverabilityadapters.NewSuppressionChecker(pool)

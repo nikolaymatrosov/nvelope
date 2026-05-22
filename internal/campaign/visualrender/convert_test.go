@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters/visualrender"
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/campaign/visualrender"
 )
 
 // mediaPrefix is a tenant media-base URL stand-in used by the tests that

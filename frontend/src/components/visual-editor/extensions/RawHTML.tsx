@@ -14,7 +14,7 @@
 // DOM so the parent component (VisualEmailEditor) can host the modal +
 // CodeMirror editor without the extension owning a React tree.
 
-import DOMPurify from "isomorphic-dompurify"
+import DOMPurify from "dompurify"
 import { Node, mergeAttributes } from "@tiptap/core"
 
 export type RawHTMLAttrs = {

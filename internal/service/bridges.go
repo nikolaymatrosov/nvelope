@@ -204,6 +204,64 @@ func (o *sendingDomainOwnership) OwnedByTenant(ctx context.Context, tenantID, do
 	return true, nil
 }
 
+// confirmationMailer adapts the campaign context's messenger to the audience
+// context's ConfirmationMailer port, so the opt-in worker can send
+// double-opt-in confirmation mail without depending on the campaign package.
+type confirmationMailer struct {
+	messenger campaigndomain.Messenger
+}
+
+var _ audiencedomain.ConfirmationMailer = (*confirmationMailer)(nil)
+
+// NewConfirmationMailer builds the bridge over the campaign messenger.
+func NewConfirmationMailer(messenger campaigndomain.Messenger) *confirmationMailer {
+	return &confirmationMailer{messenger: messenger}
+}
+
+// Send delivers one confirmation message via the campaign messenger,
+// discarding the provider reference the opt-in worker does not need.
+func (m *confirmationMailer) Send(ctx context.Context, msg audiencedomain.ConfirmationEmail) error {
+	_, err := m.messenger.Send(ctx, campaigndomain.OutboundMessage{
+		FromName:    msg.FromName,
+		FromAddress: msg.FromAddress,
+		To:          msg.To,
+		Subject:     msg.Subject,
+		HTMLBody:    msg.HTMLBody,
+		TextBody:    msg.TextBody,
+		Headers:     msg.Headers,
+	})
+	return err
+}
+
+// sendingDomainResolver adapts the sending context's repository to the
+// audience context's SendingDomainResolver port, so the opt-in worker can
+// resolve a page's sending domain without depending on the sending package.
+type sendingDomainResolver struct {
+	domains sendingdomain.SendingDomainRepository
+}
+
+var _ audiencedomain.SendingDomainResolver = (*sendingDomainResolver)(nil)
+
+// NewSendingDomainResolver builds the bridge over the sending domain
+// repository.
+func NewSendingDomainResolver(domains sendingdomain.SendingDomainRepository) *sendingDomainResolver {
+	return &sendingDomainResolver{domains: domains}
+}
+
+// Resolve returns the name and verification state of a sending domain.
+func (r *sendingDomainResolver) Resolve(ctx context.Context, tenantID, domainID string) (
+	audiencedomain.SendingDomainInfo, error) {
+
+	d, err := r.domains.Get(ctx, tenantID, domainID)
+	if err != nil {
+		return audiencedomain.SendingDomainInfo{}, err
+	}
+	return audiencedomain.SendingDomainInfo{
+		Domain:   d.Domain(),
+		Verified: d.IsVerified(),
+	}, nil
+}
+
 // allowAllThrottle is the no-op submission throttle used when no Redis DSN is
 // configured — only in tests, since production config always supplies one.
 type allowAllThrottle struct{}

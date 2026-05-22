@@ -11,23 +11,32 @@ import (
 
 	"github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
-	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
-	sendingadapters "github.com/nikolaymatrosov/nvelope/internal/sending/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/token"
 )
 
-// recordingMessenger is a test double for campaigndomain.Messenger.
-type recordingMessenger struct {
-	last campaigndomain.OutboundMessage
+// recordingMailer is a test double for domain.ConfirmationMailer.
+type recordingMailer struct {
+	last domain.ConfirmationEmail
 	sent int
 }
 
-func (m *recordingMessenger) Send(_ context.Context, msg campaigndomain.OutboundMessage) (string, error) {
+func (m *recordingMailer) Send(_ context.Context, msg domain.ConfirmationEmail) error {
 	m.last = msg
 	m.sent++
-	return "ref-1", nil
+	return nil
+}
+
+// stubSendingDomainResolver is a test double for domain.SendingDomainResolver
+// that returns one fixed sending domain regardless of the id.
+type stubSendingDomainResolver struct {
+	info domain.SendingDomainInfo
+}
+
+func (s stubSendingDomainResolver) Resolve(context.Context, string, string) (
+	domain.SendingDomainInfo, error) {
+	return s.info, nil
 }
 
 func TestOptinWorkerSendsConfirmationEmail(t *testing.T) {
@@ -51,9 +60,11 @@ func TestOptinWorkerSendsConfirmationEmail(t *testing.T) {
 	pendingID, err := pending.Upsert(ctx, tenantID, ps)
 	require.NoError(t, err)
 
-	messenger := &recordingMessenger{}
-	worker := adapters.NewOptinWorker(pending, pages, sendingadapters.NewSendingDomains(pool),
-		messenger, "https://pages.example.com")
+	mailer := &recordingMailer{}
+	resolver := stubSendingDomainResolver{
+		info: domain.SendingDomainInfo{Domain: "mail.example.com", Verified: true},
+	}
+	worker := adapters.NewOptinWorker(pending, pages, resolver, mailer, "https://pages.example.com")
 
 	require.NoError(t, worker.Work(ctx, &river.Job[jobs.OptinSendArgs]{
 		Args: jobs.OptinSendArgs{
@@ -64,12 +75,12 @@ func TestOptinWorkerSendsConfirmationEmail(t *testing.T) {
 		},
 	}))
 
-	require.Equal(t, 1, messenger.sent)
-	require.Equal(t, "alice@example.com", messenger.last.To)
-	require.Equal(t, "hello@mail.example.com", messenger.last.FromAddress)
-	require.Contains(t, messenger.last.HTMLBody,
+	require.Equal(t, 1, mailer.sent)
+	require.Equal(t, "alice@example.com", mailer.last.To)
+	require.Equal(t, "hello@mail.example.com", mailer.last.FromAddress)
+	require.Contains(t, mailer.last.HTMLBody,
 		"https://pages.example.com/t/acme/confirm/"+rawToken)
-	require.True(t, strings.Contains(messenger.last.TextBody, rawToken))
+	require.True(t, strings.Contains(mailer.last.TextBody, rawToken))
 }
 
 func TestOptinWorkerIgnoresMissingPending(t *testing.T) {
@@ -78,10 +89,10 @@ func TestOptinWorkerIgnoresMissingPending(t *testing.T) {
 	ctx := context.Background()
 	tenantID := seedTenant(t, pool)
 
-	messenger := &recordingMessenger{}
+	mailer := &recordingMailer{}
 	worker := adapters.NewOptinWorker(adapters.NewPendingSubscriptions(pool),
-		adapters.NewSubscriptionPages(pool), sendingadapters.NewSendingDomains(pool),
-		messenger, "https://pages.example.com")
+		adapters.NewSubscriptionPages(pool), stubSendingDomainResolver{},
+		mailer, "https://pages.example.com")
 
 	// A confirmed-and-deleted pending subscription must not fail a redelivery.
 	require.NoError(t, worker.Work(ctx, &river.Job[jobs.OptinSendArgs]{
@@ -91,5 +102,5 @@ func TestOptinWorkerIgnoresMissingPending(t *testing.T) {
 			ConfirmationToken:     "irrelevant",
 		},
 	}))
-	require.Equal(t, 0, messenger.sent)
+	require.Equal(t, 0, mailer.sent)
 }

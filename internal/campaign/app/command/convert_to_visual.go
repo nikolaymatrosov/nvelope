@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters/visualrender"
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/campaign/visualrender"
 )
 
 // ConvertCampaignToVisual converts an existing campaign's body_html into a

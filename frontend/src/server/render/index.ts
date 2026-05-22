@@ -10,10 +10,20 @@
 
 import { createElement } from "react"
 import { render } from "react-email"
-import DOMPurify from "isomorphic-dompurify"
+import createDOMPurify from "dompurify"
+import { Window as HappyWindow } from "happy-dom"
 
 import { DocumentView } from "./components"
 import type { Inline, Mark, RenderWarning, Theme, VisualBlock, VisualDoc } from "./types"
+
+// DOMPurify needs a DOM. On the Node BFF happy-dom supplies one — a pure-JS
+// implementation that bundles cleanly, unlike jsdom (whose cssstyle
+// dependency the server bundler cannot parse). The window is built once and
+// shared across sanitize calls.
+const sanitizerWindow = new HappyWindow()
+const DOMPurify = createDOMPurify(
+  sanitizerWindow as unknown as Window & typeof globalThis,
+)
 
 // PlatformDefaultTheme is the fallback theme used when the row's `theme` is
 // null AND the BFF cannot resolve tenant branding (the route is responsible

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters/visualrender"
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/campaign/visualrender"
 )
 
 // SaveVisualTemplate is the command issued by the BFF when an operator
