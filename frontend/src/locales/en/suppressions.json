@@ -1,0 +1,57 @@
+{
+  "index": {
+    "title": "Suppression list",
+    "description": "Addresses that will not be mailed for this workspace.",
+    "bounceSettings": "Bounce settings",
+    "addAddress": "Add address",
+    "filterReasonAria": "Filter by reason",
+    "searchPlaceholder": "Search by address",
+    "searchAria": "Search by address",
+    "allReasons": "All reasons",
+    "emptyFilteredTitle": "No matching addresses",
+    "emptyTitle": "No suppressed addresses",
+    "emptyFilteredMessage": "No suppressed addresses match the current filter.",
+    "emptyMessage": "Bounces and complaints are added here automatically. You can also add an address manually.",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…"
+  },
+  "reasons": {
+    "hardBounce": "Hard bounce",
+    "complaint": "Complaint",
+    "manual": "Manual"
+  },
+  "row": {
+    "suppressedAt": "Suppressed {{date}}",
+    "removeAria": "Remove {{email}}"
+  },
+  "remove": {
+    "successToast": "Address removed from the suppression list.",
+    "confirmTitle": "Remove from suppression list?",
+    "confirmDescription": "will become mailable again and may receive future campaigns.",
+    "confirmLabel": "Remove"
+  },
+  "addDialog": {
+    "title": "Add an address",
+    "description": "The address will be skipped on all future sends until you remove it.",
+    "emailLabel": "Email address",
+    "emailPlaceholder": "person@example.com",
+    "emailRequired": "Enter an email address.",
+    "successToast": "Address added to the suppression list.",
+    "submit": "Add address",
+    "submitting": "Adding…"
+  },
+  "settings": {
+    "back": "Back to suppression list",
+    "title": "Bounce-action settings",
+    "description": "Control how this workspace reacts to delivery feedback.",
+    "hardBounceTitle": "Hard-bounce suppression",
+    "hardBounceDescription": "When on, an address that hard-bounces is added to the suppression list automatically. Turning this off lets the workspace keep mailing addresses that permanently reject mail, which damages sender reputation.",
+    "hardBounceToggle": "Suppress addresses that hard-bounce",
+    "complaintTitle": "Complaint suppression",
+    "complaintDescription": "When on, an address that reports a message as spam is added to the suppression list automatically. Turning this off lets the workspace keep mailing recipients who have complained, which damages sender reputation and deliverability.",
+    "complaintToggle": "Suppress addresses that complain",
+    "savedToast": "Bounce-action settings saved.",
+    "save": "Save settings",
+    "saving": "Saving…"
+  }
+}

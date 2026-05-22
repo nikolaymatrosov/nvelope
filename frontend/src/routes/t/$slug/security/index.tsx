@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { Permission, TOTPEnrolment } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -40,18 +41,19 @@ export const Route = createFileRoute("/t/$slug/security/")({
 
 export function SecurityView() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("security")
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Security</h1>
+        <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Two-factor authentication and API keys.
+          {t("index.description")}
         </p>
       </header>
       <Tabs defaultValue="totp">
         <TabsList>
-          <TabsTrigger value="totp">Two-factor</TabsTrigger>
-          <TabsTrigger value="apikeys">API keys</TabsTrigger>
+          <TabsTrigger value="totp">{t("index.tabs.totp")}</TabsTrigger>
+          <TabsTrigger value="apikeys">{t("index.tabs.apiKeys")}</TabsTrigger>
         </TabsList>
         <TabsContent value="totp" className="pt-4">
           <TotpPanel slug={slug} />
@@ -67,6 +69,7 @@ export function SecurityView() {
 // ── TOTP enrolment ───────────────────────────────────────────────────────────
 
 export function TotpPanel({ slug }: { slug: string }) {
+  const { t } = useTranslation("security")
   const [enrolment, setEnrolment] = useState<TOTPEnrolment | null>(null)
   const [recoveryCodes, setRecoveryCodes] = useState<Array<string> | null>(null)
   const [confirmDisable, setConfirmDisable] = useState(false)
@@ -86,7 +89,7 @@ export function TotpPanel({ slug }: { slug: string }) {
     onSuccess: (res) => {
       setRecoveryCodes(res.data.recovery_codes)
       setEnrolment(null)
-      toast.success("Two-factor authentication enabled.")
+      toast.success(t("totp.enabledToast"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -96,7 +99,7 @@ export function TotpPanel({ slug }: { slug: string }) {
     onSuccess: () => {
       setEnrolment(null)
       setRecoveryCodes(null)
-      toast.success("Two-factor authentication disabled.")
+      toast.success(t("totp.disabledToast"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -111,15 +114,15 @@ export function TotpPanel({ slug }: { slug: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Two-factor authentication</CardTitle>
+        <CardTitle>{t("totp.cardTitle")}</CardTitle>
         <CardDescription>
-          Add a time-based one-time code to workspace sign-in.
+          {t("totp.cardDescription")}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {recoveryCodes && (
           <Alert>
-            <AlertTitle>Save your recovery codes</AlertTitle>
+            <AlertTitle>{t("totp.recoveryCodesTitle")}</AlertTitle>
             <AlertDescription>
               <span className="grid grid-cols-2 gap-1 pt-2 font-mono text-xs">
                 {recoveryCodes.map((c) => (
@@ -136,14 +139,14 @@ export function TotpPanel({ slug }: { slug: string }) {
               disabled={enable.isPending}
               onClick={() => enable.mutate()}
             >
-              Enable two-factor
+              {t("totp.enable")}
             </Button>
             <Button
               variant="outline"
               disabled={disable.isPending}
               onClick={() => setConfirmDisable(true)}
             >
-              Disable two-factor
+              {t("totp.disable")}
             </Button>
           </div>
         )}
@@ -152,7 +155,7 @@ export function TotpPanel({ slug }: { slug: string }) {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">
-                Add this secret to your authenticator app
+                {t("totp.secretLabel")}
               </p>
               <code className="rounded bg-muted px-2 py-1 font-mono text-sm">
                 {enrolment.secret}
@@ -161,7 +164,7 @@ export function TotpPanel({ slug }: { slug: string }) {
                 className="text-xs text-primary underline-offset-4 hover:underline"
                 href={enrolment.uri}
               >
-                Open in authenticator app
+                {t("totp.openInApp")}
               </a>
             </div>
             <form
@@ -176,12 +179,12 @@ export function TotpPanel({ slug }: { slug: string }) {
                 <form.Field
                   name="code"
                   validators={{
-                    onSubmit: compose(rules.required("Enter the code.")),
+                    onSubmit: compose(rules.required(t("totp.codeRequired"))),
                   }}
                 >
                   {(field) => (
                     <FormField
-                      label="Authentication code"
+                      label={t("totp.codeLabel")}
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       value={field.state.value}
@@ -192,7 +195,7 @@ export function TotpPanel({ slug }: { slug: string }) {
                 </form.Field>
               </div>
               <Button type="submit" disabled={confirm.isPending}>
-                Confirm
+                {t("totp.confirm")}
               </Button>
             </form>
           </div>
@@ -202,9 +205,9 @@ export function TotpPanel({ slug }: { slug: string }) {
       <ConfirmDialog
         open={confirmDisable}
         onOpenChange={setConfirmDisable}
-        title="Disable two-factor authentication?"
-        description="Workspace sign-in will no longer require a one-time code."
-        confirmLabel="Disable"
+        title={t("totp.confirmDisableTitle")}
+        description={t("totp.confirmDisableDescription")}
+        confirmLabel={t("totp.confirmDisableLabel")}
         busy={disable.isPending}
         onConfirm={() => {
           disable.mutate()
@@ -219,6 +222,7 @@ export function TotpPanel({ slug }: { slug: string }) {
 
 export function ApiKeysPanel({ slug }: { slug: string }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("security")
   const [issueOpen, setIssueOpen] = useState(false)
   const [issuedToken, setIssuedToken] = useState<string | null>(null)
   const [revoking, setRevoking] = useState<string | null>(null)
@@ -232,7 +236,7 @@ export function ApiKeysPanel({ slug }: { slug: string }) {
     mutationFn: (id: string) => api.revokeAPIKey(slug, id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(slug) })
-      toast.success("API key revoked.")
+      toast.success(t("apiKeys.revokedToast"))
       setRevoking(null)
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -242,20 +246,20 @@ export function ApiKeysPanel({ slug }: { slug: string }) {
     <div className="flex flex-col gap-4">
       <div>
         <Button onClick={() => setIssueOpen(true)}>
-          <PlusIcon /> Issue API key
+          <PlusIcon /> {t("apiKeys.issue")}
         </Button>
       </div>
 
       {issuedToken && (
         <Alert>
-          <AlertTitle>Copy your API key now</AlertTitle>
+          <AlertTitle>{t("apiKeys.issuedTitle")}</AlertTitle>
           <AlertDescription>
             <span className="flex flex-col gap-1 pt-1">
               <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
                 {issuedToken}
               </code>
               <span className="text-xs">
-                This secret is shown only once and cannot be retrieved later.
+                {t("apiKeys.issuedNote")}
               </span>
             </span>
           </AlertDescription>
@@ -265,8 +269,8 @@ export function ApiKeysPanel({ slug }: { slug: string }) {
       <AsyncState
         query={keysQuery}
         isEmpty={(d) => d.length === 0}
-        emptyTitle="No API keys"
-        emptyMessage="Issue an API key to access the workspace programmatically."
+        emptyTitle={t("apiKeys.emptyTitle")}
+        emptyMessage={t("apiKeys.emptyMessage")}
       >
         {(keys) => (
           <div className="flex flex-col gap-2">
@@ -278,19 +282,22 @@ export function ApiKeysPanel({ slug }: { slug: string }) {
                 <div className="flex-1">
                   <p className="text-sm font-medium">{key.Name}</p>
                   <p className="text-xs text-muted-foreground">
-                    Issued {formatDate(key.CreatedAt)}
-                    {key.RevokedAt ? " · revoked" : ""}
+                    {t("apiKeys.issuedDate", {
+                      date: formatDate(key.CreatedAt),
+                    })}
+                    {key.RevokedAt ? t("apiKeys.revokedSuffix") : ""}
                   </p>
                 </div>
                 <Badge variant="secondary">
-                  {key.Permissions.length} permission
-                  {key.Permissions.length === 1 ? "" : "s"}
+                  {t("apiKeys.permissionCount", {
+                    count: key.Permissions.length,
+                  })}
                 </Badge>
                 {!key.RevokedAt && (
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Revoke key"
+                    aria-label={t("apiKeys.revokeKeyAria")}
                     onClick={() => setRevoking(key.ID)}
                   >
                     <Trash2Icon />
@@ -312,9 +319,9 @@ export function ApiKeysPanel({ slug }: { slug: string }) {
       <ConfirmDialog
         open={revoking !== null}
         onOpenChange={(o) => !o && setRevoking(null)}
-        title="Revoke this API key?"
-        description="Any integration using this key will immediately stop working."
-        confirmLabel="Revoke key"
+        title={t("apiKeys.confirmRevokeTitle")}
+        description={t("apiKeys.confirmRevokeDescription")}
+        confirmLabel={t("apiKeys.confirmRevokeLabel")}
         busy={revoke.isPending}
         onConfirm={() => revoking && revoke.mutate(revoking)}
       />
@@ -334,6 +341,7 @@ function IssueKeyDialog({
   onIssued: (token: string) => void
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["security", "common"])
   const [permissions, setPermissions] = useState<Array<Permission>>([])
 
   const issue = useMutation({
@@ -341,7 +349,7 @@ function IssueKeyDialog({
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(slug) })
       onIssued(res.data.token)
-      toast.success("API key issued.")
+      toast.success(t("issueDialog.issuedToast"))
       setPermissions([])
       form.reset()
       onOpenChange(false)
@@ -360,9 +368,9 @@ function IssueKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Issue an API key</DialogTitle>
+          <DialogTitle>{t("issueDialog.title")}</DialogTitle>
           <DialogDescription>
-            The key’s secret is shown once after it is created.
+            {t("issueDialog.description")}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -375,11 +383,13 @@ function IssueKeyDialog({
         >
           <form.Field
             name="name"
-            validators={{ onBlur: compose(rules.required("Name the key.")) }}
+            validators={{
+              onBlur: compose(rules.required(t("issueDialog.nameRequired"))),
+            }}
           >
             {(field) => (
               <FormField
-                label="Key name"
+                label={t("issueDialog.nameLabel")}
                 required
                 autoFocus
                 value={field.state.value}
@@ -390,7 +400,9 @@ function IssueKeyDialog({
             )}
           </form.Field>
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Permissions</p>
+            <p className="text-sm font-medium">
+              {t("issueDialog.permissionsLabel")}
+            </p>
             <div className="grid grid-cols-2 gap-2 rounded-lg border p-3">
               {ALL_PERMISSIONS.map((perm) => (
                 <label key={perm} className="flex items-center gap-2 text-sm">
@@ -415,10 +427,12 @@ function IssueKeyDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={issue.isPending}>
-              {issue.isPending ? "Issuing…" : "Issue key"}
+              {issue.isPending
+                ? t("issueDialog.submitting")
+                : t("issueDialog.submit")}
             </Button>
           </DialogFooter>
         </form>

@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { Node, Subscriber } from "@/lib/api-types"
 import type { ColumnDef } from "@/components/common/data-table"
 import { api } from "@/lib/api"
@@ -35,6 +36,7 @@ export function ListDetail() {
   const { slug, id } = Route.useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("lists")
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [offset, setOffset] = useState(0)
   const limit = DEFAULT_PAGE_SIZE
@@ -60,7 +62,7 @@ export function ListDetail() {
       api.updateList(slug, id, { name: v.name.trim(), description: v.description }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists(slug) })
-      toast.success("List updated.")
+      toast.success(t("detail.updateSuccess"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -69,22 +71,22 @@ export function ListDetail() {
     mutationFn: () => api.deleteList(slug, id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists(slug) })
-      toast.success("List deleted.")
+      toast.success(t("detail.deleteSuccess"))
       navigate({ to: "/t/$slug/lists", params: { slug } })
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
 
   const columns: Array<ColumnDef<Subscriber, unknown>> = [
-    { accessorKey: "Email", header: "Email" },
+    { accessorKey: "Email", header: t("subscriberColumns.email") },
     {
       accessorKey: "Name",
-      header: "Name",
+      header: t("subscriberColumns.name"),
       cell: ({ row }) => row.original.Name || "—",
     },
     {
       id: "state",
-      header: "Subscription",
+      header: t("subscriberColumns.subscription"),
       cell: ({ row }) => {
         const m = row.original.Memberships.find((x) => x.ListID === id)
         return <Badge variant="secondary">{m?.Status ?? "—"}</Badge>
@@ -100,7 +102,7 @@ export function ListDetail() {
           params={{ slug }}
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Lists
+          {t("detail.back")}
         </Link>
       </div>
 
@@ -118,12 +120,14 @@ export function ListDetail() {
       </AsyncState>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Subscribers in this list</h2>
+        <h2 className="text-lg font-semibold">
+          {t("detail.subscribersTitle")}
+        </h2>
         <AsyncState
           query={subscribersQuery}
           isEmpty={(d) => d.total === 0}
-          emptyTitle="No subscribers yet"
-          emptyMessage="No subscribers are subscribed to this list."
+          emptyTitle={t("detail.subscribersEmptyTitle")}
+          emptyMessage={t("detail.subscribersEmptyMessage")}
         >
           {(data) => (
             <DataTable
@@ -148,9 +152,9 @@ export function ListDetail() {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Delete this list?"
-        description="The list will be removed. Subscribers are not deleted."
-        confirmLabel="Delete list"
+        title={t("detail.confirmDeleteTitle")}
+        description={t("detail.confirmDeleteDescription")}
+        confirmLabel={t("detail.deleteList")}
         busy={remove.isPending}
         onConfirm={() => remove.mutate()}
       />
@@ -171,6 +175,7 @@ function EditListCard({
   onSave: (v: { name: string; description: string }) => void
   onDelete: () => void
 }) {
+  const { t } = useTranslation(["lists", "common"])
   const form = useForm({
     defaultValues: { name: defaultName, description: defaultDescription },
     onSubmit: ({ value }) => onSave(value),
@@ -179,7 +184,7 @@ function EditListCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>List details</CardTitle>
+        <CardTitle>{t("detail.cardTitle")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form
@@ -192,11 +197,13 @@ function EditListCard({
         >
           <form.Field
             name="name"
-            validators={{ onBlur: compose(rules.required("Enter a list name.")) }}
+            validators={{
+              onBlur: compose(rules.required(t("form.nameRequired"))),
+            }}
           >
             {(field) => (
               <FormField
-                label="Name"
+                label={t("form.name")}
                 required
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -208,7 +215,7 @@ function EditListCard({
           <form.Field name="description">
             {(field) => (
               <FormField
-                label="Description"
+                label={t("form.description")}
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
@@ -216,14 +223,14 @@ function EditListCard({
           </form.Field>
           <div className="flex justify-between">
             <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : "Save changes"}
+              {pending ? t("common:actions.saving") : t("detail.saveChanges")}
             </Button>
             <Button
               type="button"
               variant="destructive"
               onClick={onDelete}
             >
-              <Trash2Icon /> Delete list
+              <Trash2Icon /> {t("detail.deleteList")}
             </Button>
           </div>
         </form>

@@ -2,6 +2,7 @@
 
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { InfoIcon } from "lucide-react"
 import type { SubscriptionResponse } from "@/lib/api-types"
 import { api } from "@/lib/api"
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/t/$slug/billing/usage")({
 
 export function UsagePage() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("billing")
 
   const query = useQuery({
     queryKey: queryKeys.subscription(slug),
@@ -49,9 +51,9 @@ export function UsagePage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Usage</h1>
+        <h1 className="text-2xl font-semibold">{t("usage.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Metered sends consumed in the current billing period.
+          {t("usage.description")}
         </p>
       </header>
 
@@ -66,15 +68,15 @@ export function UsagePage() {
       {noSubscription && (
         <Empty data-testid="usage-no-subscription" className="border">
           <EmptyHeader>
-            <EmptyTitle>No active subscription</EmptyTitle>
+            <EmptyTitle>{t("usage.noSubscription.title")}</EmptyTitle>
             <EmptyDescription>
-              Subscribe to a plan to start metering usage.
+              {t("usage.noSubscription.description")}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button asChild>
               <Link to="/t/$slug/billing/plans" params={{ slug }}>
-                Browse plans
+                {t("usage.noSubscription.browsePlans")}
               </Link>
             </Button>
           </EmptyContent>
@@ -84,7 +86,7 @@ export function UsagePage() {
       {query.isError && !noSubscription && (
         <Empty data-testid="usage-error" className="border">
           <EmptyHeader>
-            <EmptyTitle>Could not load usage</EmptyTitle>
+            <EmptyTitle>{t("usage.loadError.title")}</EmptyTitle>
             <EmptyDescription>{errorMessage(query.error)}</EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -103,6 +105,7 @@ function UsageBody({
   data: SubscriptionResponse
 }) {
   const { subscription, usage } = data
+  const { t } = useTranslation("billing")
   const blockMode = subscription.plan.overageMode === "block"
   const exhausted =
     usage.includedSends > 0 && usage.remainingSends <= 0
@@ -111,7 +114,7 @@ function UsageBody({
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>This period</CardTitle>
+          <CardTitle>{t("usage.thisPeriod.title")}</CardTitle>
           <CardDescription>
             {formatDate(subscription.currentPeriodStart)} –{" "}
             {formatDate(subscription.currentPeriodEnd)}
@@ -125,23 +128,21 @@ function UsageBody({
 
           {exhausted && blockMode && (
             <Alert variant="destructive" data-testid="usage-blocked">
-              <AlertTitle>Allowance reached</AlertTitle>
+              <AlertTitle>{t("usage.blocked.title")}</AlertTitle>
               <AlertDescription>
-                This plan blocks sends beyond the included allowance. Further
-                campaign starts and transactional sends will be rejected until
-                the next billing period begins.
+                {t("usage.blocked.description")}
               </AlertDescription>
             </Alert>
           )}
 
           {!blockMode && (
             <Alert data-testid="usage-overage">
-              <AlertTitle>Overage billing</AlertTitle>
+              <AlertTitle>{t("usage.overage.title")}</AlertTitle>
               <AlertDescription>
-                Sends beyond the allowance are billed as overage.{" "}
-                {usage.overageSends.toLocaleString()} overage send
-                {usage.overageSends === 1 ? "" : "s"} recorded so far this
-                period.
+                {t("usage.overage.description", {
+                  count: usage.overageSends,
+                  formattedCount: usage.overageSends.toLocaleString(),
+                })}
               </AlertDescription>
             </Alert>
           )}
@@ -150,23 +151,22 @@ function UsageBody({
 
       <Alert data-testid="usage-refresh-note">
         <InfoIcon />
-        <AlertTitle>Figures update periodically</AlertTitle>
+        <AlertTitle>{t("usage.refreshNote.title")}</AlertTitle>
         <AlertDescription>
-          Usage is rolled up by a background process, so sends from the last
-          few minutes may not yet be reflected here.
+          {t("usage.refreshNote.description")}
         </AlertDescription>
       </Alert>
 
       <p className="text-sm text-muted-foreground">
-        Usage for closed periods is reflected in each period’s{" "}
+        {t("usage.closedPeriodsPrefix")}
         <Link
           to="/t/$slug/billing/invoices"
           params={{ slug }}
           className="text-primary hover:underline"
         >
-          invoice
+          {t("usage.closedPeriodsLink")}
         </Link>
-        .
+        {t("usage.closedPeriodsSuffix")}
       </p>
     </div>
   )

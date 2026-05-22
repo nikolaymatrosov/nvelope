@@ -1,0 +1,59 @@
+{
+  "index": {
+    "title": "Импорт / Экспорт",
+    "description": "Импортируйте подписчиков из CSV-файла или экспортируйте их."
+  },
+  "tabs": {
+    "import": "Импорт",
+    "export": "Экспорт"
+  },
+  "permissionNotice": {
+    "title": "Недоступно",
+    "description": "Чтобы {{action}}, требуется разрешение «{{permission}}». Попросите администратора рабочего пространства предоставить его.",
+    "importAction": "импортировать подписчиков",
+    "exportAction": "экспортировать подписчиков"
+  },
+  "job": {
+    "status": "Статус",
+    "createdCount_one": "{{count}} создан",
+    "createdCount_few": "{{count}} создано",
+    "createdCount_many": "{{count}} создано",
+    "createdCount_other": "{{count}} создано",
+    "updatedCount_one": "{{count}} обновлён",
+    "updatedCount_few": "{{count}} обновлено",
+    "updatedCount_many": "{{count}} обновлено",
+    "updatedCount_other": "{{count}} обновлено",
+    "failedCount_one": "{{count}} с ошибкой",
+    "failedCount_few": "{{count}} с ошибками",
+    "failedCount_many": "{{count}} с ошибками",
+    "failedCount_other": "{{count}} с ошибками",
+    "rowCount_one": "{{count}} строка",
+    "rowCount_few": "{{count}} строки",
+    "rowCount_many": "{{count}} строк",
+    "rowCount_other": "{{count}} строки",
+    "rowFailures": "Ошибки строк",
+    "rowFailure": "Строка {{row}}: {{reason}}"
+  },
+  "import": {
+    "cardTitle": "Импорт подписчиков",
+    "cardDescription": "Загрузите файл CSV или ZIP и выберите, в какие списки добавить подписчиков.",
+    "fileLabel": "Файл CSV или ZIP",
+    "targetLists": "Списки назначения",
+    "noLists": "Нет доступных списков.",
+    "start": "Начать импорт",
+    "started": "Импорт запущен."
+  },
+  "export": {
+    "cardTitle": "Экспорт подписчиков",
+    "cardDescription": "Выберите, что экспортировать. Результат скачивается в виде CSV-файла.",
+    "selectionLabel": "Выбор",
+    "selectionAll": "Все подписчики",
+    "selectionList": "Список",
+    "selectionSegment": "Сегмент",
+    "listLabel": "Список",
+    "listPlaceholder": "Выберите список…",
+    "start": "Начать экспорт",
+    "started": "Экспорт запущен.",
+    "downloadCsv": "Скачать CSV"
+  }
+}

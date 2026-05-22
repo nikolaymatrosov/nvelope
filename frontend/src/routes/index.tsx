@@ -1,5 +1,6 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useMutation } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { PlusIcon } from "lucide-react"
 import { api } from "@/lib/api"
 import { isUnauthorized } from "@/lib/errors"
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/")({ component: Home })
 
 function Home() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { account, user, tenants, isLoading, isError, error } = useSession()
   // Apply the signed-in user's stored language preference (FR-004).
   useSyncAccountLocale()
@@ -54,18 +56,20 @@ function Home() {
       <main className="grid min-h-svh place-items-center p-6">
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <CardTitle>nvelope</CardTitle>
+            <CardTitle>{t("appName")}</CardTitle>
             <CardDescription>
-              Sign in to manage your workspaces.
+              {t("landing.signInPrompt")}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex gap-3">
-            <Button onClick={() => navigate({ to: "/login" })}>Log in</Button>
+            <Button onClick={() => navigate({ to: "/login" })}>
+              {t("actions.logIn")}
+            </Button>
             <Button
               variant="outline"
               onClick={() => navigate({ to: "/signup" })}
             >
-              Sign up
+              {t("actions.signUp")}
             </Button>
           </CardContent>
         </Card>
@@ -77,9 +81,13 @@ function Home() {
     <main className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 p-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Your workspaces</h1>
+          <h1 className="text-2xl font-semibold">
+            {t("landing.workspacesTitle")}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Signed in as {user?.name ?? account?.user.email}.
+            {t("landing.signedInAs", {
+              name: user?.name ?? account?.user.email ?? "",
+            })}
           </p>
         </div>
         <Button
@@ -87,7 +95,7 @@ function Home() {
           onClick={() => logout.mutate()}
           disabled={logout.isPending}
         >
-          Sign out
+          {t("account.signOut")}
         </Button>
       </header>
 
@@ -97,29 +105,33 @@ function Home() {
             <EmptyMedia variant="icon">
               <PlusIcon />
             </EmptyMedia>
-            <EmptyTitle>No workspaces yet</EmptyTitle>
+            <EmptyTitle>{t("landing.noWorkspacesTitle")}</EmptyTitle>
             <EmptyDescription>
-              Create your first workspace to get started.
+              {t("landing.noWorkspacesDescription")}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button onClick={() => navigate({ to: "/tenants/new" })}>
-              Create a workspace
+              {t("landing.createWorkspace")}
             </Button>
           </EmptyContent>
         </Empty>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
-            {tenants.map((t) => (
-              <Link key={t.id} to="/t/$slug" params={{ slug: t.slug }}>
+            {tenants.map((tenant) => (
+              <Link
+                key={tenant.id}
+                to="/t/$slug"
+                params={{ slug: tenant.slug }}
+              >
                 <Card className="h-full transition-colors hover:border-primary">
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between gap-2">
-                      {t.name}
-                      <Badge variant="secondary">{t.role}</Badge>
+                      {tenant.name}
+                      <Badge variant="secondary">{tenant.role}</Badge>
                     </CardTitle>
-                    <CardDescription>/{t.slug}</CardDescription>
+                    <CardDescription>/{tenant.slug}</CardDescription>
                   </CardHeader>
                 </Card>
               </Link>
@@ -131,7 +143,7 @@ function Home() {
             onClick={() => navigate({ to: "/tenants/new" })}
           >
             <PlusIcon />
-            Create a workspace
+            {t("landing.createWorkspace")}
           </Button>
         </>
       )}

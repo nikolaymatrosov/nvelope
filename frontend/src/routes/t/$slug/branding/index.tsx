@@ -7,6 +7,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { BrandingView, MediaAssetView } from "@/lib/api-types"
 import { CUSTOM_CSS_LIMIT_BYTES } from "@/lib/api-types"
 import { api } from "@/lib/api"
@@ -42,6 +43,7 @@ const DEFAULT_COLOR = "#4f46e5"
 export function BrandingView_() {
   const { slug } = Route.useParams()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("branding")
   const { can } = usePermissions(slug)
   const canManage = can("branding:manage")
 
@@ -55,10 +57,8 @@ export function BrandingView_() {
     return (
       <Empty data-testid="branding-forbidden" className="border">
         <EmptyHeader>
-          <EmptyTitle>You do not have access</EmptyTitle>
-          <EmptyDescription>
-            You need the branding:manage permission to view this page.
-          </EmptyDescription>
+          <EmptyTitle>{t("forbidden.title")}</EmptyTitle>
+          <EmptyDescription>{t("forbidden.description")}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -67,10 +67,9 @@ export function BrandingView_() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Branding</h1>
+        <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Applies to every one of your tenant's public pages — subscription,
-          preference, archive, and the standalone campaign pages.
+          {t("index.description")}
         </p>
       </header>
 
@@ -106,6 +105,7 @@ function BrandingForm({
   branding: BrandingView
   onSaved: () => Promise<void>
 }) {
+  const { t } = useTranslation("branding")
   const [form, setForm] = useState<FormState>({
     logo_url: branding.logo_url,
     primary_color: branding.primary_color || DEFAULT_COLOR,
@@ -129,7 +129,7 @@ function BrandingForm({
     mutationFn: async () => (await api.branding.save(slug, form)).data,
     onSuccess: async (saved) => {
       setSavedSanitized(saved.custom_css || null)
-      toast.success("Branding saved.")
+      toast.success(t("save.success"))
       await onSaved()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -141,14 +141,12 @@ function BrandingForm({
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Logo and color</CardTitle>
-          <CardDescription>
-            A logo and primary color shown at the top of every public page.
-          </CardDescription>
+          <CardTitle>{t("logoColor.title")}</CardTitle>
+          <CardDescription>{t("logoColor.description")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="logo-url">Logo URL</Label>
+            <Label htmlFor="logo-url">{t("logoColor.logoUrlLabel")}</Label>
             <div className="flex gap-2">
               <Input
                 id="logo-url"
@@ -156,7 +154,7 @@ function BrandingForm({
                 onChange={(e) =>
                   setForm((f) => ({ ...f, logo_url: e.target.value }))
                 }
-                placeholder="https://"
+                placeholder={t("logoColor.logoUrlPlaceholder")}
                 data-testid="logo-url-input"
               />
               <Button
@@ -165,15 +163,17 @@ function BrandingForm({
                 onClick={() => setPickerOpen(true)}
                 data-testid="logo-from-media"
               >
-                Pick from media
+                {t("logoColor.pickFromMedia")}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Use an image from your Media library or any public URL.
+              {t("logoColor.logoUrlHint")}
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="primary-color">Primary color</Label>
+            <Label htmlFor="primary-color">
+              {t("logoColor.primaryColorLabel")}
+            </Label>
             <div className="flex items-center gap-2">
               <Input
                 id="primary-color"
@@ -190,7 +190,7 @@ function BrandingForm({
                 onChange={(e) =>
                   setForm((f) => ({ ...f, primary_color: e.target.value }))
                 }
-                placeholder="#RRGGBB"
+                placeholder={t("logoColor.primaryColorPlaceholder")}
                 pattern="^#[0-9A-Fa-f]{6}$"
                 className="max-w-[10rem]"
                 data-testid="primary-color-hex"
@@ -202,11 +202,8 @@ function BrandingForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Custom CSS</CardTitle>
-          <CardDescription>
-            Applied to every public page. Markup that could escape or run
-            scripts is removed by the server.
-          </CardDescription>
+          <CardTitle>{t("customCss.title")}</CardTitle>
+          <CardDescription>{t("customCss.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <CssEditor
@@ -224,7 +221,7 @@ function BrandingForm({
           disabled={save.isPending || overLimit}
           data-testid="save-branding"
         >
-          {save.isPending ? "Saving…" : "Save branding"}
+          {save.isPending ? t("save.submitting") : t("save.submit")}
         </Button>
       </div>
 

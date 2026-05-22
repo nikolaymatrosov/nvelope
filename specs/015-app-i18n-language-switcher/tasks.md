@@ -151,13 +151,13 @@ Web app: Go backend under `internal/`, TanStack Start frontend under `frontend/`
 
 **Purpose**: Complete FR-012 coverage by migrating every remaining feature area's strings, plus final verification. The English fallback (US3) keeps these increments safe.
 
-- [ ] T045 [P] Add `settings` catalogs and migrate `frontend/src/routes/t/$slug/settings/` strings to `t()`.
-- [ ] T046 [P] Add `lists` catalogs and migrate the lists route strings to `t()`.
-- [ ] T047 [P] Add `subscribers` catalogs and migrate the subscribers route strings to `t()`.
-- [ ] T048 [P] Add `campaigns` + `templates` catalogs and migrate those route strings to `t()`.
-- [ ] T049 [P] Add `analytics` + `billing` catalogs and migrate those route strings to `t()`.
-- [ ] T050 [P] Add `media` catalogs and migrate the media route strings to `t()`.
-- [ ] T051 [P] Add `errors` catalogs and route user-facing error/validation messages through `t()` (`frontend/src/lib/errors.ts` and consumers).
+- [X] T045 [P] Add `settings` catalogs and migrate `frontend/src/routes/t/$slug/settings/` strings to `t()`.
+- [X] T046 [P] Add `lists` catalogs and migrate the lists route strings to `t()`.
+- [X] T047 [P] Add `subscribers` catalogs and migrate the subscribers route strings to `t()`.
+- [X] T048 [P] Add `campaigns` + `templates` catalogs and migrate those route strings to `t()`.
+- [X] T049 [P] Add `analytics` + `billing` catalogs and migrate those route strings to `t()`.
+- [X] T050 [P] Add `media` catalogs and migrate the media route strings to `t()`.
+- [X] T051 [P] Add `errors` catalogs and route user-facing error/validation messages through `t()` (`frontend/src/lib/errors.ts` and consumers).
 - [X] T052 Add a `ci` target to the root `Makefile` (and to `.PHONY`) that reproduces `.github/workflows/ci.yml` locally, running every step in the same order: backend — `go build ./...` → `go test ./...` → `make lint-arch` → `golangci-lint run`; then frontend — `cd frontend && pnpm install --frozen-lockfile && pnpm i18n:types && git diff --exit-code && pnpm typecheck && pnpm lint && pnpm i18n:lint && pnpm test && pnpm build`. Keep it a faithful mirror of `ci.yml` so a green `make ci` predicts a green pipeline (depends on T044).
 - [ ] T053 Run the `quickstart.md` manual verification for all three stories; update `docs/` if any guidance changed.
 - [ ] T054 Run `make ci` end-to-end and confirm it passes (backend + tenant-isolation tests, clean migration apply, frontend typecheck/lint/i18n:lint/test/build) (depends on T052).

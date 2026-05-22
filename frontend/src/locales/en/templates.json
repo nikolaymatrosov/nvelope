@@ -1,0 +1,76 @@
+{
+  "create": {
+    "description": "Templates can be used for campaigns or transactional sending.",
+    "htmlBodyLabel": "HTML body",
+    "nameLabel": "Name",
+    "nameRequired": "Enter a template name.",
+    "subjectLabel": "Subject",
+    "subjectRequired": "Enter a subject.",
+    "submit": "Create template",
+    "submitting": "Creating…",
+    "success": "Template created.",
+    "textBodyLabel": "Plain-text body",
+    "title": "New template",
+    "typeLabel": "Type"
+  },
+  "detail": {
+    "backToTemplates": "← Templates",
+    "bodyLabel": "Body",
+    "htmlBodyLabel": "HTML body",
+    "nameLabel": "Name",
+    "nameRequired": "Enter a template name.",
+    "save": "Save changes",
+    "saveSuccess": "Template saved.",
+    "saveWarnings_few": "Template saved with {{count}} content warnings.",
+    "saveWarnings_many": "Template saved with {{count}} content warnings.",
+    "saveWarnings_one": "Template saved with {{count}} content warning.",
+    "saveWarnings_other": "Template saved with {{count}} content warnings.",
+    "saving": "Saving…",
+    "subjectLabel": "Subject",
+    "subjectRequired": "Enter a subject.",
+    "textBodyLabel": "Plain-text body"
+  },
+  "kind": {
+    "campaign": "Campaign",
+    "transactional": "Transactional"
+  },
+  "list": {
+    "columns": {
+      "kind": "Kind",
+      "name": "Name",
+      "subject": "Subject",
+      "updated": "Updated"
+    },
+    "confirmDelete": {
+      "confirm": "Delete template",
+      "description": "The template will be removed. Campaigns already built from it keep their content.",
+      "title": "Delete this template?"
+    },
+    "deleteAction": "Delete template",
+    "deleteSuccess": "Template deleted.",
+    "description": "Reusable content for campaigns and transactional mail.",
+    "emptyMessage": "Create a template to reuse content across campaigns.",
+    "emptyTitle": "No templates yet",
+    "newTemplate": "New template",
+    "title": "Templates"
+  },
+  "visual": {
+    "convert": "Convert to visual editor",
+    "convertedSuccess": "Converted to visual editor. Review and save to keep it.",
+    "convertedWarnings_few": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_many": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_one": "Converted to visual editor with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_other": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "converting": "Converting…",
+    "forceOverwrite": "Force overwrite",
+    "optOut": {
+      "confirm": "Switch to HTML only",
+      "description": "Your structured visual document will be discarded. The last saved HTML body stays intact so the template remains usable, but blocks, columns, and merge-tag chips will no longer be available unless you convert back later.",
+      "switching": "Switching…",
+      "title": "Switch to HTML-only editing?"
+    },
+    "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared.",
+    "reload": "Reload",
+    "staleTitle": "Changed in another tab/session"
+  }
+}

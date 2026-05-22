@@ -4,6 +4,7 @@
 
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { CreditCardIcon } from "lucide-react"
 import { toast } from "sonner"
 import type { ReactNode } from "react"
@@ -45,6 +46,7 @@ export const Route = createFileRoute("/t/$slug/billing/")({
 
 export function BillingOverview() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("billing")
   const { can } = usePermissions(slug)
   const canManage = can("billing:manage")
 
@@ -62,9 +64,9 @@ export function BillingOverview() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Billing</h1>
+        <h1 className="text-2xl font-semibold">{t("overview.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Your plan, subscription status, and account balance.
+          {t("overview.description")}
         </p>
       </header>
 
@@ -82,12 +84,12 @@ export function BillingOverview() {
       {query.isError && !noSubscription && (
         <Empty data-testid="billing-error" className="border">
           <EmptyHeader>
-            <EmptyTitle>Could not load billing</EmptyTitle>
+            <EmptyTitle>{t("overview.loadError.title")}</EmptyTitle>
             <EmptyDescription>{errorMessage(query.error)}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button variant="outline" size="sm" onClick={() => query.refetch()}>
-              Try again
+              {t("overview.loadError.retry")}
             </Button>
           </EmptyContent>
         </Empty>
@@ -105,22 +107,22 @@ export function BillingOverview() {
 }
 
 function NoSubscription({ slug }: { slug: string }) {
+  const { t } = useTranslation("billing")
   return (
     <Empty data-testid="billing-no-subscription" className="border">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <CreditCardIcon />
         </EmptyMedia>
-        <EmptyTitle>No active subscription</EmptyTitle>
+        <EmptyTitle>{t("overview.noSubscription.title")}</EmptyTitle>
         <EmptyDescription>
-          This workspace is not subscribed to a plan. Choose a plan to start
-          sending.
+          {t("overview.noSubscription.description")}
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <Button asChild>
           <Link to="/t/$slug/billing/plans" params={{ slug }}>
-            Browse plans
+            {t("overview.noSubscription.browsePlans")}
           </Link>
         </Button>
       </EmptyContent>
@@ -139,6 +141,7 @@ function SubscriptionPanel({
 }) {
   const { subscription, usage } = data
   const { state } = subscription
+  const { t } = useTranslation("billing")
 
   return (
     <div className="flex flex-col gap-4">
@@ -149,32 +152,27 @@ function SubscriptionPanel({
 
       {state === "pending" && (
         <Alert data-testid="billing-pending">
-          <AlertTitle>Subscription pending</AlertTitle>
+          <AlertTitle>{t("overview.states.pending.title")}</AlertTitle>
           <AlertDescription>
-            The first payment for this subscription is being processed. This
-            page will reflect the result once the charge resolves.
+            {t("overview.states.pending.description")}
           </AlertDescription>
         </Alert>
       )}
 
       {state === "past_due" && (
         <Alert variant="destructive" data-testid="billing-past-due">
-          <AlertTitle>Payment failed — action needed</AlertTitle>
+          <AlertTitle>{t("overview.states.pastDue.title")}</AlertTitle>
           <AlertDescription>
-            A payment for this subscription was declined and is being retried
-            automatically. Settle the outstanding balance below to avoid the
-            account being suspended.
+            {t("overview.states.pastDue.description")}
           </AlertDescription>
         </Alert>
       )}
 
       {state === "suspended" && (
         <Alert variant="destructive" data-testid="billing-suspended">
-          <AlertTitle>Account suspended for non-payment</AlertTitle>
+          <AlertTitle>{t("overview.states.suspended.title")}</AlertTitle>
           <AlertDescription>
-            Sending is disabled because the outstanding balance was not
-            settled. Settle it below to reinstate the account and re-enable
-            sending.
+            {t("overview.states.suspended.description")}
           </AlertDescription>
         </Alert>
       )}
@@ -185,40 +183,43 @@ function SubscriptionPanel({
 
       <Card>
         <CardHeader>
-          <CardTitle>Current plan</CardTitle>
+          <CardTitle>{t("overview.currentPlan.title")}</CardTitle>
           <CardDescription>
-            Sends over the allowance are{" "}
             {subscription.plan.overageMode === "block"
-              ? "blocked"
-              : "billed as overage"}
-            .
+              ? t("overview.currentPlan.overageDescriptionBlocked")
+              : t("overview.currentPlan.overageDescriptionBilled")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
-          <Field label="Plan" value={subscription.plan.name} />
           <Field
-            label="Billing period"
+            label={t("overview.currentPlan.fields.plan")}
+            value={subscription.plan.name}
+          />
+          <Field
+            label={t("overview.currentPlan.fields.billingPeriod")}
             value={`${formatDate(subscription.currentPeriodStart)} – ${formatDate(
               subscription.currentPeriodEnd,
             )}`}
           />
           <Field
-            label="Usage this period"
+            label={t("overview.currentPlan.fields.usageThisPeriod")}
             value={
               <Link
                 to="/t/$slug/billing/usage"
                 params={{ slug }}
                 className="text-primary hover:underline"
               >
-                {usage.usedSends.toLocaleString()} of{" "}
-                {usage.includedSends.toLocaleString()} sends
+                {t("overview.currentPlan.usageValue", {
+                  used: usage.usedSends.toLocaleString(),
+                  included: usage.includedSends.toLocaleString(),
+                })}
               </Link>
             }
           />
           {subscription.cancelAtPeriodEnd && (
             <Field
-              label="Renewal"
-              value="Cancels at the end of the current period"
+              label={t("overview.currentPlan.fields.renewal")}
+              value={t("overview.currentPlan.renewalCancels")}
             />
           )}
         </CardContent>
@@ -254,6 +255,7 @@ function SettleOutstanding({
   canManage: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("billing")
 
   const invoicesQuery = useQuery({
     queryKey: queryKeys.invoices(slug),
@@ -276,20 +278,18 @@ function SettleOutstanding({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.invoices(slug),
       })
-      toast.success("Payment received — your account has been reinstated.")
+      toast.success(t("overview.settle.success"))
     },
     onError: async (e) => {
       if (e instanceof ApiError && e.slug === "payment_failed") {
-        toast.error(
-          "The payment was declined again. The account remains suspended — please try once more or use a different payment method.",
-        )
+        toast.error(t("overview.settle.declined"))
         return
       }
       if (e instanceof ApiError && e.slug === "invoice_not_settleable") {
         await queryClient.invalidateQueries({
           queryKey: queryKeys.invoices(slug),
         })
-        toast.message("That invoice has already been settled.")
+        toast.message(t("overview.settle.alreadySettled"))
         return
       }
       toast.error(errorMessage(e))
@@ -301,9 +301,9 @@ function SettleOutstanding({
   return (
     <Card data-testid="settle-panel">
       <CardHeader>
-        <CardTitle>Outstanding balance</CardTitle>
+        <CardTitle>{t("overview.settle.title")}</CardTitle>
         <CardDescription>
-          Settle the unpaid invoice to bring the account back to good standing.
+          {t("overview.settle.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-4">
@@ -312,14 +312,16 @@ function SettleOutstanding({
           params={{ slug }}
           className="text-sm text-primary hover:underline"
         >
-          View unpaid invoice
+          {t("overview.settle.viewInvoice")}
         </Link>
         {canManage && (
           <Button
             disabled={settle.isPending}
             onClick={() => settle.mutate()}
           >
-            {settle.isPending ? "Charging…" : "Settle balance now"}
+            {settle.isPending
+              ? t("overview.settle.charging")
+              : t("overview.settle.charge")}
           </Button>
         )}
       </CardContent>

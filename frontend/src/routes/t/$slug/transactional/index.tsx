@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { errorMessage } from "@/lib/errors"
@@ -46,6 +47,7 @@ const PAYLOAD_EXAMPLE = `{
 
 export function TransactionalView() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("transactional")
   const { can } = usePermissions(slug)
   const canManageKeys = can("apikeys:manage")
 
@@ -60,19 +62,16 @@ export function TransactionalView() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Transactional sending</h1>
+        <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Issue a scoped API key and integrate the transactional endpoint.
+          {t("index.description")}
         </p>
       </header>
 
       {domainsQuery.isSuccess && !hasVerifiedDomain && (
         <Alert>
-          <AlertTitle>A verified sending domain is required</AlertTitle>
-          <AlertDescription>
-            Transactional sends will fail until at least one sending domain is
-            verified. Verify a domain under Sending Domains first.
-          </AlertDescription>
+          <AlertTitle>{t("domainAlert.title")}</AlertTitle>
+          <AlertDescription>{t("domainAlert.description")}</AlertDescription>
         </Alert>
       )}
 
@@ -80,43 +79,47 @@ export function TransactionalView() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Endpoint reference</CardTitle>
-          <CardDescription>
-            Send transactional mail by calling this endpoint with the API key
-            above as a Bearer token.
-          </CardDescription>
+          <CardTitle>{t("endpoint.title")}</CardTitle>
+          <CardDescription>{t("endpoint.description")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 text-sm">
           <div className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Endpoint</span>
+            <span className="text-muted-foreground">
+              {t("endpoint.endpointLabel")}
+            </span>
             <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
               POST /t/{slug}/api/tx
             </code>
           </div>
           <p className="text-muted-foreground">
-            Each request must reference an existing{" "}
-            <strong>transactional</strong> template by id and a verified
-            sending domain id.
+            {t("endpoint.templateNotePrefix")}
+            <strong>{t("endpoint.templateNoteEmphasis")}</strong>
+            {t("endpoint.templateNoteSuffix")}
           </p>
           <div className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Request body</span>
+            <span className="text-muted-foreground">
+              {t("endpoint.requestBodyLabel")}
+            </span>
             <pre className="overflow-x-auto rounded bg-muted px-3 py-2 font-mono text-xs">
               {PAYLOAD_EXAMPLE}
             </pre>
           </div>
           <p className="text-muted-foreground">
-            The endpoint responds <code>403</code> with{" "}
-            <code>quota_exceeded</code> when the workspace has used its plan's
-            send allowance, or <code>tenant_suspended</code> when the account
-            is suspended for non-payment. Check{" "}
+            {t("endpoint.errorNotePrefix")}
+            <code>403</code>
+            {t("endpoint.errorNoteWith")}
+            <code>quota_exceeded</code>
+            {t("endpoint.errorNoteQuota")}
+            <code>tenant_suspended</code>
+            {t("endpoint.errorNoteSuspended")}
             <Link
               to="/t/$slug/billing"
               params={{ slug }}
               className="text-primary hover:underline"
             >
-              billing
-            </Link>{" "}
-            if transactional sends start failing.
+              {t("endpoint.errorNoteLink")}
+            </Link>
+            {t("endpoint.errorNoteEnd")}
           </p>
         </CardContent>
       </Card>
@@ -132,6 +135,7 @@ function ApiKeysPanel({
   canManageKeys: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("transactional")
   const [issueOpen, setIssueOpen] = useState(false)
   const [issuedToken, setIssuedToken] = useState<string | null>(null)
   const [revoking, setRevoking] = useState<string | null>(null)
@@ -145,7 +149,7 @@ function ApiKeysPanel({
     mutationFn: (id: string) => api.revokeAPIKey(slug, id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(slug) })
-      toast.success("API key revoked.")
+      toast.success(t("apiKeys.revokeSuccess"))
       setRevoking(null)
     },
     onError: (e) => {
@@ -157,39 +161,35 @@ function ApiKeysPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>API keys</CardTitle>
-        <CardDescription>
-          Keys scoped for transactional sending.
-        </CardDescription>
+        <CardTitle>{t("apiKeys.title")}</CardTitle>
+        <CardDescription>{t("apiKeys.description")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {canManageKeys ? (
           <div>
             <Button onClick={() => setIssueOpen(true)}>
-              <PlusIcon /> Issue API key
+              <PlusIcon /> {t("apiKeys.issueKey")}
             </Button>
           </div>
         ) : (
           <Alert>
-            <AlertTitle>Key management is restricted</AlertTitle>
+            <AlertTitle>{t("apiKeys.restrictedTitle")}</AlertTitle>
             <AlertDescription>
-              You do not have permission to issue or revoke API keys in this
-              workspace.
+              {t("apiKeys.restrictedDescription")}
             </AlertDescription>
           </Alert>
         )}
 
         {issuedToken && (
           <Alert>
-            <AlertTitle>Copy your API key now</AlertTitle>
+            <AlertTitle>{t("apiKeys.copyNowTitle")}</AlertTitle>
             <AlertDescription>
               <span className="flex flex-col gap-1 pt-1">
                 <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
                   {issuedToken}
                 </code>
                 <span className="text-xs">
-                  This secret is shown only once and cannot be retrieved later.
-                  If you lose it, revoke the key and issue a new one.
+                  {t("apiKeys.copyNowDescription")}
                 </span>
               </span>
             </AlertDescription>
@@ -199,8 +199,8 @@ function ApiKeysPanel({
         <AsyncState
           query={keysQuery}
           isEmpty={(d) => d.length === 0}
-          emptyTitle="No API keys"
-          emptyMessage="Issue an API key to integrate transactional sending."
+          emptyTitle={t("apiKeys.emptyTitle")}
+          emptyMessage={t("apiKeys.emptyMessage")}
         >
           {(keys) => (
             <div className="flex flex-col gap-2">
@@ -212,8 +212,10 @@ function ApiKeysPanel({
                   <div className="flex-1">
                     <p className="text-sm font-medium">{key.Name}</p>
                     <p className="text-xs text-muted-foreground">
-                      Issued {formatDate(key.CreatedAt)}
-                      {key.RevokedAt ? " · revoked" : ""}
+                      {t("apiKeys.issued", {
+                        date: formatDate(key.CreatedAt),
+                      })}
+                      {key.RevokedAt ? t("apiKeys.revokedSuffix") : ""}
                     </p>
                   </div>
                   {key.Permissions.includes("transactional:send") && (
@@ -223,7 +225,7 @@ function ApiKeysPanel({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Revoke key"
+                      aria-label={t("apiKeys.revokeKey")}
                       onClick={() => setRevoking(key.ID)}
                     >
                       <Trash2Icon />
@@ -246,9 +248,9 @@ function ApiKeysPanel({
       <ConfirmDialog
         open={revoking !== null}
         onOpenChange={(o) => !o && setRevoking(null)}
-        title="Revoke this API key?"
-        description="Any integration using this key will immediately stop working."
-        confirmLabel="Revoke key"
+        title={t("apiKeys.confirmRevokeTitle")}
+        description={t("apiKeys.confirmRevokeDescription")}
+        confirmLabel={t("apiKeys.confirmRevokeLabel")}
         busy={revoke.isPending}
         onConfirm={() => revoking && revoke.mutate(revoking)}
       />
@@ -268,6 +270,7 @@ function IssueKeyDialog({
   onIssued: (token: string) => void
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["transactional", "common"])
 
   const issue = useMutation({
     mutationFn: (name: string) =>
@@ -275,7 +278,7 @@ function IssueKeyDialog({
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(slug) })
       onIssued(res.data.token)
-      toast.success("API key issued.")
+      toast.success(t("issueDialog.issueSuccess"))
       form.reset()
       onOpenChange(false)
     },
@@ -293,10 +296,11 @@ function IssueKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Issue a transactional API key</DialogTitle>
+          <DialogTitle>{t("issueDialog.title")}</DialogTitle>
           <DialogDescription>
-            The key is scoped to <code>transactional:send</code>. Its secret is
-            shown once after it is created.
+            {t("issueDialog.descriptionPrefix")}
+            <code>transactional:send</code>
+            {t("issueDialog.descriptionSuffix")}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -309,11 +313,13 @@ function IssueKeyDialog({
         >
           <form.Field
             name="name"
-            validators={{ onBlur: compose(rules.required("Name the key.")) }}
+            validators={{
+              onBlur: compose(rules.required(t("issueDialog.nameRequired"))),
+            }}
           >
             {(field) => (
               <FormField
-                label="Key name"
+                label={t("issueDialog.keyName")}
                 required
                 autoFocus
                 value={field.state.value}
@@ -329,10 +335,12 @@ function IssueKeyDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={issue.isPending}>
-              {issue.isPending ? "Issuing…" : "Issue key"}
+              {issue.isPending
+                ? t("issueDialog.issuing")
+                : t("issueDialog.issue")}
             </Button>
           </DialogFooter>
         </form>

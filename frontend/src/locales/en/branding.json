@@ -1,0 +1,29 @@
+{
+  "index": {
+    "title": "Branding",
+    "description": "Applies to every one of your tenant's public pages — subscription, preference, archive, and the standalone campaign pages."
+  },
+  "forbidden": {
+    "title": "You do not have access",
+    "description": "You need the branding:manage permission to view this page."
+  },
+  "logoColor": {
+    "title": "Logo and color",
+    "description": "A logo and primary color shown at the top of every public page.",
+    "logoUrlLabel": "Logo URL",
+    "logoUrlPlaceholder": "https://",
+    "pickFromMedia": "Pick from media",
+    "logoUrlHint": "Use an image from your Media library or any public URL.",
+    "primaryColorLabel": "Primary color",
+    "primaryColorPlaceholder": "#RRGGBB"
+  },
+  "customCss": {
+    "title": "Custom CSS",
+    "description": "Applied to every public page. Markup that could escape or run scripts is removed by the server."
+  },
+  "save": {
+    "submit": "Save branding",
+    "submitting": "Saving…",
+    "success": "Branding saved."
+  }
+}

@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { CampaignStatus, CampaignView } from "@/lib/api-types"
 import type { ColumnDef } from "@/components/common/data-table"
 import { api } from "@/lib/api"
@@ -50,21 +51,34 @@ const STATUS_VARIANT: Record<
 }
 
 export function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
-  return <Badge variant={STATUS_VARIANT[status]}>{status}</Badge>
+  const { t } = useTranslation("campaigns")
+  return (
+    <Badge variant={STATUS_VARIANT[status]}>{t(`status.${status}`)}</Badge>
+  )
 }
 
-function progressLabel(c: CampaignView): string {
-  if (c.status === "draft") return "—"
+function ProgressLabel({ campaign }: { campaign: CampaignView }) {
+  const { t } = useTranslation("campaigns")
+  if (campaign.status === "draft") return <>{t("list.progress.draft")}</>
   const remaining = Math.max(
     0,
-    c.recipient_count - c.sent_count - c.failed_count,
+    campaign.recipient_count - campaign.sent_count - campaign.failed_count,
   )
-  return `${c.sent_count} sent · ${c.failed_count} failed · ${remaining} left`
+  return (
+    <>
+      {t("list.progress.summary", {
+        sent: campaign.sent_count,
+        failed: campaign.failed_count,
+        remaining,
+      })}
+    </>
+  )
 }
 
 export function CampaignsView() {
   const { slug } = Route.useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation("campaigns")
   const { can } = usePermissions(slug)
   const canManage = can("campaigns:manage")
   const [offset, setOffset] = useState(0)
@@ -77,24 +91,24 @@ export function CampaignsView() {
   })
 
   const columns: Array<ColumnDef<CampaignView, unknown>> = [
-    { accessorKey: "name", header: "Name" },
+    { accessorKey: "name", header: t("list.columns.name") },
     {
       accessorKey: "status",
-      header: "Status",
+      header: t("list.columns.status"),
       cell: ({ row }) => <CampaignStatusBadge status={row.original.status} />,
     },
     {
       id: "progress",
-      header: "Progress",
+      header: t("list.columns.progress"),
       cell: ({ row }) => (
         <span className="text-muted-foreground">
-          {progressLabel(row.original)}
+          <ProgressLabel campaign={row.original} />
         </span>
       ),
     },
     {
       accessorKey: "created_at",
-      header: "Created",
+      header: t("list.columns.created"),
       cell: ({ row }) => formatDate(row.original.created_at),
     },
   ]
@@ -103,14 +117,14 @@ export function CampaignsView() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Campaigns</h1>
+          <h1 className="text-2xl font-semibold">{t("list.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Author and send campaigns to your lists.
+            {t("list.description")}
           </p>
         </div>
         {canManage && (
           <Button onClick={() => setCreateOpen(true)}>
-            <PlusIcon /> New campaign
+            <PlusIcon /> {t("list.newCampaign")}
           </Button>
         )}
       </header>
@@ -118,12 +132,12 @@ export function CampaignsView() {
       <AsyncState
         query={campaignsQuery}
         isEmpty={(d) => d.total === 0}
-        emptyTitle="No campaigns yet"
-        emptyMessage="Create your first campaign to start sending."
+        emptyTitle={t("list.emptyTitle")}
+        emptyMessage={t("list.emptyMessage")}
         emptyAction={
           canManage ? (
             <Button onClick={() => setCreateOpen(true)}>
-              <PlusIcon /> New campaign
+              <PlusIcon /> {t("list.newCampaign")}
             </Button>
           ) : undefined
         }
@@ -167,6 +181,7 @@ function CreateCampaignDialog({
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { t } = useTranslation(["campaigns", "common"])
   const [templateId, setTemplateId] = useState<string>("")
 
   const templatesQuery = useQuery({
@@ -175,7 +190,7 @@ function CreateCampaignDialog({
     enabled: open,
   })
   const campaignTemplates = (templatesQuery.data ?? []).filter(
-    (t) => t.kind === "campaign",
+    (tpl) => tpl.kind === "campaign",
   )
 
   const create = useMutation({
@@ -194,7 +209,7 @@ function CreateCampaignDialog({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.campaigns(slug),
       })
-      toast.success("Campaign created.")
+      toast.success(t("create.success"))
       onOpenChange(false)
       setTemplateId("")
       form.reset()
@@ -217,11 +232,8 @@ function CreateCampaignDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New campaign</DialogTitle>
-          <DialogDescription>
-            Name the campaign. You can optionally start from a campaign
-            template, then edit its content.
-          </DialogDescription>
+          <DialogTitle>{t("create.title")}</DialogTitle>
+          <DialogDescription>{t("create.description")}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -234,12 +246,12 @@ function CreateCampaignDialog({
           <form.Field
             name="name"
             validators={{
-              onBlur: compose(rules.required("Enter a campaign name.")),
+              onBlur: compose(rules.required(t("create.nameRequired"))),
             }}
           >
             {(field) => (
               <FormField
-                label="Name"
+                label={t("create.nameLabel")}
                 required
                 autoFocus
                 value={field.state.value}
@@ -250,19 +262,19 @@ function CreateCampaignDialog({
             )}
           </form.Field>
           <div className="flex flex-col gap-1.5">
-            <Label>Start from a template (optional)</Label>
+            <Label>{t("create.templateLabel")}</Label>
             <Select
               value={templateId || "none"}
               onValueChange={(v) => setTemplateId(v === "none" ? "" : v)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="No template" />
+                <SelectValue placeholder={t("create.noTemplate")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No template</SelectItem>
-                {campaignTemplates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
+                <SelectItem value="none">{t("create.noTemplate")}</SelectItem>
+                {campaignTemplates.map((tpl) => (
+                  <SelectItem key={tpl.id} value={tpl.id}>
+                    {tpl.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -274,10 +286,10 @@ function CreateCampaignDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating…" : "Create campaign"}
+              {create.isPending ? t("create.submitting") : t("create.submit")}
             </Button>
           </DialogFooter>
         </form>

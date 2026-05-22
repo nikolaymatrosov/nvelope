@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import type { WorkspaceSettings } from "@/lib/api-types"
 import { api } from "@/lib/api"
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/t/$slug/settings/")({
 
 export function SettingsView() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("settings")
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings(slug),
     queryFn: async () => (await api.getSettings(slug)).data,
@@ -31,9 +33,9 @@ export function SettingsView() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Settings</h1>
+        <h1 className="text-2xl font-semibold">{t("page.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Configure this workspace.
+          {t("page.description")}
         </p>
       </header>
 
@@ -52,12 +54,13 @@ function SettingsForm({
   settings: WorkspaceSettings
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["settings", "common"])
 
   const save = useMutation({
     mutationFn: (v: WorkspaceSettings) => api.updateSettings(slug, v),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.settings(slug) })
-      toast.success("Settings saved.")
+      toast.success(t("form.savedToast"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -75,10 +78,8 @@ function SettingsForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Workspace settings</CardTitle>
-        <CardDescription>
-          These values apply across the whole workspace.
-        </CardDescription>
+        <CardTitle>{t("form.title")}</CardTitle>
+        <CardDescription>{t("form.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -92,12 +93,12 @@ function SettingsForm({
           <form.Field
             name="display_name"
             validators={{
-              onBlur: compose(rules.required("Enter a display name.")),
+              onBlur: compose(rules.required(t("form.displayName.required"))),
             }}
           >
             {(field) => (
               <FormField
-                label="Display name"
+                label={t("form.displayName.label")}
                 required
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -109,8 +110,8 @@ function SettingsForm({
           <form.Field name="timezone">
             {(field) => (
               <FormField
-                label="Timezone"
-                hint="An IANA timezone, e.g. Europe/Berlin."
+                label={t("form.timezone.label")}
+                hint={t("form.timezone.hint")}
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
@@ -118,7 +119,7 @@ function SettingsForm({
           </form.Field>
           <div>
             <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? "Saving…" : "Save settings"}
+              {save.isPending ? t("common:actions.saving") : t("form.submit")}
             </Button>
           </div>
         </form>

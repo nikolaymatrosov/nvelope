@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { ImageIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { CampaignStatusBadge } from "./index"
 import type {
   CampaignView,
@@ -60,6 +61,7 @@ export const Route = createFileRoute("/t/$slug/campaigns/$id")({
 
 export function CampaignDetail() {
   const { slug, id } = Route.useParams()
+  const { t } = useTranslation("campaigns")
   const { can } = usePermissions(slug)
   const canManage = can("campaigns:manage")
   const { query } = useCampaign(slug, id)
@@ -72,7 +74,7 @@ export function CampaignDetail() {
           params={{ slug }}
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Campaigns
+          {t("detail.backToCampaigns")}
         </Link>
       </div>
 
@@ -86,7 +88,7 @@ export function CampaignDetail() {
                   params={{ slug, id: campaign.id }}
                   className="text-sm font-medium text-primary hover:underline"
                 >
-                  View analytics →
+                  {t("detail.viewAnalytics")}
                 </Link>
               </div>
             )}
@@ -131,6 +133,7 @@ function CampaignEditor({
   canManage: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["campaigns", "common"])
   const isDraft = campaign.status === "draft"
 
   const [domainId, setDomainId] = useState(campaign.sending_domain_id ?? "")
@@ -216,7 +219,7 @@ function CampaignEditor({
       }),
     onSuccess: async () => {
       await invalidate()
-      toast.success("Campaign saved.")
+      toast.success(t("detail.saveSuccess"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -249,11 +252,9 @@ function CampaignEditor({
       await invalidate()
       const warnings = res.data.warnings.length
       if (warnings > 0) {
-        toast.warning(
-          `Campaign saved with ${warnings} content warning${warnings === 1 ? "" : "s"}.`,
-        )
+        toast.warning(t("detail.saveWarnings", { count: warnings }))
       } else {
-        toast.success("Campaign saved.")
+        toast.success(t("detail.saveSuccess"))
       }
     },
     onError: (e, vars) => {
@@ -262,10 +263,10 @@ function CampaignEditor({
           typeof e.data?.currentUpdatedAt === "string"
             ? e.data.currentUpdatedAt
             : null
-        toast.warning("Changed in another tab/session", {
+        toast.warning(t("visual.staleTitle"), {
           duration: 12_000,
           action: {
-            label: "Reload",
+            label: t("visual.reload"),
             onClick: () => {
               void refetchCampaign()
             },
@@ -275,7 +276,7 @@ function CampaignEditor({
           // so Force-overwrite re-issues the same save with the fresh
           // token.
           cancel: {
-            label: "Force overwrite",
+            label: t("visual.forceOverwrite"),
             onClick: () => {
               if (!currentUpdatedAt) {
                 void refetchCampaign().then((fresh) => {
@@ -298,7 +299,7 @@ function CampaignEditor({
                 .then(async (res) => {
                   setIfUnmodifiedSince(res.data.updatedAt)
                   await invalidate()
-                  toast.success("Campaign saved.")
+                  toast.success(t("detail.saveSuccess"))
                 })
                 .catch((err) => toast.error(errorMessage(err)))
             },
@@ -321,12 +322,11 @@ function CampaignEditor({
       setEditorMode("visual")
       const warnings = res.data.warnings.length
       if (warnings > 0) {
-        toast.warning(
-          `Converted to visual editor with ${warnings} block${warnings === 1 ? "" : "s"} preserved as raw HTML. Review and save to keep the visual document.`,
-          { duration: 12_000 },
-        )
+        toast.warning(t("visual.convertedWarnings", { count: warnings }), {
+          duration: 12_000,
+        })
       } else {
-        toast.success("Converted to visual editor. Review and save to keep it.")
+        toast.success(t("visual.convertedSuccess"))
       }
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -341,7 +341,7 @@ function CampaignEditor({
       setEditorMode("code")
       setConfirmOptOut(false)
       await invalidate()
-      toast.success("Switched to HTML-only mode. The structured document was cleared.")
+      toast.success(t("visual.optOutSuccess"))
     },
     onError: (e) => {
       setConfirmOptOut(false)
@@ -353,7 +353,7 @@ function CampaignEditor({
     mutationFn: () => api.startCampaign(slug, campaign.id),
     onSuccess: async () => {
       await invalidate()
-      toast.success("Campaign started.")
+      toast.success(t("detail.startSuccess"))
       setConfirmStart(false)
       setSendBlock(null)
     },
@@ -378,8 +378,8 @@ function CampaignEditor({
       await invalidate()
       toast.success(
         visible
-          ? "Campaign is now visible in the public archive."
-          : "Campaign is hidden from the public archive.",
+          ? t("detail.archive.shown")
+          : t("detail.archive.hidden"),
       )
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -446,7 +446,7 @@ function CampaignEditor({
                 disabled={lifecycle.isPending}
                 onClick={() => lifecycle.mutate("pause")}
               >
-                Pause
+                {t("detail.actions.pause")}
               </Button>
             )}
             {campaign.status === "paused" && (
@@ -455,7 +455,7 @@ function CampaignEditor({
                 disabled={lifecycle.isPending}
                 onClick={() => lifecycle.mutate("resume")}
               >
-                Resume
+                {t("detail.actions.resume")}
               </Button>
             )}
             {(campaign.status === "running" ||
@@ -465,7 +465,7 @@ function CampaignEditor({
                 disabled={lifecycle.isPending}
                 onClick={() => setConfirmCancel(true)}
               >
-                Cancel campaign
+                {t("detail.actions.cancel")}
               </Button>
             )}
             {isDraft && (
@@ -473,7 +473,7 @@ function CampaignEditor({
                 disabled={!canStart}
                 onClick={() => setConfirmStart(true)}
               >
-                Start campaign
+                {t("detail.actions.start")}
               </Button>
             )}
           </div>
@@ -482,57 +482,54 @@ function CampaignEditor({
 
       {isDraft && !selectedDomainVerified && (
         <Alert>
-          <AlertTitle>A verified sending domain is required</AlertTitle>
+          <AlertTitle>{t("detail.domainRequired.title")}</AlertTitle>
           <AlertDescription>
-            Select a verified sending domain below before this campaign can be
-            started.
+            {t("detail.domainRequired.description")}
           </AlertDescription>
         </Alert>
       )}
 
       {sendBlock === "quota" && (
         <Alert variant="destructive" data-testid="campaign-quota-blocked">
-          <AlertTitle>Send allowance reached</AlertTitle>
+          <AlertTitle>{t("detail.quotaBlocked.title")}</AlertTitle>
           <AlertDescription>
-            This campaign was not started because the workspace has used its
-            plan's send allowance for the current period. Review your{" "}
+            {t("detail.quotaBlocked.descriptionBefore")}
             <Link
               to="/t/$slug/billing/usage"
               params={{ slug }}
               className="font-medium underline underline-offset-2"
             >
-              usage and plan
-            </Link>{" "}
-            to continue sending.
+              {t("detail.quotaBlocked.link")}
+            </Link>
+            {t("detail.quotaBlocked.descriptionAfter")}
           </AlertDescription>
         </Alert>
       )}
 
       {sendBlock === "suspended" && (
         <Alert variant="destructive" data-testid="campaign-suspended-blocked">
-          <AlertTitle>Account suspended</AlertTitle>
+          <AlertTitle>{t("detail.suspendedBlocked.title")}</AlertTitle>
           <AlertDescription>
-            This campaign was not started because the workspace is suspended
-            for non-payment. Settle the outstanding balance in{" "}
+            {t("detail.suspendedBlocked.descriptionBefore")}
             <Link
               to="/t/$slug/billing"
               params={{ slug }}
               className="font-medium underline underline-offset-2"
             >
-              billing
-            </Link>{" "}
-            to re-enable sending.
+              {t("detail.suspendedBlocked.link")}
+            </Link>
+            {t("detail.suspendedBlocked.descriptionAfter")}
           </AlertDescription>
         </Alert>
       )}
 
       {isAutoPaused(campaign) && (
         <Alert variant="destructive">
-          <AlertTitle>Campaign auto-paused</AlertTitle>
+          <AlertTitle>{t("detail.autoPaused.title")}</AlertTitle>
           <AlertDescription>
-            Sending was paused automatically after reaching{" "}
-            {campaign.max_send_errors} send errors. Review and resume, or
-            cancel the campaign.
+            {t("detail.autoPaused.description", {
+              count: campaign.max_send_errors,
+            })}
           </AlertDescription>
         </Alert>
       )}
@@ -544,10 +541,9 @@ function CampaignEditor({
       {campaign.status !== "draft" && canManage && (
         <Card data-testid="archive-visibility-card">
           <CardHeader>
-            <CardTitle>Public archive</CardTitle>
+            <CardTitle>{t("detail.archive.title")}</CardTitle>
             <CardDescription>
-              When enabled, this campaign appears in the tenant's public
-              archive index, on its standalone page, and in the RSS feed.
+              {t("detail.archive.description")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -558,7 +554,7 @@ function CampaignEditor({
                 onCheckedChange={(c) => archive.mutate(Boolean(c))}
                 data-testid="archive-visible-toggle"
               />
-              Visible in the public archive
+              {t("detail.archive.toggle")}
             </label>
           </CardContent>
         </Card>
@@ -575,21 +571,23 @@ function CampaignEditor({
         >
           <Card>
             <CardHeader>
-              <CardTitle>Content</CardTitle>
+              <CardTitle>{t("detail.content.title")}</CardTitle>
               <CardDescription>
-                Edit the campaign’s subject and content. HTML is sent as-is.
+                {t("detail.content.description")}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <form.Field
                 name="name"
                 validators={{
-                  onBlur: compose(rules.required("Enter a campaign name.")),
+                  onBlur: compose(
+                    rules.required(t("detail.content.nameRequired")),
+                  ),
                 }}
               >
                 {(field) => (
                   <FormField
-                    label="Name"
+                    label={t("detail.content.nameLabel")}
                     required
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -601,12 +599,14 @@ function CampaignEditor({
               <form.Field
                 name="subject"
                 validators={{
-                  onBlur: compose(rules.required("Enter a subject.")),
+                  onBlur: compose(
+                    rules.required(t("detail.content.subjectRequired")),
+                  ),
                 }}
               >
                 {(field) => (
                   <FormField
-                    label="Subject"
+                    label={t("detail.content.subjectLabel")}
                     required
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -617,7 +617,9 @@ function CampaignEditor({
               </form.Field>
               {editorMode === "visual" && canManage ? (
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="campaign-visual-editor">Body</Label>
+                  <Label htmlFor="campaign-visual-editor">
+                    {t("detail.content.bodyLabel")}
+                  </Label>
                   <VisualEmailEditor
                     slug={slug}
                     value={bodyDoc}
@@ -637,7 +639,9 @@ function CampaignEditor({
                     {(field) => (
                       <div className="flex flex-col gap-1.5">
                         <div className="flex items-center justify-between">
-                          <Label htmlFor="campaign-body-html">HTML body</Label>
+                          <Label htmlFor="campaign-body-html">
+                            {t("detail.content.htmlBodyLabel")}
+                          </Label>
                           <div className="flex items-center gap-2">
                             {canManage && field.state.value.trim() !== "" && !campaign.body_doc && (
                               <Button
@@ -649,8 +653,8 @@ function CampaignEditor({
                                 data-testid="convert-to-visual"
                               >
                                 {convertToVisual.isPending
-                                  ? "Converting…"
-                                  : "Convert to visual editor"}
+                                  ? t("visual.converting")
+                                  : t("visual.convert")}
                               </Button>
                             )}
                             {canPickMedia && (
@@ -661,7 +665,8 @@ function CampaignEditor({
                                 onClick={() => setMediaPickerOpen(true)}
                                 data-testid="open-media-picker"
                               >
-                                <ImageIcon /> Insert from media library
+                                <ImageIcon />{" "}
+                                {t("detail.content.insertFromMedia")}
                               </Button>
                             )}
                           </div>
@@ -705,7 +710,7 @@ function CampaignEditor({
                   </form.Field>
                   <form.Field name="bodyText">
                     {(field) => (
-                      <FormField label="Plain-text body">
+                      <FormField label={t("detail.content.textBodyLabel")}>
                         <Textarea
                           rows={5}
                           value={field.state.value}
@@ -721,14 +726,14 @@ function CampaignEditor({
 
           <Card>
             <CardHeader>
-              <CardTitle>Sender</CardTitle>
+              <CardTitle>{t("detail.sender.title")}</CardTitle>
               <CardDescription>
-                Choose a verified sending domain and the from address.
+                {t("detail.sender.description")}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label>Sending domain</Label>
+                <Label>{t("detail.sender.domainLabel")}</Label>
                 <Select
                   value={domainId || "none"}
                   onValueChange={(v) =>
@@ -736,10 +741,14 @@ function CampaignEditor({
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a verified domain" />
+                    <SelectValue
+                      placeholder={t("detail.sender.domainPlaceholder")}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No domain selected</SelectItem>
+                    <SelectItem value="none">
+                      {t("detail.sender.noDomain")}
+                    </SelectItem>
                     {verifiedDomains.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.domain}
@@ -749,8 +758,7 @@ function CampaignEditor({
                 </Select>
                 {verifiedDomains.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    No verified domains yet. Verify a domain under Sending
-                    Domains first.
+                    {t("detail.sender.noVerifiedDomains")}
                   </p>
                 )}
               </div>
@@ -758,7 +766,7 @@ function CampaignEditor({
                 <form.Field name="fromName">
                   {(field) => (
                     <FormField
-                      label="From name"
+                      label={t("detail.sender.fromNameLabel")}
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                     />
@@ -767,8 +775,8 @@ function CampaignEditor({
                 <form.Field name="fromLocalPart">
                   {(field) => (
                     <FormField
-                      label="From address (local part)"
-                      placeholder="news"
+                      label={t("detail.sender.fromLocalPartLabel")}
+                      placeholder={t("detail.sender.fromLocalPartPlaceholder")}
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                     />
@@ -780,17 +788,17 @@ function CampaignEditor({
 
           <Card>
             <CardHeader>
-              <CardTitle>Recipients</CardTitle>
+              <CardTitle>{t("detail.recipients.title")}</CardTitle>
               <CardDescription>
-                Select one or more lists to send to.
+                {t("detail.recipients.description")}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <AsyncState
                 query={listsQuery}
                 isEmpty={(d) => d.length === 0}
-                emptyTitle="No lists"
-                emptyMessage="Create a list of subscribers to target."
+                emptyTitle={t("detail.recipients.emptyTitle")}
+                emptyMessage={t("detail.recipients.emptyMessage")}
               >
                 {(lists) => (
                   <div className="flex flex-col gap-2">
@@ -825,8 +833,8 @@ function CampaignEditor({
                 disabled={save.isPending || saveVisual.isPending}
               >
                 {save.isPending || saveVisual.isPending
-                  ? "Saving…"
-                  : "Save changes"}
+                  ? t("detail.saving")
+                  : t("detail.save")}
               </Button>
             </div>
           )}
@@ -834,15 +842,19 @@ function CampaignEditor({
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Content</CardTitle>
+            <CardTitle>{t("detail.content.title")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm">
             <p>
-              <span className="text-muted-foreground">Subject: </span>
+              <span className="text-muted-foreground">
+                {t("detail.summary.subjectLabel")}
+              </span>
               {campaign.subject}
             </p>
             <p>
-              <span className="text-muted-foreground">From: </span>
+              <span className="text-muted-foreground">
+                {t("detail.summary.fromLabel")}
+              </span>
               {campaign.from_name} &lt;{campaign.from_local_part}&gt;
             </p>
           </CardContent>
@@ -852,9 +864,9 @@ function CampaignEditor({
       <ConfirmDialog
         open={confirmStart}
         onOpenChange={setConfirmStart}
-        title="Start this campaign?"
-        description="Sending begins immediately and cannot be undone. You can pause or cancel it once running."
-        confirmLabel="Start sending"
+        title={t("detail.confirmStart.title")}
+        description={t("detail.confirmStart.description")}
+        confirmLabel={t("detail.confirmStart.confirm")}
         busy={start.isPending}
         onConfirm={() => start.mutate()}
       />
@@ -862,9 +874,9 @@ function CampaignEditor({
       <ConfirmDialog
         open={confirmCancel}
         onOpenChange={setConfirmCancel}
-        title="Cancel this campaign?"
-        description="The campaign will stop sending and cannot be resumed."
-        confirmLabel="Cancel campaign"
+        title={t("detail.confirmCancel.title")}
+        description={t("detail.confirmCancel.description")}
+        confirmLabel={t("detail.confirmCancel.confirm")}
         busy={lifecycle.isPending}
         onConfirm={() => lifecycle.mutate("cancel")}
       />
@@ -872,12 +884,9 @@ function CampaignEditor({
       <Dialog open={confirmOptOut} onOpenChange={setConfirmOptOut}>
         <DialogContent data-testid="opt-out-visual-dialog">
           <DialogHeader>
-            <DialogTitle>Switch to HTML-only editing?</DialogTitle>
+            <DialogTitle>{t("visual.optOut.title")}</DialogTitle>
             <DialogDescription>
-              Your structured visual document will be discarded. The last
-              saved HTML body stays intact so the campaign remains sendable,
-              but blocks, columns, and merge-tag chips will no longer be
-              available unless you convert back later.
+              {t("visual.optOut.description")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -886,7 +895,7 @@ function CampaignEditor({
               variant="outline"
               onClick={() => setConfirmOptOut(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               type="button"
@@ -895,7 +904,9 @@ function CampaignEditor({
               onClick={() => optOutVisual.mutate()}
               data-testid="opt-out-visual-confirm"
             >
-              {optOutVisual.isPending ? "Switching…" : "Switch to HTML only"}
+              {optOutVisual.isPending
+                ? t("visual.optOut.switching")
+                : t("visual.optOut.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -905,27 +916,32 @@ function CampaignEditor({
 }
 
 function SendProgress({ campaign }: { campaign: CampaignView }) {
+  const { t } = useTranslation("campaigns")
   const { sent, failed, remaining, total } = campaignProgress(campaign)
   const done = total > 0 ? Math.round(((sent + failed) / total) * 100) : 0
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Send progress</CardTitle>
+        <CardTitle>{t("sendProgress.title")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <Progress value={done} />
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
             <p className="text-2xl font-semibold">{sent}</p>
-            <p className="text-muted-foreground">Sent</p>
+            <p className="text-muted-foreground">{t("sendProgress.sent")}</p>
           </div>
           <div>
             <p className="text-2xl font-semibold">{failed}</p>
-            <p className="text-muted-foreground">Failed</p>
+            <p className="text-muted-foreground">
+              {t("sendProgress.failed")}
+            </p>
           </div>
           <div>
             <p className="text-2xl font-semibold">{remaining}</p>
-            <p className="text-muted-foreground">Remaining</p>
+            <p className="text-muted-foreground">
+              {t("sendProgress.remaining")}
+            </p>
           </div>
         </div>
       </CardContent>

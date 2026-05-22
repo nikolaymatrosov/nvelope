@@ -66,12 +66,10 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # Advisory while the string migration is in progress — surfaces
-      # remaining hardcoded UI strings. Flip to a hard gate once every
-      # feature area has been migrated to t().
+      # Hard gate: every feature area is migrated to t(); a new hardcoded
+      # UI string (or an en/ru key-parity gap) fails the build.
       - name: i18n key lint
         run: pnpm i18n:lint
-        continue-on-error: true
 
       - name: Test
         run: pnpm test

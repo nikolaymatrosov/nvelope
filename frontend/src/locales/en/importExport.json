@@ -1,0 +1,59 @@
+{
+  "export": {
+    "cardDescription": "Choose what to export. The result downloads as a CSV.",
+    "cardTitle": "Export subscribers",
+    "downloadCsv": "Download CSV",
+    "listLabel": "List",
+    "listPlaceholder": "Choose a list…",
+    "selectionAll": "All subscribers",
+    "selectionLabel": "Selection",
+    "selectionList": "A list",
+    "selectionSegment": "A segment",
+    "start": "Start export",
+    "started": "Export started."
+  },
+  "import": {
+    "cardDescription": "Upload a CSV or ZIP file and choose which lists to add subscribers to.",
+    "cardTitle": "Import subscribers",
+    "fileLabel": "CSV or ZIP file",
+    "noLists": "No lists available.",
+    "start": "Start import",
+    "started": "Import started.",
+    "targetLists": "Target lists"
+  },
+  "index": {
+    "description": "Bring subscribers in from a CSV, or export them out.",
+    "title": "Import / Export"
+  },
+  "job": {
+    "createdCount_few": "{{count}} created",
+    "createdCount_many": "{{count}} created",
+    "createdCount_one": "{{count}} created",
+    "createdCount_other": "{{count}} created",
+    "failedCount_few": "{{count}} failed",
+    "failedCount_many": "{{count}} failed",
+    "failedCount_one": "{{count}} failed",
+    "failedCount_other": "{{count}} failed",
+    "rowCount_few": "{{count}} rows",
+    "rowCount_many": "{{count}} rows",
+    "rowCount_one": "{{count}} row",
+    "rowCount_other": "{{count}} rows",
+    "rowFailure": "Row {{row}}: {{reason}}",
+    "rowFailures": "Row failures",
+    "status": "Status",
+    "updatedCount_few": "{{count}} updated",
+    "updatedCount_many": "{{count}} updated",
+    "updatedCount_one": "{{count}} updated",
+    "updatedCount_other": "{{count}} updated"
+  },
+  "permissionNotice": {
+    "description": "You need the “{{permission}}” permission to {{action}}. Ask a workspace admin to grant it.",
+    "exportAction": "export subscribers",
+    "importAction": "import subscribers",
+    "title": "Not available"
+  },
+  "tabs": {
+    "export": "Export",
+    "import": "Import"
+  }
+}

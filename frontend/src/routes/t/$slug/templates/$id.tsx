@@ -3,6 +3,7 @@ import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { TemplateView, Theme, VisualDoc } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -36,6 +37,7 @@ export const Route = createFileRoute("/t/$slug/templates/$id")({
 
 export function TemplateDetail() {
   const { slug, id } = Route.useParams()
+  const { t } = useTranslation("templates")
   const { can } = usePermissions(slug)
   const canManage = can("campaigns:manage")
 
@@ -52,7 +54,7 @@ export function TemplateDetail() {
           params={{ slug }}
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Templates
+          {t("detail.backToTemplates")}
         </Link>
       </div>
 
@@ -100,6 +102,7 @@ function EditTemplateCard({
   canManage: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["templates", "common"])
 
   // Mode is mutable so the operator can convert a legacy raw-HTML
   // template to visual (T092) or opt out of the visual editor on a
@@ -149,7 +152,7 @@ function EditTemplateCard({
       }),
     onSuccess: async () => {
       await invalidate()
-      toast.success("Template saved.")
+      toast.success(t("detail.saveSuccess"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -165,12 +168,11 @@ function EditTemplateCard({
       setEditorMode("visual")
       const warnings = res.data.warnings.length
       if (warnings > 0) {
-        toast.warning(
-          `Converted to visual editor with ${warnings} block${warnings === 1 ? "" : "s"} preserved as raw HTML. Review and save to keep the visual document.`,
-          { duration: 12_000 },
-        )
+        toast.warning(t("visual.convertedWarnings", { count: warnings }), {
+          duration: 12_000,
+        })
       } else {
-        toast.success("Converted to visual editor. Review and save to keep it.")
+        toast.success(t("visual.convertedSuccess"))
       }
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -184,7 +186,7 @@ function EditTemplateCard({
       setEditorMode("code")
       setConfirmOptOut(false)
       await invalidate()
-      toast.success("Switched to HTML-only mode. The structured document was cleared.")
+      toast.success(t("visual.optOutSuccess"))
     },
     onError: (e) => {
       setConfirmOptOut(false)
@@ -223,11 +225,9 @@ function EditTemplateCard({
       await invalidate()
       const warnings = res.data.warnings.length
       if (warnings > 0) {
-        toast.warning(
-          `Template saved with ${warnings} content warning${warnings === 1 ? "" : "s"}.`,
-        )
+        toast.warning(t("detail.saveWarnings", { count: warnings }))
       } else {
-        toast.success("Template saved.")
+        toast.success(t("detail.saveSuccess"))
       }
     },
     onError: (e, vars) => {
@@ -236,16 +236,16 @@ function EditTemplateCard({
           typeof e.data?.currentUpdatedAt === "string"
             ? e.data.currentUpdatedAt
             : null
-        toast.warning("Changed in another tab/session", {
+        toast.warning(t("visual.staleTitle"), {
           duration: 12_000,
           action: {
-            label: "Reload",
+            label: t("visual.reload"),
             onClick: () => {
               void refetchTemplate()
             },
           },
           cancel: {
-            label: "Force overwrite",
+            label: t("visual.forceOverwrite"),
             onClick: () => {
               if (!currentUpdatedAt) {
                 void refetchTemplate().then((fresh) => {
@@ -267,7 +267,7 @@ function EditTemplateCard({
                 .then(async (res) => {
                   setIfUnmodifiedSince(res.data.updatedAt)
                   await invalidate()
-                  toast.success("Template saved.")
+                  toast.success(t("detail.saveSuccess"))
                 })
                 .catch((err) => toast.error(errorMessage(err)))
             },
@@ -312,7 +312,7 @@ function EditTemplateCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           {template.name}
-          <Badge variant="secondary">{template.kind}</Badge>
+          <Badge variant="secondary">{t(`kind.${template.kind}`)}</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -327,12 +327,12 @@ function EditTemplateCard({
           <form.Field
             name="name"
             validators={{
-              onBlur: compose(rules.required("Enter a template name.")),
+              onBlur: compose(rules.required(t("detail.nameRequired"))),
             }}
           >
             {(field) => (
               <FormField
-                label="Name"
+                label={t("detail.nameLabel")}
                 required
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -344,12 +344,12 @@ function EditTemplateCard({
           <form.Field
             name="subject"
             validators={{
-              onBlur: compose(rules.required("Enter a subject.")),
+              onBlur: compose(rules.required(t("detail.subjectRequired"))),
             }}
           >
             {(field) => (
               <FormField
-                label="Subject"
+                label={t("detail.subjectLabel")}
                 required
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -360,7 +360,9 @@ function EditTemplateCard({
           </form.Field>
           {editorMode === "visual" && canManage ? (
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="template-visual-editor">Body</Label>
+              <Label htmlFor="template-visual-editor">
+                {t("detail.bodyLabel")}
+              </Label>
               <VisualEmailEditor
                 slug={slug}
                 value={bodyDoc}
@@ -380,7 +382,7 @@ function EditTemplateCard({
                 {(field) => (
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center justify-between">
-                      <Label>HTML body</Label>
+                      <Label>{t("detail.htmlBodyLabel")}</Label>
                       {canManage &&
                         template.kind === "campaign" &&
                         field.state.value.trim() !== "" &&
@@ -394,8 +396,8 @@ function EditTemplateCard({
                             data-testid="convert-to-visual"
                           >
                             {convertToVisual.isPending
-                              ? "Converting…"
-                              : "Convert to visual editor"}
+                              ? t("visual.converting")
+                              : t("visual.convert")}
                           </Button>
                         )}
                     </div>
@@ -409,7 +411,7 @@ function EditTemplateCard({
               </form.Field>
               <form.Field name="bodyText">
                 {(field) => (
-                  <FormField label="Plain-text body">
+                  <FormField label={t("detail.textBodyLabel")}>
                     <Textarea
                       rows={5}
                       value={field.state.value}
@@ -427,8 +429,8 @@ function EditTemplateCard({
                 disabled={save.isPending || saveVisual.isPending}
               >
                 {save.isPending || saveVisual.isPending
-                  ? "Saving…"
-                  : "Save changes"}
+                  ? t("detail.saving")
+                  : t("detail.save")}
               </Button>
             </div>
           )}
@@ -438,12 +440,9 @@ function EditTemplateCard({
       <Dialog open={confirmOptOut} onOpenChange={setConfirmOptOut}>
         <DialogContent data-testid="opt-out-visual-dialog">
           <DialogHeader>
-            <DialogTitle>Switch to HTML-only editing?</DialogTitle>
+            <DialogTitle>{t("visual.optOut.title")}</DialogTitle>
             <DialogDescription>
-              Your structured visual document will be discarded. The last
-              saved HTML body stays intact so the template remains usable,
-              but blocks, columns, and merge-tag chips will no longer be
-              available unless you convert back later.
+              {t("visual.optOut.description")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -452,7 +451,7 @@ function EditTemplateCard({
               variant="outline"
               onClick={() => setConfirmOptOut(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               type="button"
@@ -461,7 +460,9 @@ function EditTemplateCard({
               onClick={() => optOutVisual.mutate()}
               data-testid="opt-out-visual-confirm"
             >
-              {optOutVisual.isPending ? "Switching…" : "Switch to HTML only"}
+              {optOutVisual.isPending
+                ? t("visual.optOut.switching")
+                : t("visual.optOut.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

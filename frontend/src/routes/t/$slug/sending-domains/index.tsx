@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon, RefreshCwIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { DomainStatus } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -38,13 +39,17 @@ const STATUS_VARIANT: Record<
 }
 
 export function StatusBadge({ status }: { status: DomainStatus }) {
-  return <Badge variant={STATUS_VARIANT[status]}>{status}</Badge>
+  const { t } = useTranslation("sendingDomains")
+  return (
+    <Badge variant={STATUS_VARIANT[status]}>{t(`status.${status}`)}</Badge>
+  )
 }
 
 export function SendingDomainsView() {
   const { slug } = Route.useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("sendingDomains")
   const { can } = usePermissions(slug)
   const canManage = can("sending:manage")
   const [createOpen, setCreateOpen] = useState(false)
@@ -57,7 +62,7 @@ export function SendingDomainsView() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sendingDomains(slug),
       })
-      toast.success("Re-check requested.")
+      toast.success(t("index.recheckRequested"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -66,14 +71,14 @@ export function SendingDomainsView() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Sending domains</h1>
+          <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Verify the domains you send mail from.
+            {t("index.description")}
           </p>
         </div>
         {canManage && (
           <Button onClick={() => setCreateOpen(true)}>
-            <PlusIcon /> Add domain
+            <PlusIcon /> {t("index.addDomain")}
           </Button>
         )}
       </header>
@@ -81,12 +86,12 @@ export function SendingDomainsView() {
       <AsyncState
         query={query}
         isEmpty={(d) => d.length === 0}
-        emptyTitle="No sending domains yet"
-        emptyMessage="Add a domain to publish its DNS records and start sending."
+        emptyTitle={t("index.emptyTitle")}
+        emptyMessage={t("index.emptyMessage")}
         emptyAction={
           canManage ? (
             <Button onClick={() => setCreateOpen(true)}>
-              <PlusIcon /> Add domain
+              <PlusIcon /> {t("index.addDomain")}
             </Button>
           ) : undefined
         }
@@ -107,7 +112,9 @@ export function SendingDomainsView() {
                 <div className="flex-1">
                   <p className="text-sm font-medium">{domain.domain}</p>
                   <p className="text-xs text-muted-foreground">
-                    Added {formatDate(domain.created_at)}
+                    {t("index.added", {
+                      date: formatDate(domain.created_at),
+                    })}
                   </p>
                 </div>
                 <StatusBadge status={domain.status} />
@@ -115,7 +122,7 @@ export function SendingDomainsView() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Re-check domain"
+                    aria-label={t("index.recheckAria")}
                     disabled={recheck.isPending}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -151,6 +158,7 @@ function AddDomainDialog({
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { t } = useTranslation(["sendingDomains", "common"])
 
   const create = useMutation({
     mutationFn: (domain: string) => api.addSendingDomain(slug, domain.trim()),
@@ -158,7 +166,7 @@ function AddDomainDialog({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sendingDomains(slug),
       })
-      toast.success("Domain added. Publish its DNS records to verify it.")
+      toast.success(t("create.success"))
       onOpenChange(false)
       form.reset()
       navigate({
@@ -180,11 +188,8 @@ function AddDomainDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a sending domain</DialogTitle>
-          <DialogDescription>
-            Enter the domain you want to send mail from. You will be shown the
-            DNS records to publish.
-          </DialogDescription>
+          <DialogTitle>{t("create.title")}</DialogTitle>
+          <DialogDescription>{t("create.description")}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -197,15 +202,15 @@ function AddDomainDialog({
           <form.Field
             name="domain"
             validators={{
-              onBlur: compose(rules.required("Enter a domain name.")),
+              onBlur: compose(rules.required(t("create.domainRequired"))),
             }}
           >
             {(field) => (
               <FormField
-                label="Domain"
+                label={t("create.domainLabel")}
                 required
                 autoFocus
-                placeholder="mail.example.com"
+                placeholder={t("create.domainPlaceholder")}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
@@ -219,10 +224,10 @@ function AddDomainDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Adding…" : "Add domain"}
+              {create.isPending ? t("create.submitting") : t("create.submit")}
             </Button>
           </DialogFooter>
         </form>

@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { RefreshCwIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import { StatusBadge } from "./index"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -29,6 +30,7 @@ const POLL_INTERVAL_MS = 5000
 export function SendingDomainDetail() {
   const { slug, id } = Route.useParams()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("sendingDomains")
   const { can } = usePermissions(slug)
   const canManage = can("sending:manage")
 
@@ -49,7 +51,7 @@ export function SendingDomainDetail() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sendingDomains(slug),
       })
-      toast.success("Re-check requested.")
+      toast.success(t("detail.recheckRequested"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -62,7 +64,7 @@ export function SendingDomainDetail() {
           params={{ slug }}
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Sending domains
+          {t("detail.back")}
         </Link>
       </div>
 
@@ -80,36 +82,38 @@ export function SendingDomainDetail() {
                   disabled={recheck.isPending}
                   onClick={() => recheck.mutate()}
                 >
-                  <RefreshCwIcon /> Re-check now
+                  <RefreshCwIcon /> {t("detail.recheckNow")}
                 </Button>
               )}
             </header>
 
             {domain.status === "failed" && domain.failure_reason && (
               <Alert variant="destructive">
-                <AlertTitle>Verification failed</AlertTitle>
+                <AlertTitle>{t("detail.failedTitle")}</AlertTitle>
                 <AlertDescription>{domain.failure_reason}</AlertDescription>
               </Alert>
             )}
 
             {domain.status === "verified" && (
               <Alert>
-                <AlertTitle>Domain verified</AlertTitle>
+                <AlertTitle>{t("detail.verifiedTitle")}</AlertTitle>
                 <AlertDescription>
-                  Verified {formatDateTime(domain.verified_at)}. You can send
-                  campaigns and transactional mail from this domain.
+                  {t("detail.verifiedMessage", {
+                    date: formatDateTime(domain.verified_at),
+                  })}
                 </AlertDescription>
               </Alert>
             )}
 
             <Card>
               <CardHeader>
-                <CardTitle>DNS records</CardTitle>
+                <CardTitle>{t("detail.dnsTitle")}</CardTitle>
                 <CardDescription>
-                  Publish these records at your DNS provider. Verification runs
-                  automatically once they are visible.
+                  {t("detail.dnsDescription")}
                   {domain.last_checked_at
-                    ? ` Last checked ${formatDateTime(domain.last_checked_at)}.`
+                    ? t("detail.lastChecked", {
+                        date: formatDateTime(domain.last_checked_at),
+                      })
                     : ""}
                 </CardDescription>
               </CardHeader>
@@ -117,14 +121,20 @@ export function SendingDomainDetail() {
                 {domain.dkim_records.map((record, i) => (
                   <DnsRecordRow
                     key={`dkim-${i}`}
-                    recordType={`DKIM (${record.type})`}
+                    recordType={t("detail.dkimRecordType", {
+                      type: record.type,
+                    })}
                     host={record.name}
                     value={record.value}
                   />
                 ))}
-                <DnsRecordRow recordType="SPF (TXT)" host="@" value={domain.spf_record} />
                 <DnsRecordRow
-                  recordType="DMARC (TXT)"
+                  recordType={t("detail.spfRecordType")}
+                  host="@"
+                  value={domain.spf_record}
+                />
+                <DnsRecordRow
+                  recordType={t("detail.dmarcRecordType")}
                   host="_dmarc"
                   value={domain.dmarc_record}
                 />

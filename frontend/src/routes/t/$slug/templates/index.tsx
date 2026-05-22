@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { TemplateKind, TemplateView } from "@/lib/api-types"
 import type { ColumnDef } from "@/components/common/data-table"
 import { api } from "@/lib/api"
@@ -44,6 +45,7 @@ export function TemplatesView() {
   const { slug } = Route.useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("templates")
   const { can } = usePermissions(slug)
   const canManage = can("campaigns:manage")
   const [offset, setOffset] = useState(0)
@@ -62,7 +64,7 @@ export function TemplatesView() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.templates(slug),
       })
-      toast.success("Template deleted.")
+      toast.success(t("list.deleteSuccess"))
       setDeleting(null)
     },
     onError: (e) => {
@@ -72,24 +74,24 @@ export function TemplatesView() {
   })
 
   const columns: Array<ColumnDef<TemplateView, unknown>> = [
-    { accessorKey: "name", header: "Name" },
+    { accessorKey: "name", header: t("list.columns.name") },
     {
       accessorKey: "kind",
-      header: "Kind",
+      header: t("list.columns.kind"),
       cell: ({ row }) => (
-        <Badge variant="secondary">{row.original.kind}</Badge>
+        <Badge variant="secondary">{t(`kind.${row.original.kind}`)}</Badge>
       ),
     },
     {
       accessorKey: "subject",
-      header: "Subject",
+      header: t("list.columns.subject"),
       cell: ({ row }) => (
         <span className="text-muted-foreground">{row.original.subject}</span>
       ),
     },
     {
       accessorKey: "updated_at",
-      header: "Updated",
+      header: t("list.columns.updated"),
       cell: ({ row }) => formatDate(row.original.updated_at),
     },
     {
@@ -100,7 +102,7 @@ export function TemplatesView() {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Delete template"
+            aria-label={t("list.deleteAction")}
             onClick={(e) => {
               e.stopPropagation()
               setDeleting(row.original)
@@ -116,14 +118,14 @@ export function TemplatesView() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Templates</h1>
+          <h1 className="text-2xl font-semibold">{t("list.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Reusable content for campaigns and transactional mail.
+            {t("list.description")}
           </p>
         </div>
         {canManage && (
           <Button onClick={() => setCreateOpen(true)}>
-            <PlusIcon /> New template
+            <PlusIcon /> {t("list.newTemplate")}
           </Button>
         )}
       </header>
@@ -131,12 +133,12 @@ export function TemplatesView() {
       <AsyncState
         query={templatesQuery}
         isEmpty={(d) => d.total === 0}
-        emptyTitle="No templates yet"
-        emptyMessage="Create a template to reuse content across campaigns."
+        emptyTitle={t("list.emptyTitle")}
+        emptyMessage={t("list.emptyMessage")}
         emptyAction={
           canManage ? (
             <Button onClick={() => setCreateOpen(true)}>
-              <PlusIcon /> New template
+              <PlusIcon /> {t("list.newTemplate")}
             </Button>
           ) : undefined
         }
@@ -169,9 +171,9 @@ export function TemplatesView() {
       <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title="Delete this template?"
-        description="The template will be removed. Campaigns already built from it keep their content."
-        confirmLabel="Delete template"
+        title={t("list.confirmDelete.title")}
+        description={t("list.confirmDelete.description")}
+        confirmLabel={t("list.confirmDelete.confirm")}
         busy={remove.isPending}
         onConfirm={() => deleting && remove.mutate(deleting.id)}
       />
@@ -189,6 +191,7 @@ function CreateTemplateDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["templates", "common"])
   const [kind, setKind] = useState<TemplateKind>("campaign")
 
   const create = useMutation({
@@ -209,7 +212,7 @@ function CreateTemplateDialog({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.templates(slug),
       })
-      toast.success("Template created.")
+      toast.success(t("create.success"))
       onOpenChange(false)
       setKind("campaign")
       form.reset()
@@ -228,10 +231,8 @@ function CreateTemplateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New template</DialogTitle>
-          <DialogDescription>
-            Templates can be used for campaigns or transactional sending.
-          </DialogDescription>
+          <DialogTitle>{t("create.title")}</DialogTitle>
+          <DialogDescription>{t("create.description")}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -244,12 +245,12 @@ function CreateTemplateDialog({
           <form.Field
             name="name"
             validators={{
-              onBlur: compose(rules.required("Enter a template name.")),
+              onBlur: compose(rules.required(t("create.nameRequired"))),
             }}
           >
             {(field) => (
               <FormField
-                label="Name"
+                label={t("create.nameLabel")}
                 required
                 autoFocus
                 value={field.state.value}
@@ -260,7 +261,7 @@ function CreateTemplateDialog({
             )}
           </form.Field>
           <div className="flex flex-col gap-1.5">
-            <Label>Type</Label>
+            <Label>{t("create.typeLabel")}</Label>
             <Select
               value={kind}
               onValueChange={(v) => setKind(v as TemplateKind)}
@@ -269,20 +270,22 @@ function CreateTemplateDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="campaign">Campaign</SelectItem>
-                <SelectItem value="transactional">Transactional</SelectItem>
+                <SelectItem value="campaign">{t("kind.campaign")}</SelectItem>
+                <SelectItem value="transactional">
+                  {t("kind.transactional")}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <form.Field
             name="subject"
             validators={{
-              onBlur: compose(rules.required("Enter a subject.")),
+              onBlur: compose(rules.required(t("create.subjectRequired"))),
             }}
           >
             {(field) => (
               <FormField
-                label="Subject"
+                label={t("create.subjectLabel")}
                 required
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -293,7 +296,7 @@ function CreateTemplateDialog({
           </form.Field>
           <form.Field name="bodyHtml">
             {(field) => (
-              <FormField label="HTML body">
+              <FormField label={t("create.htmlBodyLabel")}>
                 <Textarea
                   rows={6}
                   value={field.state.value}
@@ -304,7 +307,7 @@ function CreateTemplateDialog({
           </form.Field>
           <form.Field name="bodyText">
             {(field) => (
-              <FormField label="Plain-text body">
+              <FormField label={t("create.textBodyLabel")}>
                 <Textarea
                   rows={4}
                   value={field.state.value}
@@ -319,10 +322,10 @@ function CreateTemplateDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating…" : "Create template"}
+              {create.isPending ? t("create.submitting") : t("create.submit")}
             </Button>
           </DialogFooter>
         </form>

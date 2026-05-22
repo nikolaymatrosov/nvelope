@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon, SearchIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { Node, Subscriber } from "@/lib/api-types"
 import type { ColumnDef } from "@/components/common/data-table"
 import { api } from "@/lib/api"
@@ -35,50 +36,56 @@ export const Route = createFileRoute("/t/$slug/subscribers/")({
   component: SubscribersView,
 })
 
-const columns: Array<ColumnDef<Subscriber, unknown>> = [
-  { accessorKey: "Email", header: "Email" },
-  {
-    accessorKey: "Name",
-    header: "Name",
-    cell: ({ row }) => row.original.Name || "—",
-  },
-  {
-    accessorKey: "State",
-    header: "State",
-    cell: ({ row }) => <Badge variant="secondary">{row.original.State}</Badge>,
-  },
-  {
-    id: "lists",
-    header: "Lists",
-    cell: ({ row }) => row.original.Memberships.length,
-  },
-]
+function useSubscriberColumns(): Array<ColumnDef<Subscriber, unknown>> {
+  const { t } = useTranslation("subscribers")
+  return [
+    { accessorKey: "Email", header: t("list.columns.email") },
+    {
+      accessorKey: "Name",
+      header: t("list.columns.name"),
+      cell: ({ row }) => row.original.Name || "—",
+    },
+    {
+      accessorKey: "State",
+      header: t("list.columns.state"),
+      cell: ({ row }) => (
+        <Badge variant="secondary">{row.original.State}</Badge>
+      ),
+    },
+    {
+      id: "lists",
+      header: t("list.columns.lists"),
+      cell: ({ row }) => row.original.Memberships.length,
+    },
+  ]
+}
 
 export function SubscribersView() {
   const { slug } = Route.useParams()
   const { can } = usePermissions(slug)
+  const { t } = useTranslation("subscribers")
   const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Subscribers</h1>
+          <h1 className="text-2xl font-semibold">{t("list.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Search, segment, and manage subscribers.
+            {t("list.description")}
           </p>
         </div>
         {can("subscribers:manage") && (
           <Button onClick={() => setCreateOpen(true)}>
-            <PlusIcon /> New subscriber
+            <PlusIcon /> {t("list.newSubscriber")}
           </Button>
         )}
       </header>
 
       <Tabs defaultValue="search">
         <TabsList>
-          <TabsTrigger value="search">Search</TabsTrigger>
-          <TabsTrigger value="segment">Segment query</TabsTrigger>
+          <TabsTrigger value="search">{t("list.tabs.search")}</TabsTrigger>
+          <TabsTrigger value="segment">{t("list.tabs.segment")}</TabsTrigger>
         </TabsList>
         <TabsContent value="search">
           <SearchPanel slug={slug} />
@@ -99,6 +106,8 @@ export function SubscribersView() {
 
 function SearchPanel({ slug }: { slug: string }) {
   const navigate = useNavigate()
+  const { t } = useTranslation("subscribers")
+  const columns = useSubscriberColumns()
   const [term, setTerm] = useState("")
   const [query, setQuery] = useState("")
   const [offset, setOffset] = useState(0)
@@ -121,19 +130,19 @@ function SearchPanel({ slug }: { slug: string }) {
         }}
       >
         <Input
-          placeholder="Search by email or name"
+          placeholder={t("list.search.placeholder")}
           value={term}
           onChange={(e) => setTerm(e.target.value)}
         />
         <Button type="submit" variant="outline">
-          <SearchIcon /> Search
+          <SearchIcon /> {t("list.search.submit")}
         </Button>
       </form>
       <AsyncState
         query={subscribersQuery}
         isEmpty={(d) => d.total === 0}
-        emptyTitle="No subscribers found"
-        emptyMessage="No subscribers match this search."
+        emptyTitle={t("list.search.emptyTitle")}
+        emptyMessage={t("list.search.emptyMessage")}
       >
         {(data) => (
           <DataTable
@@ -159,6 +168,8 @@ function SearchPanel({ slug }: { slug: string }) {
 
 function SegmentPanel({ slug }: { slug: string }) {
   const navigate = useNavigate()
+  const { t } = useTranslation("subscribers")
+  const columns = useSubscriberColumns()
   const [draft, setDraft] = useState<Node>(emptyGroup())
   const [active, setActive] = useState<Node | null>(null)
   const [offset, setOffset] = useState(0)
@@ -181,21 +192,20 @@ function SegmentPanel({ slug }: { slug: string }) {
             setActive(draft)
           }}
         >
-          Run query
+          {t("list.segment.run")}
         </Button>
       </div>
       {active !== null && (
         <AsyncState
           query={segmentQuery}
           isEmpty={(d) => d.total === 0}
-          emptyTitle="No matches"
-          emptyMessage="No subscribers match this segment."
+          emptyTitle={t("list.segment.emptyTitle")}
+          emptyMessage={t("list.segment.emptyMessage")}
         >
           {(data) => (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                {data.total} subscriber{data.total === 1 ? "" : "s"} match this
-                segment.
+                {t("list.segment.matchCount", { count: data.total })}
               </p>
               <DataTable
                 columns={columns}
@@ -230,6 +240,7 @@ function CreateSubscriberDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["subscribers", "common"])
   const [attributes, setAttributes] = useState<Record<string, unknown>>({})
   const [attrsValid, setAttrsValid] = useState(true)
   const [listIds, setListIds] = useState<Array<string>>([])
@@ -254,7 +265,7 @@ function CreateSubscriberDialog({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.subscribers(slug),
       })
-      toast.success("Subscriber created.")
+      toast.success(t("create.success"))
       reset()
       onOpenChange(false)
     },
@@ -293,10 +304,8 @@ function CreateSubscriberDialog({
     >
       <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New subscriber</DialogTitle>
-          <DialogDescription>
-            Add a subscriber with optional attributes and list memberships.
-          </DialogDescription>
+          <DialogTitle>{t("create.title")}</DialogTitle>
+          <DialogDescription>{t("create.description")}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -312,7 +321,7 @@ function CreateSubscriberDialog({
           >
             {(field) => (
               <FormField
-                label="Email"
+                label={t("create.email")}
                 type="email"
                 required
                 autoFocus
@@ -324,7 +333,7 @@ function CreateSubscriberDialog({
                 }}
                 error={
                   emailTaken
-                    ? "A subscriber with this email already exists."
+                    ? t("create.emailTaken")
                     : fieldError(field.state.meta.errors)
                 }
               />
@@ -333,7 +342,7 @@ function CreateSubscriberDialog({
           <form.Field name="name">
             {(field) => (
               <FormField
-                label="Name"
+                label={t("create.name")}
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
@@ -345,7 +354,7 @@ function CreateSubscriberDialog({
             onValidityChange={setAttrsValid}
           />
           <div className="flex flex-col gap-2">
-            <Label>Add to lists</Label>
+            <Label>{t("create.addToLists")}</Label>
             {listsQuery.data && listsQuery.data.length > 0 ? (
               <div className="flex flex-col gap-2 rounded-lg border p-3">
                 {listsQuery.data.map((list) => (
@@ -369,7 +378,7 @@ function CreateSubscriberDialog({
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                No lists yet — you can add memberships later.
+                {t("create.noLists")}
               </p>
             )}
           </div>
@@ -379,10 +388,10 @@ function CreateSubscriberDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending || !attrsValid}>
-              {create.isPending ? "Creating…" : "Create subscriber"}
+              {create.isPending ? t("create.submitting") : t("create.submit")}
             </Button>
           </DialogFooter>
         </form>

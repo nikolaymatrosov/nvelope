@@ -1,0 +1,12 @@
+{
+  "status": {
+    "unauthorized": "You need to sign in to continue.",
+    "forbidden": "You do not have permission to do that.",
+    "notFound": "The requested resource was not found.",
+    "conflict": "That conflicts with something that already exists.",
+    "unprocessable": "Some of the information provided is not valid.",
+    "server": "Something went wrong on our end. Please try again.",
+    "generic": "The request could not be completed."
+  },
+  "unexpected": "An unexpected error occurred."
+}

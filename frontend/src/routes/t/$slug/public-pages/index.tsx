@@ -5,6 +5,8 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { PlusIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import type { SubscriptionPageView } from "@/lib/api-types"
 import type {PublicUrlRow} from "@/components/common/public-url-list";
 import { api } from "@/lib/api"
@@ -22,7 +24,7 @@ import {
 import { AsyncState } from "@/components/common/async-state"
 import {
   PublicUrlList
-  
+
 } from "@/components/common/public-url-list"
 
 export const Route = createFileRoute("/t/$slug/public-pages/")({
@@ -55,29 +57,30 @@ export function preferenceTemplateUrl(): string {
 export function buildPublicUrlRows(
   slug: string,
   pages: Array<SubscriptionPageView>,
+  t: TFunction<"publicPages">,
 ): Array<PublicUrlRow> {
   const rows: Array<PublicUrlRow> = []
   for (const page of pages) {
     if (!page.Active) continue
     rows.push({
       kind: "subscription",
-      label: `Subscription page — ${page.Title}`,
+      label: t("publicUrls.subscriptionPage", { title: page.Title }),
       url: subscriptionPageUrl(slug, page.Slug),
     })
   }
   rows.push({
     kind: "preference-template",
-    label: "Preference link template",
+    label: t("publicUrls.preferenceTemplate"),
     url: preferenceTemplateUrl(),
   })
   rows.push({
     kind: "archive",
-    label: "Archive index",
+    label: t("publicUrls.archiveIndex"),
     url: archiveIndexUrl(slug),
   })
   rows.push({
     kind: "rss",
-    label: "RSS feed",
+    label: t("publicUrls.rssFeed"),
     url: rssFeedUrl(slug),
   })
   return rows
@@ -85,6 +88,7 @@ export function buildPublicUrlRows(
 
 export function PublicPagesView() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("publicPages")
   const { can } = usePermissions(slug)
   const canManage = can("subscription_pages:manage")
 
@@ -98,10 +102,9 @@ export function PublicPagesView() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Public pages</h1>
+          <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Configure subscription pages, preview public URLs, and share the
-            archive and RSS feed.
+            {t("index.description")}
           </p>
         </div>
         {canManage && (
@@ -111,7 +114,7 @@ export function PublicPagesView() {
               params={{ slug, id: "new" }}
               data-testid="new-subscription-page"
             >
-              <PlusIcon /> New subscription page
+              <PlusIcon /> {t("index.newPage")}
             </Link>
           </Button>
         )}
@@ -120,8 +123,8 @@ export function PublicPagesView() {
       <AsyncState
         query={pagesQuery}
         isEmpty={(pages) => pages.length === 0}
-        emptyTitle="No subscription pages yet"
-        emptyMessage="Create your first subscription page to let visitors join one of your lists."
+        emptyTitle={t("index.emptyTitle")}
+        emptyMessage={t("index.emptyMessage")}
         emptyAction={
           canManage ? (
             <Button asChild>
@@ -130,7 +133,7 @@ export function PublicPagesView() {
                 params={{ slug, id: "new" }}
                 data-testid="create-first-subscription-page"
               >
-                <PlusIcon /> Create your first subscription page
+                <PlusIcon /> {t("index.createFirstPage")}
               </Link>
             </Button>
           ) : undefined
@@ -140,10 +143,9 @@ export function PublicPagesView() {
           <>
             <Card>
               <CardHeader>
-                <CardTitle>Subscription pages</CardTitle>
+                <CardTitle>{t("index.subscriptionPagesTitle")}</CardTitle>
                 <CardDescription>
-                  Active pages are reachable at the public URL below; inactive
-                  pages show a "not available" message to visitors.
+                  {t("index.subscriptionPagesDescription")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
@@ -155,14 +157,13 @@ export function PublicPagesView() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Share your public URLs</CardTitle>
+                <CardTitle>{t("index.shareUrlsTitle")}</CardTitle>
                 <CardDescription>
-                  Copy these to share with subscribers, embed in your site, or
-                  point a feed reader at.
+                  {t("index.shareUrlsDescription")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <PublicUrlList rows={buildPublicUrlRows(slug, pages)} />
+                <PublicUrlList rows={buildPublicUrlRows(slug, pages, t)} />
               </CardContent>
             </Card>
           </>
@@ -179,6 +180,7 @@ function SubscriptionPageRow({
   slug: string
   page: SubscriptionPageView
 }) {
+  const { t } = useTranslation("publicPages")
   return (
     <div
       className="flex items-center justify-between gap-3 rounded-md border p-3"
@@ -188,7 +190,7 @@ function SubscriptionPageRow({
         <div className="flex items-center gap-2">
           <p className="truncate font-medium">{page.Title}</p>
           <Badge variant={page.Active ? "default" : "secondary"}>
-            {page.Active ? "Active" : "Inactive"}
+            {page.Active ? t("row.active") : t("row.inactive")}
           </Badge>
         </div>
         <p
@@ -204,7 +206,7 @@ function SubscriptionPageRow({
           params={{ slug, id: page.ID }}
           data-testid={`edit-subscription-page-${page.ID}`}
         >
-          Edit
+          {t("row.edit")}
         </Link>
       </Button>
     </div>

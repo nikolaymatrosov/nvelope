@@ -1,0 +1,45 @@
+{
+  "index": {
+    "title": "Lists",
+    "description": "Organise subscribers into lists.",
+    "newList": "New list",
+    "emptyTitle": "No lists yet",
+    "emptyMessage": "Create your first list to start grouping subscribers."
+  },
+  "columns": {
+    "name": "Name",
+    "description": "Description",
+    "visibility": "Visibility",
+    "created": "Created"
+  },
+  "create": {
+    "title": "New list",
+    "description": "Give the list a name. You can add subscribers afterwards.",
+    "submit": "Create list",
+    "submitting": "Creating…",
+    "success": "List created."
+  },
+  "detail": {
+    "back": "← Lists",
+    "cardTitle": "List details",
+    "saveChanges": "Save changes",
+    "deleteList": "Delete list",
+    "subscribersTitle": "Subscribers in this list",
+    "subscribersEmptyTitle": "No subscribers yet",
+    "subscribersEmptyMessage": "No subscribers are subscribed to this list.",
+    "updateSuccess": "List updated.",
+    "deleteSuccess": "List deleted.",
+    "confirmDeleteTitle": "Delete this list?",
+    "confirmDeleteDescription": "The list will be removed. Subscribers are not deleted."
+  },
+  "subscriberColumns": {
+    "email": "Email",
+    "name": "Name",
+    "subscription": "Subscription"
+  },
+  "form": {
+    "name": "Name",
+    "description": "Description",
+    "nameRequired": "Enter a list name."
+  }
+}

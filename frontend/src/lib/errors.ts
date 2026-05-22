@@ -2,6 +2,8 @@
 // VI). The typed client raises `ApiError`; screens and the global query
 // handler branch on the normalized `status`/`slug`, never on message text.
 
+import i18n from "@/i18n"
+
 export type ErrorEnvelope = { error?: string; message?: string }
 
 export class ApiError extends Error {
@@ -55,19 +57,19 @@ export function normalizeError(
 function defaultMessageFor(status: number): string {
   switch (status) {
     case 401:
-      return "You need to sign in to continue."
+      return i18n.t("errors:status.unauthorized")
     case 403:
-      return "You do not have permission to do that."
+      return i18n.t("errors:status.forbidden")
     case 404:
-      return "The requested resource was not found."
+      return i18n.t("errors:status.notFound")
     case 409:
-      return "That conflicts with something that already exists."
+      return i18n.t("errors:status.conflict")
     case 422:
-      return "Some of the information provided is not valid."
+      return i18n.t("errors:status.unprocessable")
     case 500:
-      return "Something went wrong on our end. Please try again."
+      return i18n.t("errors:status.server")
     default:
-      return "The request could not be completed."
+      return i18n.t("errors:status.generic")
   }
 }
 
@@ -90,7 +92,7 @@ export const isServerError = (e: unknown): e is ApiError =>
 export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message
   if (e instanceof Error) return e.message
-  return "An unexpected error occurred."
+  return i18n.t("errors:unexpected")
 }
 
 // True for tenant-plane paths (`/t/{slug}/api/*`).

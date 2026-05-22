@@ -1,0 +1,50 @@
+{
+  "library": {
+    "title": "Медиатека",
+    "description": "Загружайте изображения и документы для использования в рассылках. Ограничение на файл: {{limit}}.",
+    "emptyTitle": "Медиафайлов пока нет",
+    "emptyMessageManage": "Загрузите первый файл выше.",
+    "emptyMessageView": "В библиотеке пока ничего нет.",
+    "backLink": "← Медиатека"
+  },
+  "forbidden": {
+    "title": "Нет доступа",
+    "libraryDescription": "Для просмотра библиотеки нужно разрешение media:get или media:manage.",
+    "assetDescription": "Для просмотра этого файла нужно разрешение media:get или media:manage."
+  },
+  "upload": {
+    "title": "Загрузка",
+    "allowedTypes": "Разрешённые типы: {{types}}.",
+    "button": "Загрузить файл",
+    "buttonBusy": "Загрузка…"
+  },
+  "validation": {
+    "tooLarge": "Файл слишком большой. Ограничение — {{limit}}.",
+    "typeNotAllowed": "Файлы типа «{{type}}» не разрешены. Разрешены: {{allowed}}.",
+    "unknownType": "неизвестный"
+  },
+  "toast": {
+    "uploaded": "Файл загружен.",
+    "uploadForbidden": "У вас нет прав на загрузку медиафайлов.",
+    "deleted": "Файл удалён.",
+    "copied": "Скопировано",
+    "copyFailed": "Не удалось скопировать"
+  },
+  "card": {
+    "copyUrl": "Копировать URL",
+    "open": "Открыть",
+    "deleteAria": "Удалить {{filename}}"
+  },
+  "deleteDialog": {
+    "title": "Удалить этот файл?",
+    "description": "Он будет удалён из библиотеки. Рассылки, ссылающиеся на его URL, потеряют файл.",
+    "confirm": "Удалить"
+  },
+  "detail": {
+    "notFoundTitle": "Файл не найден",
+    "notFoundDescription": "Возможно, файл был удалён или URL указан неверно.",
+    "uploadedMeta": "{{type}} · {{size}} · загружен {{date}}",
+    "previewTitle": "Предпросмотр",
+    "stableUrlTitle": "Постоянный URL"
+  }
+}

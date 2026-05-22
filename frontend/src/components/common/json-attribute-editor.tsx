@@ -3,6 +3,7 @@
 // reports validity so the parent form can block save on invalid structure.
 
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -26,8 +27,9 @@ export function JsonAttributeEditor({
   value,
   onChange,
   onValidityChange,
-  label = "Custom attributes",
+  label,
 }: JsonAttributeEditorProps) {
+  const { t } = useTranslation()
   const [text, setText] = useState(() => pretty(value))
   const [error, setError] = useState<string | null>(null)
 
@@ -44,7 +46,7 @@ export function JsonAttributeEditor({
     try {
       parsed = JSON.parse(trimmed)
     } catch {
-      setError("Not valid JSON.")
+      setError(t("jsonAttributeEditor.invalidJson"))
       onValidityChange?.(false)
       return
     }
@@ -53,7 +55,7 @@ export function JsonAttributeEditor({
       parsed === null ||
       Array.isArray(parsed)
     ) {
-      setError("Attributes must be a JSON object, e.g. { \"plan\": \"pro\" }.")
+      setError(t("jsonAttributeEditor.mustBeObject"))
       onValidityChange?.(false)
       return
     }
@@ -64,7 +66,9 @@ export function JsonAttributeEditor({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor="json-attributes">{label}</Label>
+      <Label htmlFor="json-attributes">
+        {label ?? t("jsonAttributeEditor.label")}
+      </Label>
       <Textarea
         id="json-attributes"
         className={cn("font-mono text-xs", error && "border-destructive")}
@@ -80,7 +84,7 @@ export function JsonAttributeEditor({
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          A JSON object of custom fields stored with this subscriber.
+          {t("jsonAttributeEditor.hint")}
         </p>
       )}
     </div>

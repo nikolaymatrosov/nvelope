@@ -1,0 +1,27 @@
+{
+  "index": {
+    "title": "Панель",
+    "description": "Состояние доставляемости в этом рабочем пространстве.",
+    "emptyTitle": "Пока нет активности отправки",
+    "emptyMessage": "После отправки кампании здесь появится состояние её доставки."
+  },
+  "metrics": {
+    "sent": "Отправлено",
+    "delivered": "Доставлено",
+    "opened": "Открыто",
+    "clicked": "Переходы",
+    "bounced": "Возвраты",
+    "complained": "Жалобы"
+  },
+  "recentCampaigns": {
+    "title": "Недавние кампании",
+    "empty": "Кампании ещё не отправлялись.",
+    "sentCount_one": "{{count}} отправлено",
+    "sentCount_few": "{{count}} отправлено",
+    "sentCount_many": "{{count}} отправлено",
+    "sentCount_other": "{{count}} отправлено",
+    "openRate": "Открытия",
+    "bounceRate": "Возвраты",
+    "complaintRate": "Жалобы"
+  }
+}

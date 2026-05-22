@@ -11,6 +11,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import type {
   CreateFieldInput,
@@ -53,6 +54,7 @@ export const Route = createFileRoute("/t/$slug/settings/fields/")({
 
 export function SubscriberFieldsView() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("settings")
   const { can } = usePermissions(slug)
   const canManage = can("subscriber_fields:manage")
 
@@ -65,10 +67,11 @@ export function SubscriberFieldsView() {
     <div className="flex flex-col gap-6">
       <header className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Subscriber fields</h1>
+          <h1 className="text-2xl font-semibold">
+            {t("fields.page.title")}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Define the custom subscriber attributes that appear in the
-            merge-tag picker, on subscription pages, and in segment filters.
+            {t("fields.page.description")}
           </p>
         </div>
       </header>
@@ -78,7 +81,7 @@ export function SubscriberFieldsView() {
           className="text-sm text-muted-foreground"
           data-testid="ve-fields-forbidden"
         >
-          You do not have permission to manage subscriber fields.
+          {t("fields.forbidden")}
         </p>
       ) : (
         <AsyncState query={query}>
@@ -99,6 +102,7 @@ function SubscriberFieldsTable({
   fields: Array<Field>
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("settings")
   const [editing, setEditing] = useState<Field | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<Field | null>(null)
@@ -116,7 +120,7 @@ function SubscriberFieldsTable({
     mutationFn: (id: string) => api.subscriberFields.delete(slug, id),
     onSuccess: async () => {
       await invalidate()
-      toast.success("Field deleted.")
+      toast.success(t("fields.toast.deleted"))
       setDeleting(null)
     },
     onError: (e) => {
@@ -150,27 +154,25 @@ function SubscriberFieldsTable({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>Fields</CardTitle>
-          <CardDescription>
-            Built-in fields cannot be renamed or removed.
-          </CardDescription>
+          <CardTitle>{t("fields.card.title")}</CardTitle>
+          <CardDescription>{t("fields.card.description")}</CardDescription>
         </div>
         <Button
           type="button"
           onClick={() => setCreating(true)}
           data-testid="ve-fields-add"
         >
-          Add field
+          {t("fields.addField")}
         </Button>
       </CardHeader>
       <CardContent>
         <table className="w-full text-sm" data-testid="ve-fields-table">
           <thead>
             <tr className="text-left text-muted-foreground">
-              <th className="py-2">Display name</th>
-              <th>Slug</th>
-              <th>Type</th>
-              <th>Default</th>
+              <th className="py-2">{t("fields.table.displayName")}</th>
+              <th>{t("fields.table.slug")}</th>
+              <th>{t("fields.table.type")}</th>
+              <th>{t("fields.table.default")}</th>
               <th></th>
             </tr>
           </thead>
@@ -186,11 +188,13 @@ function SubscriberFieldsTable({
                   <code>{field.slug}</code>
                 </td>
                 <td>{field.type}</td>
-                <td>{field.defaultValue || "—"}</td>
+                <td>
+                  {field.defaultValue || t("fields.table.emptyDefault")}
+                </td>
                 <td className="text-right">
                   {field.builtIn ? (
                     <span className="text-xs text-muted-foreground">
-                      built-in
+                      {t("fields.row.builtIn")}
                     </span>
                   ) : (
                     <div className="flex justify-end gap-1">
@@ -198,7 +202,9 @@ function SubscriberFieldsTable({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        aria-label={`Move ${field.displayName} up`}
+                        aria-label={t("fields.row.moveUp", {
+                          name: field.displayName,
+                        })}
                         onClick={() => move(field.id, -1)}
                         data-testid={`ve-fields-up-${field.slug}`}
                       >
@@ -208,7 +214,9 @@ function SubscriberFieldsTable({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        aria-label={`Move ${field.displayName} down`}
+                        aria-label={t("fields.row.moveDown", {
+                          name: field.displayName,
+                        })}
                         onClick={() => move(field.id, 1)}
                         data-testid={`ve-fields-down-${field.slug}`}
                       >
@@ -221,7 +229,7 @@ function SubscriberFieldsTable({
                         onClick={() => setEditing(field)}
                         data-testid={`ve-fields-edit-${field.slug}`}
                       >
-                        Edit
+                        {t("fields.row.edit")}
                       </Button>
                       <Button
                         type="button"
@@ -230,7 +238,7 @@ function SubscriberFieldsTable({
                         onClick={() => setDeleting(field)}
                         data-testid={`ve-fields-delete-${field.slug}`}
                       >
-                        Delete
+                        {t("fields.row.delete")}
                       </Button>
                     </div>
                   )}
@@ -265,9 +273,11 @@ function SubscriberFieldsTable({
         onOpenChange={(open) => {
           if (!open) setDeleting(null)
         }}
-        title={`Delete "${deleting?.displayName ?? ""}"?`}
-        description="Existing subscribers keep their attribute data; the registry definition is removed."
-        confirmLabel="Delete field"
+        title={t("fields.delete.title", {
+          name: deleting?.displayName ?? "",
+        })}
+        description={t("fields.delete.description")}
+        confirmLabel={t("fields.delete.confirmLabel")}
         busy={remove.isPending}
         onConfirm={() => {
           if (deleting) remove.mutate(deleting.id)
@@ -294,12 +304,13 @@ type DialogProps =
 
 function FieldDialog(props: DialogProps) {
   const { slug, mode, onClose, onSaved } = props
+  const { t } = useTranslation(["settings", "common"])
   const create = useMutation({
     mutationFn: (body: CreateFieldInput) =>
       api.subscriberFields.create(slug, body),
     onSuccess: async () => {
       await onSaved()
-      toast.success("Field created.")
+      toast.success(t("fields.toast.created"))
       onClose()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -313,7 +324,7 @@ function FieldDialog(props: DialogProps) {
     },
     onSuccess: async () => {
       await onSaved()
-      toast.success("Field saved.")
+      toast.success(t("fields.toast.saved"))
       onClose()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -378,20 +389,22 @@ function FieldDialog(props: DialogProps) {
         }}
       >
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
-          {mode === "create" ? "New subscriber field" : "Edit subscriber field"}
+          {mode === "create"
+            ? t("fields.dialog.createTitle")
+            : t("fields.dialog.editTitle")}
         </h2>
         <form.Field
           name="slug"
           validators={{
             onBlur:
               mode === "create"
-                ? compose(rules.required("Enter a slug."))
+                ? compose(rules.required(t("fields.dialog.slug.required")))
                 : undefined,
           }}
         >
           {(field) => (
             <FormField
-              label="Slug"
+              label={t("fields.dialog.slug.label")}
               required={mode === "create"}
               value={field.state.value}
               disabled={mode === "edit"}
@@ -404,12 +417,14 @@ function FieldDialog(props: DialogProps) {
         <form.Field
           name="displayName"
           validators={{
-            onBlur: compose(rules.required("Enter a display name.")),
+            onBlur: compose(
+              rules.required(t("fields.dialog.displayName.required")),
+            ),
           }}
         >
           {(field) => (
             <FormField
-              label="Display name"
+              label={t("fields.dialog.displayName.label")}
               required
               value={field.state.value}
               onBlur={field.handleBlur}
@@ -421,7 +436,7 @@ function FieldDialog(props: DialogProps) {
         <form.Field name="type">
           {(field) => (
             <div className="flex flex-col gap-1.5">
-              <label>Type</label>
+              <label>{t("fields.dialog.type.label")}</label>
               <Select
                 value={field.state.value}
                 onValueChange={(v) => field.handleChange(v as FieldType)}
@@ -430,9 +445,9 @@ function FieldDialog(props: DialogProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {FIELD_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
+                  {FIELD_TYPES.map((ft) => (
+                    <SelectItem key={ft} value={ft}>
+                      {ft}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -443,7 +458,7 @@ function FieldDialog(props: DialogProps) {
         <form.Field name="defaultValue">
           {(field) => (
             <FormField
-              label="Default value"
+              label={t("fields.dialog.defaultValue.label")}
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
             />
@@ -451,13 +466,15 @@ function FieldDialog(props: DialogProps) {
         </form.Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common:actions.cancel")}
           </Button>
           <Button
             type="submit"
             disabled={create.isPending || update.isPending}
           >
-            {create.isPending || update.isPending ? "Saving…" : "Save"}
+            {create.isPending || update.isPending
+              ? t("common:actions.saving")
+              : t("common:actions.save")}
           </Button>
         </div>
       </form>

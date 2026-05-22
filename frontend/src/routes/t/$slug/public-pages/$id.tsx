@@ -9,6 +9,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CopyIcon, ExternalLinkIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import { subscriptionPageUrl } from "./index"
 import type {
   Field,
@@ -88,6 +89,7 @@ export function SubscriptionPageEdit() {
   const { slug, id } = Route.useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("publicPages")
   const { can } = usePermissions(slug)
   const canManage = can("subscription_pages:manage")
   const isNew = id === "new"
@@ -125,11 +127,8 @@ export function SubscriptionPageEdit() {
     return (
       <Empty data-testid="public-pages-forbidden" className="border">
         <EmptyHeader>
-          <EmptyTitle>You do not have access</EmptyTitle>
-          <EmptyDescription>
-            You need the subscription_pages:manage permission to view this
-            page.
-          </EmptyDescription>
+          <EmptyTitle>{t("forbidden.title")}</EmptyTitle>
+          <EmptyDescription>{t("forbidden.description")}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -147,11 +146,8 @@ export function SubscriptionPageEdit() {
     return (
       <Empty data-testid="public-page-not-found" className="border">
         <EmptyHeader>
-          <EmptyTitle>Subscription page not found</EmptyTitle>
-          <EmptyDescription>
-            This page may have been deleted, or you may have followed an old
-            link.
-          </EmptyDescription>
+          <EmptyTitle>{t("notFound.title")}</EmptyTitle>
+          <EmptyDescription>{t("notFound.description")}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -211,6 +207,7 @@ function SubscriptionPageForm({
   fieldsLoading,
   fields,
 }: SubscriptionPageFormProps) {
+  const { t } = useTranslation("publicPages")
   const [serverError, setServerError] = useState<string | null>(null)
 
   const save = useMutation({
@@ -222,7 +219,9 @@ function SubscriptionPageForm({
     },
     onSuccess: async (saved) => {
       setServerError(null)
-      toast.success(pageId ? "Subscription page updated." : "Subscription page created.")
+      toast.success(
+        pageId ? t("edit.updateSuccess") : t("edit.createSuccess"),
+      )
       await onSaved(saved)
     },
     onError: (e) => {
@@ -236,7 +235,7 @@ function SubscriptionPageForm({
     defaultValues: initial,
     onSubmit: async ({ value }) => {
       if (value.target_list_ids.length === 0) {
-        setServerError("Select at least one list to subscribe visitors to.")
+        setServerError(t("edit.selectListError"))
         return
       }
       await save.mutateAsync({
@@ -270,13 +269,13 @@ function SubscriptionPageForm({
           params={{ slug }}
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Public pages
+          {t("edit.back")}
         </Link>
       </div>
 
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">
-          {pageId ? "Edit subscription page" : "New subscription page"}
+          {pageId ? t("edit.titleEdit") : t("edit.titleNew")}
         </h1>
         {publicUrl && (
           <div className="flex items-center gap-2">
@@ -285,17 +284,17 @@ function SubscriptionPageForm({
               size="sm"
               onClick={() => {
                 navigator.clipboard.writeText(publicUrl).then(
-                  () => toast.success("Copied"),
-                  () => toast.error("Could not copy"),
+                  () => toast.success(t("edit.copied")),
+                  () => toast.error(t("edit.copyFailed")),
                 )
               }}
               data-testid="copy-public-url"
             >
-              <CopyIcon /> Copy URL
+              <CopyIcon /> {t("edit.copyUrl")}
             </Button>
             <Button variant="ghost" size="sm" asChild data-testid="preview-public-url">
               <a href={publicUrl} target="_blank" rel="noreferrer">
-                <ExternalLinkIcon /> Preview
+                <ExternalLinkIcon /> {t("edit.preview")}
               </a>
             </Button>
           </div>
@@ -317,10 +316,8 @@ function SubscriptionPageForm({
 
         <Card>
           <CardHeader>
-            <CardTitle>Basics</CardTitle>
-            <CardDescription>
-              The page's identity on the public URL and what visitors see.
-            </CardDescription>
+            <CardTitle>{t("basics.title")}</CardTitle>
+            <CardDescription>{t("basics.description")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <form.Field
@@ -331,9 +328,9 @@ function SubscriptionPageForm({
             >
               {(field) => (
                 <FormField
-                  label="Slug"
+                  label={t("basics.slug")}
                   required
-                  hint="Lowercase letters, numbers, and hyphens. Appears in the public URL."
+                  hint={t("basics.slugHint")}
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                   error={fieldError(field.state.meta.errors)}
@@ -343,7 +340,7 @@ function SubscriptionPageForm({
             <form.Field name="title" validators={{ onChange: compose(rules.required()) }}>
               {(field) => (
                 <FormField
-                  label="Title"
+                  label={t("basics.pageTitle")}
                   required
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
@@ -359,7 +356,7 @@ function SubscriptionPageForm({
                     onCheckedChange={(c) => field.handleChange(Boolean(c))}
                     data-testid="page-active"
                   />
-                  Active — visible to visitors at the public URL
+                  {t("basics.active")}
                 </label>
               )}
             </form.Field>
@@ -368,17 +365,17 @@ function SubscriptionPageForm({
 
         <Card>
           <CardHeader>
-            <CardTitle>Bound lists</CardTitle>
-            <CardDescription>
-              A confirmed subscriber will be added to every list selected here.
-            </CardDescription>
+            <CardTitle>{t("boundLists.title")}</CardTitle>
+            <CardDescription>{t("boundLists.description")}</CardDescription>
           </CardHeader>
           <CardContent>
             {listsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading lists…</p>
+              <p className="text-sm text-muted-foreground">
+                {t("boundLists.loading")}
+              </p>
             ) : lists.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No lists yet. Create a list first.
+                {t("boundLists.empty")}
               </p>
             ) : (
               <form.Field name="target_list_ids">
@@ -418,13 +415,8 @@ function SubscriptionPageForm({
 
         <Card>
           <CardHeader>
-            <CardTitle>Fields</CardTitle>
-            <CardDescription>
-              Email is always shown and always required. Pick from your
-              subscriber-fields registry to add more — the same list the
-              visual editor's merge-tag picker uses. Manage the registry under
-              Settings → Subscriber fields.
-            </CardDescription>
+            <CardTitle>{t("fields.title")}</CardTitle>
+            <CardDescription>{t("fields.description")}</CardDescription>
           </CardHeader>
           <CardContent>
             <form.Field name="fields">
@@ -452,7 +444,9 @@ function SubscriptionPageForm({
                           className="grid grid-cols-1 gap-2 rounded-md border p-3 sm:grid-cols-[1fr_1fr_auto_auto]"
                         >
                           <div>
-                            <Label htmlFor={`field-key-${idx}`}>Field</Label>
+                            <Label htmlFor={`field-key-${idx}`}>
+                              {t("fields.fieldLabel")}
+                            </Label>
                             <select
                               id={`field-key-${idx}`}
                               value={row.key}
@@ -485,13 +479,13 @@ function SubscriptionPageForm({
                             >
                               <option value="">
                                 {fieldsLoading
-                                  ? "Loading fields…"
-                                  : "Choose a field…"}
+                                  ? t("fields.loadingOption")
+                                  : t("fields.chooseOption")}
                               </option>
                               {options.map((f) => (
                                 <option key={f.slug} value={f.slug}>
                                   {f.displayName}
-                                  {f.builtIn ? " (built-in)" : ""}
+                                  {f.builtIn ? t("fields.builtInSuffix") : ""}
                                 </option>
                               ))}
                               {row.key && !fieldBySlug.has(row.key) && (
@@ -500,13 +494,15 @@ function SubscriptionPageForm({
                                 // visible so the operator can re-pick rather
                                 // than silently losing it on save.
                                 <option value={row.key}>
-                                  {row.key} (no longer in registry)
+                                  {t("fields.deletedSuffix", { key: row.key })}
                                 </option>
                               )}
                             </select>
                           </div>
                           <div>
-                            <Label htmlFor={`field-label-${idx}`}>Label</Label>
+                            <Label htmlFor={`field-label-${idx}`}>
+                              {t("fields.labelLabel")}
+                            </Label>
                             <Input
                               id={`field-label-${idx}`}
                               value={row.label}
@@ -526,7 +522,7 @@ function SubscriptionPageForm({
                                 field.handleChange(next)
                               }}
                             />
-                            Required
+                            {t("fields.required")}
                           </label>
                           <Button
                             type="button"
@@ -538,7 +534,9 @@ function SubscriptionPageForm({
                                 field.state.value.filter((_, i) => i !== idx),
                               )
                             }
-                            aria-label={`Remove field ${row.label || row.key || idx + 1}`}
+                            aria-label={t("fields.removeField", {
+                              name: row.label || row.key || idx + 1,
+                            })}
                           >
                             <Trash2Icon />
                           </Button>
@@ -565,12 +563,11 @@ function SubscriptionPageForm({
                       data-testid="add-field"
                       disabled={fieldsLoading || available.length === 0}
                     >
-                      <PlusIcon /> Add field
+                      <PlusIcon /> {t("fields.addField")}
                     </Button>
                     {!fieldsLoading && fields.length <= 1 && (
                       <p className="text-xs text-muted-foreground">
-                        No custom subscriber fields yet — add one under
-                        Settings → Subscriber fields to surface it here.
+                        {t("fields.noCustomFields")}
                       </p>
                     )}
                   </div>
@@ -582,17 +579,16 @@ function SubscriptionPageForm({
 
         <Card>
           <CardHeader>
-            <CardTitle>Confirmation email</CardTitle>
+            <CardTitle>{t("confirmationEmail.title")}</CardTitle>
             <CardDescription>
-              The double-opt-in confirmation email is sent from this verified
-              sending domain.
+              {t("confirmationEmail.description")}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <form.Field name="sending_domain_id" validators={{ onChange: compose(rules.required()) }}>
               {(field) => (
                 <FormField
-                  label="Sending domain"
+                  label={t("confirmationEmail.sendingDomain")}
                   required
                   error={fieldError(field.state.meta.errors)}
                 >
@@ -604,7 +600,9 @@ function SubscriptionPageForm({
                     data-testid="sending-domain-select"
                     disabled={domainsLoading}
                   >
-                    <option value="">Select a sending domain…</option>
+                    <option value="">
+                      {t("confirmationEmail.selectDomain")}
+                    </option>
                     {domains.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.domain} {d.status !== "verified" ? `(${d.status})` : ""}
@@ -617,7 +615,7 @@ function SubscriptionPageForm({
             <form.Field name="from_name" validators={{ onChange: compose(rules.required()) }}>
               {(field) => (
                 <FormField
-                  label="From name"
+                  label={t("confirmationEmail.fromName")}
                   required
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
@@ -628,9 +626,9 @@ function SubscriptionPageForm({
             <form.Field name="from_local_part" validators={{ onChange: compose(rules.required()) }}>
               {(field) => (
                 <FormField
-                  label="From address (local part)"
+                  label={t("confirmationEmail.fromLocalPart")}
                   required
-                  hint="The portion before the @ in the From address."
+                  hint={t("confirmationEmail.fromLocalPartHint")}
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                   error={fieldError(field.state.meta.errors)}
@@ -642,7 +640,11 @@ function SubscriptionPageForm({
 
         <div className="flex items-center justify-end gap-2">
           <Button type="submit" disabled={save.isPending} data-testid="save-page">
-            {save.isPending ? "Saving…" : pageId ? "Save changes" : "Create page"}
+            {save.isPending
+              ? t("edit.saving")
+              : pageId
+                ? t("edit.save")
+                : t("edit.create")}
           </Button>
         </div>
       </form>

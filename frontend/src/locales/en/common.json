@@ -27,10 +27,164 @@
   "actions": {
     "save": "Save",
     "saving": "Saving…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "logIn": "Log in",
+    "signUp": "Sign up",
+    "tryAgain": "Try again",
+    "copy": "Copy",
+    "preview": "Preview",
+    "previous": "Previous",
+    "next": "Next"
   },
   "state": {
     "loading": "Loading…",
     "error": "Something went wrong."
+  },
+  "ui": {
+    "toggleSidebar": "Toggle Sidebar",
+    "close": "Close",
+    "sidebar": "Sidebar",
+    "sidebarDescription": "Displays the mobile sidebar."
+  },
+  "appName": "nvelope",
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you were looking for does not exist.",
+    "backHome": "Back home"
+  },
+  "landing": {
+    "signInPrompt": "Sign in to manage your workspaces.",
+    "workspacesTitle": "Your workspaces",
+    "signedInAs": "Signed in as {{name}}.",
+    "noWorkspacesTitle": "No workspaces yet",
+    "noWorkspacesDescription": "Create your first workspace to get started.",
+    "createWorkspace": "Create a workspace"
+  },
+  "workspace": {
+    "fallbackName": "Workspace",
+    "notAvailableTitle": "Workspace not available",
+    "notAvailableDescription": "This workspace does not exist, or you are not a member of it.",
+    "backToWorkspaces": "Back to your workspaces",
+    "openErrorTitle": "Could not open the workspace",
+    "openErrorDescription": "Something went wrong opening this workspace. Please try again.",
+    "loadErrorTitle": "Could not load the workspace",
+    "loadErrorDescription": "Something went wrong. Please try again."
+  },
+  "overview": {
+    "subtitle": "Everything for this workspace, in one place.",
+    "tiles": {
+      "subscribers": {
+        "label": "Subscribers",
+        "description": "Browse, search, and manage subscribers."
+      },
+      "lists": {
+        "label": "Lists",
+        "description": "Organise subscribers into lists."
+      },
+      "access": {
+        "label": "People & Access",
+        "description": "Invite teammates and manage roles."
+      },
+      "importExport": {
+        "label": "Import / Export",
+        "description": "Bring subscribers in and out via CSV."
+      },
+      "audit": {
+        "label": "Audit",
+        "description": "Review recent workspace activity."
+      },
+      "settings": {
+        "label": "Settings",
+        "description": "Configure this workspace."
+      }
+    }
+  },
+  "suspension": {
+    "message": "This workspace is suspended for non-payment. Sending is disabled until the outstanding balance is settled.",
+    "settleBalance": "Settle balance"
+  },
+  "usageMeter": {
+    "sendsUnit": "sends",
+    "remaining_one": "{{formattedCount}} send remaining this period.",
+    "remaining_few": "{{formattedCount}} sends remaining this period.",
+    "remaining_many": "{{formattedCount}} sends remaining this period.",
+    "remaining_other": "{{formattedCount}} sends remaining this period.",
+    "exhausted": "Plan allowance reached for this period.",
+    "nearLimit": "Approaching the plan allowance for this period."
+  },
+  "segmentBuilder": {
+    "leafKind": {
+      "field": "Field",
+      "attr": "Attribute",
+      "member": "List membership"
+    },
+    "op": {
+      "eq": "equals",
+      "neq": "not equals",
+      "exists": "exists",
+      "contains": "contains",
+      "gt": "greater than",
+      "lt": "less than",
+      "gte": "greater or equal",
+      "lte": "less or equal"
+    },
+    "valuePlaceholder": "Value",
+    "attrKeyPlaceholder": "Attribute key",
+    "listIdPlaceholder": "List id",
+    "statusPlaceholder": "Status",
+    "removeCondition": "Remove condition",
+    "matchPrefix": "Match",
+    "matchSuffix": "of the following",
+    "matchAll": "all",
+    "matchAny": "any",
+    "addCondition": "Condition",
+    "addGroup": "Group"
+  },
+  "publicUrlList": {
+    "empty": "No public URLs to share yet.",
+    "tokenHint": "The {token} placeholder is filled in automatically when this link is sent to a subscriber.",
+    "copyLabel": "Copy {{label}}",
+    "previewLabel": "Preview {{label}}"
+  },
+  "mediaPicker": {
+    "title": "Insert from media library",
+    "description": "Pick an asset to insert into the message. Only your tenant's media is shown.",
+    "emptyTitle": "No media yet",
+    "emptyMessage": "Upload files in the Media library before inserting them here.",
+    "openLibrary": "Open Media library"
+  },
+  "jsonAttributeEditor": {
+    "label": "Custom attributes",
+    "invalidJson": "Not valid JSON.",
+    "mustBeObject": "Attributes must be a JSON object, e.g. { \"plan\": \"pro\" }.",
+    "hint": "A JSON object of custom fields stored with this subscriber."
+  },
+  "dnsRecordRow": {
+    "host": "Host",
+    "value": "Value",
+    "hostLabel": "{{recordType}} host",
+    "valueLabel": "{{recordType}} value",
+    "copyLabel": "Copy {{label}}",
+    "copied": "{{label}} copied."
+  },
+  "table": {
+    "range": "{{from}}–{{to}} of {{total}}"
+  },
+  "cssEditor": {
+    "label": "Custom CSS",
+    "hint": "CSS is sanitized server-side before it is applied to your public pages. Limit: {{limit}} bytes.",
+    "counter": "{{used}} / {{limit}} bytes",
+    "overLimit": "Reduce the CSS below the limit before saving.",
+    "sanitizedHeading": "Sanitized CSS applied to your public pages"
+  },
+  "asyncState": {
+    "errorTitle": "Could not load this view",
+    "emptyTitle": "Nothing here yet",
+    "emptyMessage": "There is nothing to show."
+  },
+  "clipboard": {
+    "copied": "Copied",
+    "copyFailed": "Could not copy — copy the URL manually.",
+    "copyToClipboardFailed": "Could not copy to the clipboard."
   }
 }

@@ -1,0 +1,85 @@
+{
+  "index": {
+    "title": "Public pages",
+    "description": "Configure subscription pages, preview public URLs, and share the archive and RSS feed.",
+    "newPage": "New subscription page",
+    "emptyTitle": "No subscription pages yet",
+    "emptyMessage": "Create your first subscription page to let visitors join one of your lists.",
+    "createFirstPage": "Create your first subscription page",
+    "subscriptionPagesTitle": "Subscription pages",
+    "subscriptionPagesDescription": "Active pages are reachable at the public URL below; inactive pages show a \"not available\" message to visitors.",
+    "shareUrlsTitle": "Share your public URLs",
+    "shareUrlsDescription": "Copy these to share with subscribers, embed in your site, or point a feed reader at."
+  },
+  "publicUrls": {
+    "subscriptionPage": "Subscription page — {{title}}",
+    "preferenceTemplate": "Preference link template",
+    "archiveIndex": "Archive index",
+    "rssFeed": "RSS feed"
+  },
+  "row": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "edit": "Edit"
+  },
+  "forbidden": {
+    "title": "You do not have access",
+    "description": "You need the subscription_pages:manage permission to view this page."
+  },
+  "notFound": {
+    "title": "Subscription page not found",
+    "description": "This page may have been deleted, or you may have followed an old link."
+  },
+  "edit": {
+    "back": "← Public pages",
+    "titleEdit": "Edit subscription page",
+    "titleNew": "New subscription page",
+    "copyUrl": "Copy URL",
+    "preview": "Preview",
+    "copied": "Copied",
+    "copyFailed": "Could not copy",
+    "updateSuccess": "Subscription page updated.",
+    "createSuccess": "Subscription page created.",
+    "selectListError": "Select at least one list to subscribe visitors to.",
+    "save": "Save changes",
+    "create": "Create page",
+    "saving": "Saving…"
+  },
+  "basics": {
+    "title": "Basics",
+    "description": "The page's identity on the public URL and what visitors see.",
+    "slug": "Slug",
+    "slugHint": "Lowercase letters, numbers, and hyphens. Appears in the public URL.",
+    "pageTitle": "Title",
+    "active": "Active — visible to visitors at the public URL"
+  },
+  "boundLists": {
+    "title": "Bound lists",
+    "description": "A confirmed subscriber will be added to every list selected here.",
+    "loading": "Loading lists…",
+    "empty": "No lists yet. Create a list first."
+  },
+  "fields": {
+    "title": "Fields",
+    "description": "Email is always shown and always required. Pick from your subscriber-fields registry to add more — the same list the visual editor's merge-tag picker uses. Manage the registry under Settings → Subscriber fields.",
+    "fieldLabel": "Field",
+    "labelLabel": "Label",
+    "required": "Required",
+    "loadingOption": "Loading fields…",
+    "chooseOption": "Choose a field…",
+    "builtInSuffix": " (built-in)",
+    "deletedSuffix": "{{key}} (no longer in registry)",
+    "removeField": "Remove field {{name}}",
+    "addField": "Add field",
+    "noCustomFields": "No custom subscriber fields yet — add one under Settings → Subscriber fields to surface it here."
+  },
+  "confirmationEmail": {
+    "title": "Confirmation email",
+    "description": "The double-opt-in confirmation email is sent from this verified sending domain.",
+    "sendingDomain": "Sending domain",
+    "selectDomain": "Select a sending domain…",
+    "fromName": "From name",
+    "fromLocalPart": "From address (local part)",
+    "fromLocalPartHint": "The portion before the @ in the From address."
+  }
+}

@@ -136,7 +136,7 @@ export function WorkspaceSidebar({ slug }: { slug: string }) {
           <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground text-sm font-semibold">
             n
           </span>
-          <span className="text-sm font-semibold">nvelope</span>
+          <span className="text-sm font-semibold">{t("appName")}</span>
         </Link>
       </SidebarHeader>
       <SidebarContent>

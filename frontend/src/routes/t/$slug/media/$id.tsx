@@ -6,6 +6,7 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { CopyIcon, ImageOffIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import { isImageContentType } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -38,6 +39,7 @@ function humanSize(bytes: number): string {
 
 export function MediaDetail() {
   const { slug, id } = Route.useParams()
+  const { t } = useTranslation("media")
   const { can } = usePermissions(slug)
   const canView = can("media:get") || can("media:manage")
 
@@ -51,10 +53,9 @@ export function MediaDetail() {
     return (
       <Empty data-testid="media-detail-forbidden" className="border">
         <EmptyHeader>
-          <EmptyTitle>You do not have access</EmptyTitle>
+          <EmptyTitle>{t("forbidden.title")}</EmptyTitle>
           <EmptyDescription>
-            You need the media:get or media:manage permission to view this
-            asset.
+            {t("forbidden.assetDescription")}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -69,7 +70,7 @@ export function MediaDetail() {
           params={{ slug }}
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Media library
+          {t("library.backLink")}
         </Link>
       </div>
       <AsyncState query={mediaQuery}>
@@ -79,9 +80,9 @@ export function MediaDetail() {
             return (
               <Empty data-testid="media-asset-not-found" className="border">
                 <EmptyHeader>
-                  <EmptyTitle>Asset not found</EmptyTitle>
+                  <EmptyTitle>{t("detail.notFoundTitle")}</EmptyTitle>
                   <EmptyDescription>
-                    This asset may have been deleted, or the URL may be wrong.
+                    {t("detail.notFoundDescription")}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -89,8 +90,8 @@ export function MediaDetail() {
           }
           const copyUrl = () =>
             navigator.clipboard.writeText(asset.public_url).then(
-              () => toast.success("Copied"),
-              () => toast.error("Could not copy"),
+              () => toast.success(t("toast.copied")),
+              () => toast.error(t("toast.copyFailed")),
             )
           return (
             <>
@@ -102,13 +103,16 @@ export function MediaDetail() {
                   {asset.filename}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {asset.content_type} · {humanSize(asset.size_bytes)} ·{" "}
-                  uploaded {formatDate(asset.created_at)}
+                  {t("detail.uploadedMeta", {
+                    type: asset.content_type,
+                    size: humanSize(asset.size_bytes),
+                    date: formatDate(asset.created_at),
+                  })}
                 </p>
               </header>
               <Card>
                 <CardHeader>
-                  <CardTitle>Preview</CardTitle>
+                  <CardTitle>{t("detail.previewTitle")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid place-items-center overflow-hidden rounded bg-muted p-4">
@@ -126,7 +130,7 @@ export function MediaDetail() {
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>Stable URL</CardTitle>
+                  <CardTitle>{t("detail.stableUrlTitle")}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                   <code
@@ -140,7 +144,7 @@ export function MediaDetail() {
                     className="self-start"
                     data-testid="media-asset-copy"
                   >
-                    <CopyIcon /> Copy URL
+                    <CopyIcon /> {t("card.copyUrl")}
                   </Button>
                 </CardContent>
               </Card>

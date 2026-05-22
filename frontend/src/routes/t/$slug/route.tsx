@@ -1,5 +1,6 @@
 import { Link, Outlet, createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { Loader2Icon } from "lucide-react"
 import { api } from "@/lib/api"
 import { ApiError } from "@/lib/errors"
@@ -35,6 +36,7 @@ function Spinner() {
 
 export function WorkspaceLayout() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation()
 
   const session = useQuery({
     queryKey: ["t", slug, "session"],
@@ -49,22 +51,24 @@ export function WorkspaceLayout() {
     const err = session.error
     if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
       return (
-        <CenteredCard title="Workspace not available">
+        <CenteredCard title={t("workspace.notAvailableTitle")}>
           <p className="text-sm text-muted-foreground">
-            This workspace does not exist, or you are not a member of it.
+            {t("workspace.notAvailableDescription")}
           </p>
           <Button asChild>
-            <Link to="/">Back to your workspaces</Link>
+            <Link to="/">{t("workspace.backToWorkspaces")}</Link>
           </Button>
         </CenteredCard>
       )
     }
     return (
-      <CenteredCard title="Could not open the workspace">
+      <CenteredCard title={t("workspace.openErrorTitle")}>
         <p className="text-sm text-muted-foreground">
-          Something went wrong opening this workspace. Please try again.
+          {t("workspace.openErrorDescription")}
         </p>
-        <Button onClick={() => session.refetch()}>Try again</Button>
+        <Button onClick={() => session.refetch()}>
+          {t("actions.tryAgain")}
+        </Button>
       </CenteredCard>
     )
   }
@@ -83,6 +87,7 @@ export function WorkspaceLayout() {
 
 function WorkspaceShell({ slug }: { slug: string }) {
   const { name, isLoading, isError, error } = useWorkspace(slug)
+  const { t } = useTranslation()
 
   if (isLoading) return <Spinner />
 
@@ -92,27 +97,27 @@ function WorkspaceShell({ slug }: { slug: string }) {
       (error.status === 404 || error.status === 403)
     ) {
       return (
-        <CenteredCard title="Workspace not available">
+        <CenteredCard title={t("workspace.notAvailableTitle")}>
           <p className="text-sm text-muted-foreground">
-            This workspace does not exist, or you are not a member of it.
+            {t("workspace.notAvailableDescription")}
           </p>
           <Button asChild>
-            <Link to="/">Back to your workspaces</Link>
+            <Link to="/">{t("workspace.backToWorkspaces")}</Link>
           </Button>
         </CenteredCard>
       )
     }
     return (
-      <CenteredCard title="Could not load the workspace">
+      <CenteredCard title={t("workspace.loadErrorTitle")}>
         <p className="text-sm text-muted-foreground">
-          Something went wrong. Please try again.
+          {t("workspace.loadErrorDescription")}
         </p>
       </CenteredCard>
     )
   }
 
   return (
-    <AppShell slug={slug} workspaceName={name ?? "Workspace"}>
+    <AppShell slug={slug} workspaceName={name ?? t("workspace.fallbackName")}>
       <Outlet />
     </AppShell>
   )

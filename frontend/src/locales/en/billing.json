@@ -1,0 +1,168 @@
+{
+  "overview": {
+    "title": "Billing",
+    "description": "Your plan, subscription status, and account balance.",
+    "loadError": {
+      "title": "Could not load billing",
+      "retry": "Try again"
+    },
+    "noSubscription": {
+      "title": "No active subscription",
+      "description": "This workspace is not subscribed to a plan. Choose a plan to start sending.",
+      "browsePlans": "Browse plans"
+    },
+    "states": {
+      "pending": {
+        "title": "Subscription pending",
+        "description": "The first payment for this subscription is being processed. This page will reflect the result once the charge resolves."
+      },
+      "pastDue": {
+        "title": "Payment failed — action needed",
+        "description": "A payment for this subscription was declined and is being retried automatically. Settle the outstanding balance below to avoid the account being suspended."
+      },
+      "suspended": {
+        "title": "Account suspended for non-payment",
+        "description": "Sending is disabled because the outstanding balance was not settled. Settle it below to reinstate the account and re-enable sending."
+      }
+    },
+    "currentPlan": {
+      "title": "Current plan",
+      "overageDescriptionBlocked": "Sends over the allowance are blocked.",
+      "overageDescriptionBilled": "Sends over the allowance are billed as overage.",
+      "fields": {
+        "plan": "Plan",
+        "billingPeriod": "Billing period",
+        "usageThisPeriod": "Usage this period",
+        "renewal": "Renewal"
+      },
+      "usageValue": "{{used}} of {{included}} sends",
+      "renewalCancels": "Cancels at the end of the current period"
+    },
+    "settle": {
+      "title": "Outstanding balance",
+      "description": "Settle the unpaid invoice to bring the account back to good standing.",
+      "viewInvoice": "View unpaid invoice",
+      "charge": "Settle balance now",
+      "charging": "Charging…",
+      "success": "Payment received — your account has been reinstated.",
+      "declined": "The payment was declined again. The account remains suspended — please try once more or use a different payment method.",
+      "alreadySettled": "That invoice has already been settled."
+    }
+  },
+  "plans": {
+    "title": "Plans",
+    "description": "Choose a plan to subscribe this workspace.",
+    "alreadySubscribed": {
+      "title": "This workspace already has a subscription",
+      "descriptionPrefix": "A workspace may hold only one subscription at a time. Manage the current subscription from the ",
+      "link": "billing overview",
+      "descriptionSuffix": "."
+    },
+    "declined": {
+      "title": "Payment declined",
+      "description": "The first charge for that plan was declined, so the subscription was not activated. You can try subscribing again."
+    },
+    "loadError": {
+      "title": "Could not load plans"
+    },
+    "empty": {
+      "title": "No plans available",
+      "description": "There are no plans to subscribe to right now. Please check back later."
+    },
+    "card": {
+      "perPeriod": "/ {{period}}",
+      "includedSends": "{{sends}} sends included",
+      "overageBlocked": "Sends over the allowance are blocked",
+      "overageBilled": "Overage billed at {{price}} per send",
+      "subscribe": "Subscribe"
+    },
+    "dialog": {
+      "title": "Subscribe to {{plan}}",
+      "description": "You will be charged {{price}} now for the first {{period}} period. The subscription becomes active once the charge succeeds.",
+      "confirm": "Confirm & pay",
+      "processing": "Processing payment…"
+    },
+    "toast": {
+      "subscribed": "Subscription active — your plan is now in effect.",
+      "subscriptionExists": "This workspace already has a subscription."
+    }
+  },
+  "invoices": {
+    "title": "Invoices",
+    "description": "Billing history and payment attempts for this workspace.",
+    "loadError": {
+      "title": "Could not load invoices"
+    },
+    "empty": {
+      "title": "No invoices yet",
+      "description": "Invoices appear here once a billing period has been charged."
+    },
+    "columns": {
+      "billingPeriod": "Billing period",
+      "total": "Total",
+      "status": "Status"
+    },
+    "status": {
+      "open": "Unpaid",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} of {{total}}",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "detail": {
+      "title": "Invoice",
+      "description": "Line items and payment attempts for this invoice.",
+      "notFound": "This invoice could not be found.",
+      "lineItems": "Line items",
+      "lineItemColumns": {
+        "description": "Description",
+        "quantity": "Qty",
+        "amount": "Amount"
+      },
+      "total": "Total",
+      "paymentAttempts": "Payment attempts",
+      "noAttempts": "No payment attempts have been made yet.",
+      "attempt": "Attempt {{number}} — {{status}}",
+      "attemptStatus": {
+        "succeeded": "Succeeded",
+        "failed": "Failed"
+      }
+    }
+  },
+  "usage": {
+    "title": "Usage",
+    "description": "Metered sends consumed in the current billing period.",
+    "noSubscription": {
+      "title": "No active subscription",
+      "description": "Subscribe to a plan to start metering usage.",
+      "browsePlans": "Browse plans"
+    },
+    "loadError": {
+      "title": "Could not load usage"
+    },
+    "thisPeriod": {
+      "title": "This period"
+    },
+    "blocked": {
+      "title": "Allowance reached",
+      "description": "This plan blocks sends beyond the included allowance. Further campaign starts and transactional sends will be rejected until the next billing period begins."
+    },
+    "overage": {
+      "title": "Overage billing",
+      "description_one": "Sends beyond the allowance are billed as overage. {{formattedCount}} overage send recorded so far this period.",
+      "description_few": "Sends beyond the allowance are billed as overage. {{formattedCount}} overage sends recorded so far this period.",
+      "description_many": "Sends beyond the allowance are billed as overage. {{formattedCount}} overage sends recorded so far this period.",
+      "description_other": "Sends beyond the allowance are billed as overage. {{formattedCount}} overage sends recorded so far this period."
+    },
+    "refreshNote": {
+      "title": "Figures update periodically",
+      "description": "Usage is rolled up by a background process, so sends from the last few minutes may not yet be reflected here."
+    },
+    "closedPeriodsPrefix": "Usage for closed periods is reflected in each period’s ",
+    "closedPeriodsLink": "invoice",
+    "closedPeriodsSuffix": "."
+  }
+}

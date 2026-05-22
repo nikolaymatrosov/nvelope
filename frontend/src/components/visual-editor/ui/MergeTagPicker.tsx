@@ -5,6 +5,7 @@
 // inserts a `mergeTag` inline node into the editor.
 
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
 import { placeholderOf } from "../extensions/MergeTag"
 import type { Editor } from "@tiptap/core"
@@ -34,6 +35,7 @@ export function MergeTagPicker({
   open: controlledOpen,
   onOpenChange,
 }: Props) {
+  const { t } = useTranslation("visualEditor")
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = (next: boolean) => {
@@ -111,7 +113,7 @@ export function MergeTagPicker({
   return (
     <div
       role="dialog"
-      aria-label="Insert merge tag"
+      aria-label={t("mergeTag.dialogAriaLabel")}
       data-testid="ve-merge-tag-picker"
       className="ve-merge-tag-picker"
       style={{
@@ -131,11 +133,11 @@ export function MergeTagPicker({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-        <strong style={{ fontSize: 14 }}>Insert merge tag</strong>
+        <strong style={{ fontSize: 14 }}>{t("mergeTag.title")}</strong>
         <button
           type="button"
           onClick={() => setOpen(false)}
-          aria-label="Close"
+          aria-label={t("mergeTag.closeAriaLabel")}
           style={{ background: "transparent", border: 0, cursor: "pointer" }}
         >
           ×
@@ -146,7 +148,7 @@ export function MergeTagPicker({
         type="text"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        placeholder="Type to filter…"
+        placeholder={t("mergeTag.filterPlaceholder")}
         data-testid="ve-merge-tag-filter"
         style={{
           width: "100%",
@@ -156,15 +158,15 @@ export function MergeTagPicker({
           marginBottom: 8,
         }}
       />
-      {query.isLoading ? <p>Loading…</p> : null}
+      {query.isLoading ? <p>{t("mergeTag.loading")}</p> : null}
       {query.isError ? (
-        <p style={{ color: "#b91c1c" }}>Failed to load merge tags.</p>
+        <p style={{ color: "#b91c1c" }}>{t("mergeTag.loadError")}</p>
       ) : null}
 
       {filtered.subscriber.length > 0 ? (
         <section>
           <h4 style={{ fontSize: 12, color: "#6b7280", margin: "8px 0 4px" }}>
-            Subscriber
+            {t("mergeTag.groupSubscriber")}
           </h4>
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
             {filtered.subscriber.map((item) => (
@@ -191,7 +193,7 @@ export function MergeTagPicker({
       {filtered.campaign.length > 0 ? (
         <section>
           <h4 style={{ fontSize: 12, color: "#6b7280", margin: "8px 0 4px" }}>
-            Campaign
+            {t("mergeTag.groupCampaign")}
           </h4>
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
             {filtered.campaign.map((item) => (
@@ -218,7 +220,7 @@ export function MergeTagPicker({
       {!query.isLoading &&
       filtered.subscriber.length === 0 &&
       filtered.campaign.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: 12 }}>No matches.</p>
+        <p style={{ color: "#6b7280", fontSize: 12 }}>{t("mergeTag.noMatches")}</p>
       ) : null}
     </div>
   )

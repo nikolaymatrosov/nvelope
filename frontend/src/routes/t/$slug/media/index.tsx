@@ -9,6 +9,8 @@ import { useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CopyIcon, ExternalLinkIcon, ImageOffIcon, Trash2Icon, UploadIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import type { MediaAssetView } from "@/lib/api-types"
 import {
   ALLOWED_MEDIA_CONTENT_TYPES,
@@ -47,12 +49,17 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function validateFile(file: File): string | null {
+function validateFile(file: File, t: TFunction<"media">): string | null {
   if (file.size > DEFAULT_MEDIA_MAX_BYTES) {
-    return `File is too large. The limit is ${humanSize(DEFAULT_MEDIA_MAX_BYTES)}.`
+    return t("validation.tooLarge", {
+      limit: humanSize(DEFAULT_MEDIA_MAX_BYTES),
+    })
   }
   if (!ALLOWED_MEDIA_CONTENT_TYPES.includes(file.type)) {
-    return `Files of type "${file.type || "unknown"}" are not allowed. Allowed: ${ALLOWED_MEDIA_CONTENT_TYPES.join(", ")}.`
+    return t("validation.typeNotAllowed", {
+      type: file.type || t("validation.unknownType"),
+      allowed: ALLOWED_MEDIA_CONTENT_TYPES.join(", "),
+    })
   }
   return null
 }
@@ -60,6 +67,7 @@ function validateFile(file: File): string | null {
 export function MediaLibrary() {
   const { slug } = Route.useParams()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("media")
   const { can } = usePermissions(slug)
   const canView = can("media:get") || can("media:manage")
   const canManage = can("media:manage")
@@ -74,10 +82,9 @@ export function MediaLibrary() {
     return (
       <Empty data-testid="media-forbidden" className="border">
         <EmptyHeader>
-          <EmptyTitle>You do not have access</EmptyTitle>
+          <EmptyTitle>{t("forbidden.title")}</EmptyTitle>
           <EmptyDescription>
-            You need the media:get or media:manage permission to view the
-            library.
+            {t("forbidden.libraryDescription")}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -87,10 +94,11 @@ export function MediaLibrary() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Media library</h1>
+        <h1 className="text-2xl font-semibold">{t("library.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Upload images and documents to reference from your campaigns. Limit
-          per file: {humanSize(DEFAULT_MEDIA_MAX_BYTES)}.
+          {t("library.description", {
+            limit: humanSize(DEFAULT_MEDIA_MAX_BYTES),
+          })}
         </p>
       </header>
 
@@ -99,11 +107,11 @@ export function MediaLibrary() {
       <AsyncState
         query={mediaQuery}
         isEmpty={(d) => d.items.length === 0}
-        emptyTitle="No media yet"
+        emptyTitle={t("library.emptyTitle")}
         emptyMessage={
           canManage
-            ? "Upload your first asset above."
-            : "Nothing in the library yet."
+            ? t("library.emptyMessageManage")
+            : t("library.emptyMessageView")
         }
       >
         {(data) => (
@@ -133,6 +141,7 @@ export function MediaLibrary() {
 
 function UploadControl({ slug }: { slug: string }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("media")
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [inflight, setInflight] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -140,12 +149,12 @@ function UploadControl({ slug }: { slug: string }) {
   const upload = useMutation({
     mutationFn: (file: File) => api.media.upload(slug, file),
     onSuccess: async () => {
-      toast.success("Uploaded.")
+      toast.success(t("toast.uploaded"))
       await queryClient.invalidateQueries({ queryKey: queryKeys.media(slug) })
     },
     onError: (e) => {
       if (isForbidden(e)) {
-        toast.error("You do not have permission to upload media.")
+        toast.error(t("toast.uploadForbidden"))
         return
       }
       toast.error(errorMessage(e))
@@ -157,7 +166,7 @@ function UploadControl({ slug }: { slug: string }) {
   })
 
   function handleFile(file: File) {
-    const err = validateFile(file)
+    const err = validateFile(file, t)
     if (err) {
       setValidationError(err)
       toast.error(err)
@@ -172,9 +181,11 @@ function UploadControl({ slug }: { slug: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Upload</CardTitle>
+        <CardTitle>{t("upload.title")}</CardTitle>
         <CardDescription>
-          Allowed types: {ALLOWED_MEDIA_CONTENT_TYPES.join(", ")}.
+          {t("upload.allowedTypes", {
+            types: ALLOWED_MEDIA_CONTENT_TYPES.join(", "),
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -195,7 +206,7 @@ function UploadControl({ slug }: { slug: string }) {
           data-testid="media-upload-button"
           className="self-start"
         >
-          <UploadIcon /> {inflight ? "Uploading…" : "Upload file"}
+          <UploadIcon /> {inflight ? t("upload.buttonBusy") : t("upload.button")}
         </Button>
         {validationError && (
           <p
@@ -222,11 +233,12 @@ function MediaCard({
   canManage: boolean
   onDeleted: () => void
 }) {
+  const { t } = useTranslation("media")
   const [confirmOpen, setConfirmOpen] = useState(false)
   const remove = useMutation({
     mutationFn: () => api.media.remove(slug, asset.id),
     onSuccess: () => {
-      toast.success("Deleted.")
+      toast.success(t("toast.deleted"))
       setConfirmOpen(false)
       onDeleted()
     },
@@ -238,8 +250,8 @@ function MediaCard({
 
   function copyUrl() {
     navigator.clipboard.writeText(asset.public_url).then(
-      () => toast.success("Copied"),
-      () => toast.error("Could not copy"),
+      () => toast.success(t("toast.copied")),
+      () => toast.error(t("toast.copyFailed")),
     )
   }
 
@@ -281,11 +293,11 @@ function MediaCard({
             onClick={copyUrl}
             data-testid={`media-copy-${asset.id}`}
           >
-            <CopyIcon /> Copy URL
+            <CopyIcon /> {t("card.copyUrl")}
           </Button>
           <Button variant="ghost" size="sm" asChild>
             <a href={asset.public_url} target="_blank" rel="noreferrer">
-              <ExternalLinkIcon /> Open
+              <ExternalLinkIcon /> {t("card.open")}
             </a>
           </Button>
         </div>
@@ -294,7 +306,7 @@ function MediaCard({
             variant="ghost"
             size="sm"
             onClick={() => setConfirmOpen(true)}
-            aria-label={`Delete ${asset.filename}`}
+            aria-label={t("card.deleteAria", { filename: asset.filename })}
             data-testid={`media-delete-${asset.id}`}
           >
             <Trash2Icon />
@@ -304,9 +316,9 @@ function MediaCard({
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Delete this asset?"
-        description="It will be removed from the library. Campaigns that reference its URL will lose the asset."
-        confirmLabel="Delete"
+        title={t("deleteDialog.title")}
+        description={t("deleteDialog.description")}
+        confirmLabel={t("deleteDialog.confirm")}
         busy={remove.isPending}
         onConfirm={() => remove.mutate()}
       />

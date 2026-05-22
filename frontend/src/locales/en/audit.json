@@ -1,0 +1,14 @@
+{
+  "index": {
+    "title": "Audit trail",
+    "description": "Recent activity in this workspace.",
+    "emptyTitle": "No activity yet",
+    "emptyMessage": "Workspace actions will appear here."
+  },
+  "columns": {
+    "actor": "Actor",
+    "action": "Action",
+    "target": "Target",
+    "when": "When"
+  }
+}

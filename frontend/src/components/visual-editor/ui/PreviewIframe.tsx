@@ -6,6 +6,7 @@
 // match FR-007 (600 / 375 px).
 
 import { useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
 import type {
   RenderPreviewSample,
@@ -24,6 +25,7 @@ type Props = {
 const WIDTHS = { desktop: 600, mobile: 375 } as const
 
 export function PreviewIframe({ slug, doc, theme, sample }: Props) {
+  const { t } = useTranslation("visualEditor")
   const [viewport, setViewport] = useState<keyof typeof WIDTHS>("desktop")
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
 
@@ -32,8 +34,8 @@ export function PreviewIframe({ slug, doc, theme, sample }: Props) {
   // "Performance Goals".
   const [debouncedDoc, setDebouncedDoc] = useState(doc)
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedDoc(doc), 400)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setDebouncedDoc(doc), 400)
+    return () => clearTimeout(timer)
   }, [doc])
 
   const query = useQuery({
@@ -68,7 +70,7 @@ export function PreviewIframe({ slug, doc, theme, sample }: Props) {
     >
       <div
         role="tablist"
-        aria-label="Preview viewport"
+        aria-label={t("preview.viewportAriaLabel")}
         style={{ display: "flex", gap: 4 }}
       >
         <button
@@ -78,7 +80,7 @@ export function PreviewIframe({ slug, doc, theme, sample }: Props) {
           data-testid="ve-preview-desktop"
           onClick={() => setViewport("desktop")}
         >
-          Desktop ({WIDTHS.desktop}px)
+          {t("preview.desktop", { width: WIDTHS.desktop })}
         </button>
         <button
           type="button"
@@ -87,18 +89,18 @@ export function PreviewIframe({ slug, doc, theme, sample }: Props) {
           data-testid="ve-preview-mobile"
           onClick={() => setViewport("mobile")}
         >
-          Mobile ({WIDTHS.mobile}px)
+          {t("preview.mobile", { width: WIDTHS.mobile })}
         </button>
       </div>
       {query.isError ? (
         <p style={{ color: "#b91c1c" }} data-testid="ve-preview-error">
-          Preview failed: {query.error.message}
+          {t("preview.error", { message: query.error.message })}
         </p>
       ) : null}
       <iframe
         ref={iframeRef}
         data-testid="ve-preview-iframe"
-        title="Email preview"
+        title={t("preview.iframeTitle")}
         sandbox=""
         style={{
           width: WIDTHS[viewport],

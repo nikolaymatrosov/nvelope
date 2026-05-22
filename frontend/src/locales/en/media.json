@@ -1,0 +1,50 @@
+{
+  "library": {
+    "title": "Media library",
+    "description": "Upload images and documents to reference from your campaigns. Limit per file: {{limit}}.",
+    "emptyTitle": "No media yet",
+    "emptyMessageManage": "Upload your first asset above.",
+    "emptyMessageView": "Nothing in the library yet.",
+    "backLink": "← Media library"
+  },
+  "forbidden": {
+    "title": "You do not have access",
+    "libraryDescription": "You need the media:get or media:manage permission to view the library.",
+    "assetDescription": "You need the media:get or media:manage permission to view this asset."
+  },
+  "upload": {
+    "title": "Upload",
+    "allowedTypes": "Allowed types: {{types}}.",
+    "button": "Upload file",
+    "buttonBusy": "Uploading…"
+  },
+  "validation": {
+    "tooLarge": "File is too large. The limit is {{limit}}.",
+    "typeNotAllowed": "Files of type \"{{type}}\" are not allowed. Allowed: {{allowed}}.",
+    "unknownType": "unknown"
+  },
+  "toast": {
+    "uploaded": "Uploaded.",
+    "uploadForbidden": "You do not have permission to upload media.",
+    "deleted": "Deleted.",
+    "copied": "Copied",
+    "copyFailed": "Could not copy"
+  },
+  "card": {
+    "copyUrl": "Copy URL",
+    "open": "Open",
+    "deleteAria": "Delete {{filename}}"
+  },
+  "deleteDialog": {
+    "title": "Delete this asset?",
+    "description": "It will be removed from the library. Campaigns that reference its URL will lose the asset.",
+    "confirm": "Delete"
+  },
+  "detail": {
+    "notFoundTitle": "Asset not found",
+    "notFoundDescription": "This asset may have been deleted, or the URL may be wrong.",
+    "uploadedMeta": "{{type}} · {{size}} · uploaded {{date}}",
+    "previewTitle": "Preview",
+    "stableUrlTitle": "Stable URL"
+  }
+}

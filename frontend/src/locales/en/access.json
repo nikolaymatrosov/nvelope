@@ -1,0 +1,78 @@
+{
+  "index": {
+    "description": "Manage members, invitations, and roles.",
+    "title": "People & Access"
+  },
+  "invitations": {
+    "confirmRevokeDescription": "The invitation link will stop working and cannot be reused.",
+    "confirmRevokeLabel": "Revoke invitation",
+    "confirmRevokeTitle": "Revoke this invitation?",
+    "copyLink": "Copy link",
+    "emailLabel": "Email address",
+    "emptyMessage": "Invitations you send will appear here until accepted.",
+    "emptyTitle": "No pending invitations",
+    "expires": "Expires {{date}}",
+    "inviteRevoked": "Invitation revoked.",
+    "inviteSent": "Invitation sent.",
+    "inviteTitle": "Invite a teammate",
+    "linkCopied": "Link copied.",
+    "linkTitle": "Invitation link",
+    "revoke": "Revoke",
+    "sendInvite": "Send invite"
+  },
+  "listRoles": {
+    "description": "Grant or remove a role scoped to a single list.",
+    "grantRole": "Grant role",
+    "grantSuccess": "Per-list role granted.",
+    "listLabel": "List",
+    "listPlaceholder": "Choose a list…",
+    "removeRole": "Remove role on list",
+    "removeSuccess": "Per-list role removed.",
+    "roleLabel": "Role",
+    "rolePlaceholder": "Choose a role…",
+    "title": "List access for {{name}}"
+  },
+  "members": {
+    "listAccess": "List access",
+    "loadErrorTitle": "Could not load members",
+    "loading": "Loading members…",
+    "roleUpdated": "Role updated.",
+    "viewOnlyMessage": "You can see members but need the “roles:manage” permission to change role assignments.",
+    "viewOnlyTitle": "View only"
+  },
+  "roleDialog": {
+    "createRole": "Create role",
+    "createSuccess": "Role created.",
+    "description": "Name the role and choose the permissions it grants.",
+    "editTitle": "Edit role",
+    "nameLabel": "Role name",
+    "nameRequired": "Enter a role name.",
+    "newTitle": "New role",
+    "permissionsLabel": "Permissions",
+    "saveRole": "Save role",
+    "saving": "Saving…",
+    "updateSuccess": "Role updated."
+  },
+  "roles": {
+    "confirmDeleteDescription": "Members assigned this role will lose its permissions.",
+    "confirmDeleteLabel": "Delete role",
+    "confirmDeleteTitle": "Delete the “{{name}}” role?",
+    "deleteRole": "Delete role",
+    "deleteSuccess": "Role deleted.",
+    "edit": "Edit",
+    "emptyMessage": "Create a role to grant scoped permissions.",
+    "emptyTitle": "No roles yet",
+    "newRole": "New role",
+    "permissionCount_few": "{{count}} permissions",
+    "permissionCount_many": "{{count}} permissions",
+    "permissionCount_one": "{{count}} permission",
+    "permissionCount_other": "{{count}} permissions",
+    "unavailableMessage": "You need the “roles:manage” permission to create or change roles.",
+    "unavailableTitle": "Role management unavailable"
+  },
+  "tabs": {
+    "invitations": "Invitations",
+    "members": "Members",
+    "roles": "Roles"
+  }
+}

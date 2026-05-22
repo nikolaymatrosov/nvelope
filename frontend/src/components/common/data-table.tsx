@@ -10,6 +10,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   Table,
@@ -44,6 +45,7 @@ export function DataTable<T>({
   getRowId,
   onRowClick,
 }: DataTableProps<T>) {
+  const { t } = useTranslation()
   const table = useReactTable({
     data: rows,
     columns,
@@ -101,7 +103,11 @@ export function DataTable<T>({
       </div>
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>
-          {range.from}–{range.to} of {total}
+          {t("table.range", {
+            from: range.from,
+            to: range.to,
+            total,
+          })}
         </span>
         <div className="flex gap-2">
           <Button
@@ -110,7 +116,7 @@ export function DataTable<T>({
             disabled={!canPrev}
             onClick={() => onPageChange(Math.max(0, offset - limit))}
           >
-            <ChevronLeftIcon /> Previous
+            <ChevronLeftIcon /> {t("actions.previous")}
           </Button>
           <Button
             variant="outline"
@@ -118,7 +124,7 @@ export function DataTable<T>({
             disabled={!canNext}
             onClick={() => onPageChange(offset + limit)}
           >
-            Next <ChevronRightIcon />
+            {t("actions.next")} <ChevronRightIcon />
           </Button>
         </div>
       </div>

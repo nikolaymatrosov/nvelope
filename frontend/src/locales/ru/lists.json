@@ -1,0 +1,45 @@
+{
+  "index": {
+    "title": "Списки",
+    "description": "Объединяйте подписчиков в списки.",
+    "newList": "Новый список",
+    "emptyTitle": "Списков пока нет",
+    "emptyMessage": "Создайте первый список, чтобы начать группировать подписчиков."
+  },
+  "columns": {
+    "name": "Название",
+    "description": "Описание",
+    "visibility": "Видимость",
+    "created": "Создан"
+  },
+  "create": {
+    "title": "Новый список",
+    "description": "Дайте списку название. Подписчиков можно добавить позже.",
+    "submit": "Создать список",
+    "submitting": "Создание…",
+    "success": "Список создан."
+  },
+  "detail": {
+    "back": "← Списки",
+    "cardTitle": "Сведения о списке",
+    "saveChanges": "Сохранить изменения",
+    "deleteList": "Удалить список",
+    "subscribersTitle": "Подписчики в этом списке",
+    "subscribersEmptyTitle": "Подписчиков пока нет",
+    "subscribersEmptyMessage": "В этот список не подписан ни один подписчик.",
+    "updateSuccess": "Список обновлён.",
+    "deleteSuccess": "Список удалён.",
+    "confirmDeleteTitle": "Удалить этот список?",
+    "confirmDeleteDescription": "Список будет удалён. Подписчики не удаляются."
+  },
+  "subscriberColumns": {
+    "email": "Эл. почта",
+    "name": "Имя",
+    "subscription": "Подписка"
+  },
+  "form": {
+    "name": "Название",
+    "description": "Описание",
+    "nameRequired": "Введите название списка."
+  }
+}

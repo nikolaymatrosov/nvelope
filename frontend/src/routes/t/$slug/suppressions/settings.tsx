@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { BounceSettings } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/t/$slug/suppressions/settings")({
 
 export function BounceSettingsPage() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("suppressions")
   const { can } = usePermissions(slug)
   const canManage = can("sending:manage")
 
@@ -40,13 +42,13 @@ export function BounceSettingsPage() {
       <header className="flex flex-col gap-2">
         <Button variant="ghost" size="sm" className="w-fit -ml-2" asChild>
           <Link to="/t/$slug/suppressions" params={{ slug }}>
-            <ArrowLeftIcon /> Back to suppression list
+            <ArrowLeftIcon /> {t("settings.back")}
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-semibold">Bounce-action settings</h1>
+          <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Control how this workspace reacts to delivery feedback.
+            {t("settings.description")}
           </p>
         </div>
       </header>
@@ -74,6 +76,7 @@ function BounceSettingsForm({
   canManage: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("suppressions")
   const [draft, setDraft] = useState<BounceSettings>(settings)
 
   useEffect(() => {
@@ -88,7 +91,7 @@ function BounceSettingsForm({
     mutationFn: () => api.bounceSettings.update(slug, draft),
     onSuccess: (res) => {
       queryClient.setQueryData(queryKeys.bounceSettings(slug), res.data)
-      toast.success("Bounce-action settings saved.")
+      toast.success(t("settings.savedToast"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -97,12 +100,9 @@ function BounceSettingsForm({
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Hard-bounce suppression</CardTitle>
+          <CardTitle>{t("settings.hardBounceTitle")}</CardTitle>
           <CardDescription>
-            When on, an address that hard-bounces is added to the suppression
-            list automatically. Turning this off lets the workspace keep
-            mailing addresses that permanently reject mail, which damages
-            sender reputation.
+            {t("settings.hardBounceDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -114,19 +114,16 @@ function BounceSettingsForm({
                 setDraft((d) => ({ ...d, suppressOnHardBounce: v === true }))
               }
             />
-            Suppress addresses that hard-bounce
+            {t("settings.hardBounceToggle")}
           </Label>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Complaint suppression</CardTitle>
+          <CardTitle>{t("settings.complaintTitle")}</CardTitle>
           <CardDescription>
-            When on, an address that reports a message as spam is added to the
-            suppression list automatically. Turning this off lets the workspace
-            keep mailing recipients who have complained, which damages sender
-            reputation and deliverability.
+            {t("settings.complaintDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -138,7 +135,7 @@ function BounceSettingsForm({
                 setDraft((d) => ({ ...d, suppressOnComplaint: v === true }))
               }
             />
-            Suppress addresses that complain
+            {t("settings.complaintToggle")}
           </Label>
         </CardContent>
       </Card>
@@ -149,7 +146,7 @@ function BounceSettingsForm({
             disabled={!dirty || save.isPending}
             onClick={() => save.mutate()}
           >
-            {save.isPending ? "Saving…" : "Save settings"}
+            {save.isPending ? t("settings.saving") : t("settings.save")}
           </Button>
         </div>
       )}

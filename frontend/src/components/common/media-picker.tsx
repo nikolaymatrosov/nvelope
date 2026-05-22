@@ -4,6 +4,7 @@
 // opening button accordingly.
 
 import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { ImageOffIcon } from "lucide-react"
 import type { MediaAssetView } from "@/lib/api-types"
 import { isImageContentType } from "@/lib/api-types"
@@ -26,6 +27,7 @@ type MediaPickerProps = {
 }
 
 export function MediaPicker({ slug, open, onOpenChange, onPick }: MediaPickerProps) {
+  const { t } = useTranslation()
   const mediaQuery = useQuery({
     queryKey: queryKeys.media(slug),
     queryFn: async () => (await api.media.list(slug)).data,
@@ -36,24 +38,24 @@ export function MediaPicker({ slug, open, onOpenChange, onPick }: MediaPickerPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Insert from media library</DialogTitle>
+          <DialogTitle>{t("mediaPicker.title")}</DialogTitle>
           <DialogDescription>
-            Pick an asset to insert into the message. Only your tenant's media is shown.
+            {t("mediaPicker.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] overflow-y-auto">
           <AsyncState
             query={mediaQuery}
             isEmpty={(d) => d.items.length === 0}
-            emptyTitle="No media yet"
-            emptyMessage="Upload files in the Media library before inserting them here."
+            emptyTitle={t("mediaPicker.emptyTitle")}
+            emptyMessage={t("mediaPicker.emptyMessage")}
             emptyAction={
               <a
                 href={`/t/${slug}/media`}
                 className="text-sm font-medium text-primary underline-offset-4 hover:underline"
                 onClick={() => onOpenChange(false)}
               >
-                Open Media library
+                {t("mediaPicker.openLibrary")}
               </a>
             }
           >

@@ -1,0 +1,51 @@
+{
+  "toolbar": {
+    "viewHtml": "View HTML",
+    "editHtmlOnly": "Edit as HTML only"
+  },
+  "rawHtmlModal": {
+    "title": "Edit raw HTML block",
+    "description": "These bytes are passed through verbatim. They run through the sanitizer at save time — disallowed constructs (script, event handlers, dangerous URL schemes) are stripped.",
+    "editorAriaLabel": "Raw HTML editor",
+    "save": "Save HTML"
+  },
+  "theme": {
+    "panelAriaLabel": "Theme controls",
+    "title": "Theme",
+    "inheritBadge": "Using tenant defaults",
+    "pinnedBadge": "Pinned override",
+    "inheritHint": "This row uses the tenant's branding. Pin an override to customize colors, font, and container width just for this row.",
+    "pinOverride": "Pin a theme override",
+    "textColor": "Text color",
+    "linkColor": "Link color",
+    "buttonColor": "Button color",
+    "buttonTextColor": "Button text color",
+    "fontFamily": "Font family",
+    "containerWidth": "Container width (px)",
+    "resetDefaults": "Reset to tenant defaults",
+    "colorSwatchAriaLabel": "{{label}} swatch"
+  },
+  "mergeTag": {
+    "dialogAriaLabel": "Insert merge tag",
+    "title": "Insert merge tag",
+    "closeAriaLabel": "Close",
+    "filterPlaceholder": "Type to filter…",
+    "loading": "Loading…",
+    "loadError": "Failed to load merge tags.",
+    "groupSubscriber": "Subscriber",
+    "groupCampaign": "Campaign",
+    "noMatches": "No matches."
+  },
+  "preview": {
+    "viewportAriaLabel": "Preview viewport",
+    "desktop": "Desktop ({{width}}px)",
+    "mobile": "Mobile ({{width}}px)",
+    "error": "Preview failed: {{message}}",
+    "iframeTitle": "Email preview"
+  },
+  "bubbleMenu": {
+    "colorPrompt": "Color (CSS hex / rgb / name):",
+    "linkPlaceholder": "https://…",
+    "apply": "Apply"
+  }
+}

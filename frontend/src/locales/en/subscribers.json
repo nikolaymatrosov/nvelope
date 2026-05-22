@@ -1,0 +1,74 @@
+{
+  "create": {
+    "addToLists": "Add to lists",
+    "description": "Add a subscriber with optional attributes and list memberships.",
+    "email": "Email",
+    "emailTaken": "A subscriber with this email already exists.",
+    "name": "Name",
+    "noLists": "No lists yet — you can add memberships later.",
+    "submit": "Create subscriber",
+    "submitting": "Creating…",
+    "success": "Subscriber created.",
+    "title": "New subscriber"
+  },
+  "detail": {
+    "back": "← Subscribers",
+    "deleteConfirm": "Delete subscriber",
+    "deleteDescription": "The subscriber and all their list memberships will be removed.",
+    "deleteSuccess": "Subscriber deleted.",
+    "deleteTitle": "Delete this subscriber?"
+  },
+  "edit": {
+    "delete": "Delete",
+    "name": "Name",
+    "nameRequired": "Enter a name.",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "state": "State",
+    "success": "Subscriber updated."
+  },
+  "list": {
+    "columns": {
+      "email": "Email",
+      "lists": "Lists",
+      "name": "Name",
+      "state": "State"
+    },
+    "description": "Search, segment, and manage subscribers.",
+    "newSubscriber": "New subscriber",
+    "search": {
+      "emptyMessage": "No subscribers match this search.",
+      "emptyTitle": "No subscribers found",
+      "placeholder": "Search by email or name",
+      "submit": "Search"
+    },
+    "segment": {
+      "emptyMessage": "No subscribers match this segment.",
+      "emptyTitle": "No matches",
+      "matchCount_few": "{{count}} subscribers match this segment.",
+      "matchCount_many": "{{count}} subscribers match this segment.",
+      "matchCount_one": "{{count}} subscriber matches this segment.",
+      "matchCount_other": "{{count}} subscribers match this segment.",
+      "run": "Run query"
+    },
+    "tabs": {
+      "search": "Search",
+      "segment": "Segment query"
+    },
+    "title": "Subscribers"
+  },
+  "memberships": {
+    "add": "Add",
+    "addPlaceholder": "Add to a list…",
+    "addSuccess": "Added to list.",
+    "count_few": "{{count}} list memberships",
+    "count_many": "{{count}} list memberships",
+    "count_one": "{{count}} list membership",
+    "count_other": "{{count}} list memberships",
+    "empty": "Not a member of any list yet.",
+    "removeFromList": "Remove from list",
+    "removeSuccess": "Removed from list.",
+    "statusSuccess": "Subscription updated.",
+    "title": "List memberships"
+  }
+}

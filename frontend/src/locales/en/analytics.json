@@ -1,0 +1,24 @@
+{
+  "campaign": {
+    "backToCampaign": "Back to campaign",
+    "title": "Campaign analytics",
+    "description": "How this campaign performed across delivery, opens, and clicks.",
+    "notFound": {
+      "title": "Campaign not found",
+      "description": "This campaign does not exist in this workspace."
+    },
+    "awaiting": {
+      "title": "Awaiting data",
+      "description": "Delivery feedback has not been processed for this campaign yet. Counts and rates will appear here once the first refresh runs."
+    },
+    "refreshedAt": "Figures last refreshed {{timestamp}}.",
+    "metrics": {
+      "sent": "Sent",
+      "delivered": "Delivered",
+      "opened": "Opened",
+      "clicked": "Clicked",
+      "bounced": "Bounced",
+      "complained": "Complained"
+    }
+  }
+}

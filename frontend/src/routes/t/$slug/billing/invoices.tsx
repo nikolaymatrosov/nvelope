@@ -3,6 +3,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import type { InvoiceStatus, InvoiceView } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -40,22 +41,28 @@ export const Route = createFileRoute("/t/$slug/billing/invoices")({
   component: InvoicesPage,
 })
 
-const STATUS: Record<
+const STATUS_VARIANT: Record<
   InvoiceStatus,
-  { label: string; variant: "secondary" | "destructive" | "outline" }
+  "secondary" | "destructive" | "outline"
 > = {
-  open: { label: "Unpaid", variant: "destructive" },
-  paid: { label: "Paid", variant: "secondary" },
-  void: { label: "Void", variant: "outline" },
+  open: "destructive",
+  paid: "secondary",
+  void: "outline",
 }
 
 function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
-  const s = STATUS[status]
-  return <Badge variant={s.variant}>{s.label}</Badge>
+  const { t } = useTranslation("billing")
+  const label: Record<InvoiceStatus, string> = {
+    open: t("invoices.status.open"),
+    paid: t("invoices.status.paid"),
+    void: t("invoices.status.void"),
+  }
+  return <Badge variant={STATUS_VARIANT[status]}>{label[status]}</Badge>
 }
 
 export function InvoicesPage() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("billing")
   const [offset, setOffset] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const limit = DEFAULT_PAGE_SIZE
@@ -69,9 +76,9 @@ export function InvoicesPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Invoices</h1>
+        <h1 className="text-2xl font-semibold">{t("invoices.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Billing history and payment attempts for this workspace.
+          {t("invoices.description")}
         </p>
       </header>
 
@@ -87,7 +94,7 @@ export function InvoicesPage() {
       {query.isError && (
         <Empty data-testid="invoices-error" className="border">
           <EmptyHeader>
-            <EmptyTitle>Could not load invoices</EmptyTitle>
+            <EmptyTitle>{t("invoices.loadError.title")}</EmptyTitle>
             <EmptyDescription>{errorMessage(query.error)}</EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -96,9 +103,9 @@ export function InvoicesPage() {
       {query.data && query.data.invoices.length === 0 && (
         <Empty data-testid="invoices-empty" className="border">
           <EmptyHeader>
-            <EmptyTitle>No invoices yet</EmptyTitle>
+            <EmptyTitle>{t("invoices.empty.title")}</EmptyTitle>
             <EmptyDescription>
-              Invoices appear here once a billing period has been charged.
+              {t("invoices.empty.description")}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -109,9 +116,9 @@ export function InvoicesPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Billing period</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{t("invoices.columns.billingPeriod")}</TableHead>
+                <TableHead>{t("invoices.columns.total")}</TableHead>
+                <TableHead>{t("invoices.columns.status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,8 +150,11 @@ export function InvoicesPage() {
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {offset + 1}–{offset + query.data.invoices.length} of{" "}
-              {query.data.total}
+              {t("invoices.pagination.range", {
+                from: offset + 1,
+                to: offset + query.data.invoices.length,
+                total: query.data.total,
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -153,7 +163,7 @@ export function InvoicesPage() {
                 disabled={offset === 0}
                 onClick={() => setOffset(Math.max(0, offset - limit))}
               >
-                Previous
+                {t("invoices.pagination.previous")}
               </Button>
               <Button
                 variant="outline"
@@ -161,7 +171,7 @@ export function InvoicesPage() {
                 disabled={offset + limit >= query.data.total}
                 onClick={() => setOffset(offset + limit)}
               >
-                Next
+                {t("invoices.pagination.next")}
               </Button>
             </div>
           </div>
@@ -186,6 +196,7 @@ function InvoiceDetailDialog({
   invoiceId: string | null
   onClose: () => void
 }) {
+  const { t } = useTranslation("billing")
   const query = useQuery({
     queryKey: queryKeys.invoice(slug, invoiceId ?? ""),
     queryFn: async () =>
@@ -200,9 +211,9 @@ function InvoiceDetailDialog({
     <Dialog open={invoiceId !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Invoice</DialogTitle>
+          <DialogTitle>{t("invoices.detail.title")}</DialogTitle>
           <DialogDescription>
-            Line items and payment attempts for this invoice.
+            {t("invoices.detail.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -210,7 +221,7 @@ function InvoiceDetailDialog({
 
         {notFound && (
           <p data-testid="invoice-not-found" className="text-sm">
-            This invoice could not be found.
+            {t("invoices.detail.notFound")}
           </p>
         )}
 
@@ -227,6 +238,7 @@ function InvoiceDetailDialog({
 }
 
 function InvoiceDetailBody({ invoice }: { invoice: InvoiceView }) {
+  const { t } = useTranslation("billing")
   return (
     <div className="flex flex-col gap-6" data-testid="invoice-detail">
       <div className="flex items-center justify-between text-sm">
@@ -237,13 +249,21 @@ function InvoiceDetailBody({ invoice }: { invoice: InvoiceView }) {
       </div>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold">Line items</h3>
+        <h3 className="text-sm font-semibold">
+          {t("invoices.detail.lineItems")}
+        </h3>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Description</TableHead>
-              <TableHead>Qty</TableHead>
-              <TableHead>Amount</TableHead>
+              <TableHead>
+                {t("invoices.detail.lineItemColumns.description")}
+              </TableHead>
+              <TableHead>
+                {t("invoices.detail.lineItemColumns.quantity")}
+              </TableHead>
+              <TableHead>
+                {t("invoices.detail.lineItemColumns.amount")}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -260,7 +280,9 @@ function InvoiceDetailBody({ invoice }: { invoice: InvoiceView }) {
               </TableRow>
             ))}
             <TableRow>
-              <TableCell className="font-semibold">Total</TableCell>
+              <TableCell className="font-semibold">
+                {t("invoices.detail.total")}
+              </TableCell>
               <TableCell />
               <TableCell className="font-semibold">
                 <Money
@@ -274,10 +296,12 @@ function InvoiceDetailBody({ invoice }: { invoice: InvoiceView }) {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold">Payment attempts</h3>
+        <h3 className="text-sm font-semibold">
+          {t("invoices.detail.paymentAttempts")}
+        </h3>
         {invoice.paymentAttempts.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No payment attempts have been made yet.
+            {t("invoices.detail.noAttempts")}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -288,8 +312,13 @@ function InvoiceDetailBody({ invoice }: { invoice: InvoiceView }) {
               >
                 <div className="flex flex-col">
                   <span className="font-medium">
-                    Attempt {a.attemptNumber} —{" "}
-                    {a.status === "succeeded" ? "Succeeded" : "Failed"}
+                    {t("invoices.detail.attempt", {
+                      number: a.attemptNumber,
+                      status:
+                        a.status === "succeeded"
+                          ? t("invoices.detail.attemptStatus.succeeded")
+                          : t("invoices.detail.attemptStatus.failed"),
+                    })}
                   </span>
                   {a.status === "failed" && a.failureReason && (
                     <span className="text-muted-foreground">

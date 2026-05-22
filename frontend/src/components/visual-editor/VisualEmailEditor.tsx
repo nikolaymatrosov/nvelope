@@ -11,6 +11,7 @@
 
 import "./visual-editor.css"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Color } from "@tiptap/extension-color"
 import { TextStyle } from "@tiptap/extension-text-style"
 import { EditorContent, useEditor } from "@tiptap/react"
@@ -102,6 +103,7 @@ export function VisualEmailEditor({
   theme = null,
   onThemeChange,
 }: Props) {
+  const { t } = useTranslation(["visualEditor", "common"])
   // Resolve the effective theme. When the row carries a pinned override the
   // resolved theme is the override itself; otherwise we read tenant branding
   // and derive defaults (T107). The result feeds both the in-canvas CSS
@@ -276,7 +278,7 @@ export function VisualEmailEditor({
               data-testid="ve-switch-to-code"
               onClick={onSwitchToCodeView}
             >
-              View HTML
+              {t("toolbar.viewHtml")}
             </button>
           )}
           {onOptOutVisual && (
@@ -286,7 +288,7 @@ export function VisualEmailEditor({
               data-testid="ve-opt-out-visual"
               onClick={onOptOutVisual}
             >
-              Edit as HTML only
+              {t("toolbar.editHtmlOnly")}
             </button>
           )}
         </div>
@@ -319,17 +321,15 @@ export function VisualEmailEditor({
       >
         <DialogContent className="max-w-3xl" data-testid="ve-rawhtml-modal">
           <DialogHeader>
-            <DialogTitle>Edit raw HTML block</DialogTitle>
+            <DialogTitle>{t("rawHtmlModal.title")}</DialogTitle>
             <DialogDescription>
-              These bytes are passed through verbatim. They run through the
-              sanitizer at save time — disallowed constructs (script,
-              event handlers, dangerous URL schemes) are stripped.
+              {t("rawHtmlModal.description")}
             </DialogDescription>
           </DialogHeader>
           <CodeView
             value={rawHTMLDraft}
             onChange={setRawHTMLDraft}
-            ariaLabel="Raw HTML editor"
+            ariaLabel={t("rawHtmlModal.editorAriaLabel")}
             testId="ve-rawhtml-codeview"
           />
           <DialogFooter>
@@ -338,14 +338,14 @@ export function VisualEmailEditor({
               variant="outline"
               onClick={closeRawHTMLModal}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </UIButton>
             <UIButton
               type="button"
               onClick={saveRawHTMLEdit}
               data-testid="ve-rawhtml-modal-save"
             >
-              Save HTML
+              {t("rawHtmlModal.save")}
             </UIButton>
           </DialogFooter>
         </DialogContent>

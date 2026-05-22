@@ -2,6 +2,7 @@
 // async view must render (FR-034) — no blank screens.
 
 import { AlertCircleIcon, InboxIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import type { ReactNode } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -48,10 +49,11 @@ export function AsyncState<T>({
   children,
   isEmpty,
   loading,
-  emptyTitle = "Nothing here yet",
-  emptyMessage = "There is nothing to show.",
+  emptyTitle,
+  emptyMessage,
   emptyAction,
 }: AsyncStateProps<T>) {
+  const { t } = useTranslation()
   if (query.isLoading) {
     return <>{loading ?? <DefaultSkeleton />}</>
   }
@@ -63,7 +65,7 @@ export function AsyncState<T>({
           <EmptyMedia variant="icon">
             <AlertCircleIcon className="text-destructive" />
           </EmptyMedia>
-          <EmptyTitle>Could not load this view</EmptyTitle>
+          <EmptyTitle>{t("asyncState.errorTitle")}</EmptyTitle>
           <EmptyDescription>{errorMessage(query.error)}</EmptyDescription>
         </EmptyHeader>
         {query.refetch && (
@@ -73,7 +75,7 @@ export function AsyncState<T>({
               size="sm"
               onClick={() => query.refetch?.()}
             >
-              Try again
+              {t("actions.tryAgain")}
             </Button>
           </EmptyContent>
         )}
@@ -92,8 +94,10 @@ export function AsyncState<T>({
           <EmptyMedia variant="icon">
             <InboxIcon />
           </EmptyMedia>
-          <EmptyTitle>{emptyTitle}</EmptyTitle>
-          <EmptyDescription>{emptyMessage}</EmptyDescription>
+          <EmptyTitle>{emptyTitle ?? t("asyncState.emptyTitle")}</EmptyTitle>
+          <EmptyDescription>
+            {emptyMessage ?? t("asyncState.emptyMessage")}
+          </EmptyDescription>
         </EmptyHeader>
         {emptyAction && <EmptyContent>{emptyAction}</EmptyContent>}
       </Empty>

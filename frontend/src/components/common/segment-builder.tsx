@@ -3,6 +3,7 @@
 // json tags, so the API decodes `Conj`, `Children`, `Field`, `Attr`, `Member`.
 
 import { PlusIcon, Trash2Icon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import type {
   Conjunction,
   FieldName,
@@ -32,17 +33,6 @@ const OPS: Array<SegmentOp> = [
   "lte",
 ]
 const FIELDS: Array<FieldName> = ["email", "name", "state"]
-
-const OP_LABELS: Record<SegmentOp, string> = {
-  eq: "equals",
-  neq: "not equals",
-  exists: "exists",
-  contains: "contains",
-  gt: "greater than",
-  lt: "less than",
-  gte: "greater or equal",
-  lte: "less or equal",
-}
 
 type LeafKind = "field" | "attr" | "member"
 
@@ -77,6 +67,7 @@ function LeafEditor({
   node: Node
   onChange: (next: Node) => void
 }) {
+  const { t } = useTranslation()
   const kind = leafKind(node)
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -89,9 +80,15 @@ function LeafEditor({
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectItem value="field">Field</SelectItem>
-            <SelectItem value="attr">Attribute</SelectItem>
-            <SelectItem value="member">List membership</SelectItem>
+            <SelectItem value="field">
+              {t("segmentBuilder.leafKind.field")}
+            </SelectItem>
+            <SelectItem value="attr">
+              {t("segmentBuilder.leafKind.attr")}
+            </SelectItem>
+            <SelectItem value="member">
+              {t("segmentBuilder.leafKind.member")}
+            </SelectItem>
           </SelectGroup>
         </SelectContent>
       </Select>
@@ -124,7 +121,7 @@ function LeafEditor({
           {node.Field.Op !== "exists" && (
             <Input
               className="w-40"
-              placeholder="Value"
+              placeholder={t("segmentBuilder.valuePlaceholder")}
               value={node.Field.Value}
               onChange={(e) =>
                 onChange({ Field: { ...node.Field!, Value: e.target.value } })
@@ -138,7 +135,7 @@ function LeafEditor({
         <>
           <Input
             className="w-36"
-            placeholder="Attribute key"
+            placeholder={t("segmentBuilder.attrKeyPlaceholder")}
             value={node.Attr.Key}
             onChange={(e) =>
               onChange({ Attr: { ...node.Attr!, Key: e.target.value } })
@@ -151,7 +148,7 @@ function LeafEditor({
           {node.Attr.Op !== "exists" && (
             <Input
               className="w-40"
-              placeholder="Value"
+              placeholder={t("segmentBuilder.valuePlaceholder")}
               value={String(node.Attr.Value ?? "")}
               onChange={(e) =>
                 onChange({ Attr: { ...node.Attr!, Value: e.target.value } })
@@ -165,7 +162,7 @@ function LeafEditor({
         <>
           <Input
             className="w-44"
-            placeholder="List id"
+            placeholder={t("segmentBuilder.listIdPlaceholder")}
             value={node.Member.ListID}
             onChange={(e) =>
               onChange({ Member: { ...node.Member!, ListID: e.target.value } })
@@ -173,7 +170,7 @@ function LeafEditor({
           />
           <Input
             className="w-36"
-            placeholder="Status"
+            placeholder={t("segmentBuilder.statusPlaceholder")}
             value={node.Member.Status}
             onChange={(e) =>
               onChange({ Member: { ...node.Member!, Status: e.target.value } })
@@ -192,6 +189,7 @@ function OpSelect({
   op: SegmentOp
   onChange: (op: SegmentOp) => void
 }) {
+  const { t } = useTranslation()
   return (
     <Select value={op} onValueChange={(v) => onChange(v as SegmentOp)}>
       <SelectTrigger className="w-44">
@@ -201,7 +199,7 @@ function OpSelect({
         <SelectGroup>
           {OPS.map((o) => (
             <SelectItem key={o} value={o}>
-              {OP_LABELS[o]}
+              {t(`segmentBuilder.op.${o}`)}
             </SelectItem>
           ))}
         </SelectGroup>
@@ -219,6 +217,7 @@ function GroupEditor({
   onChange: (next: Node) => void
   depth: number
 }) {
+  const { t } = useTranslation()
   const children = node.Children ?? []
 
   function setChild(index: number, next: Node) {
@@ -241,7 +240,9 @@ function GroupEditor({
       )}
     >
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Match</span>
+        <span className="text-sm text-muted-foreground">
+          {t("segmentBuilder.matchPrefix")}
+        </span>
         <Select
           value={node.Conj ?? "and"}
           onValueChange={(v) => onChange({ ...node, Conj: v as Conjunction })}
@@ -251,12 +252,18 @@ function GroupEditor({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="and">all</SelectItem>
-              <SelectItem value="or">any</SelectItem>
+              <SelectItem value="and">
+                {t("segmentBuilder.matchAll")}
+              </SelectItem>
+              <SelectItem value="or">
+                {t("segmentBuilder.matchAny")}
+              </SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>
-        <span className="text-sm text-muted-foreground">of the following</span>
+        <span className="text-sm text-muted-foreground">
+          {t("segmentBuilder.matchSuffix")}
+        </span>
       </div>
 
       {children.map((child, index) => (
@@ -279,7 +286,7 @@ function GroupEditor({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Remove condition"
+            aria-label={t("segmentBuilder.removeCondition")}
             onClick={() => removeChild(index)}
           >
             <Trash2Icon />
@@ -294,7 +301,7 @@ function GroupEditor({
           size="sm"
           onClick={() => addChild(emptyField())}
         >
-          <PlusIcon /> Condition
+          <PlusIcon /> {t("segmentBuilder.addCondition")}
         </Button>
         {depth < 2 && (
           <Button
@@ -303,7 +310,7 @@ function GroupEditor({
             size="sm"
             onClick={() => addChild(emptyGroup())}
           >
-            <PlusIcon /> Group
+            <PlusIcon /> {t("segmentBuilder.addGroup")}
           </Button>
         )}
       </div>

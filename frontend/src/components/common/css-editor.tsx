@@ -3,6 +3,7 @@
 // the input exceeds it, and (when a sanitized copy is supplied) shows the
 // server-returned, sanitized result as a read-only preview block.
 
+import { useTranslation } from "react-i18next"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -27,18 +28,20 @@ export function CssEditor({
   onChange,
   limitBytes,
   sanitized,
-  label = "Custom CSS",
+  label,
   disabled,
 }: CssEditorProps) {
+  const { t } = useTranslation()
   const used = byteLength(value)
   const overLimit = used > limitBytes
   const showPreview = sanitized !== undefined && sanitized !== null && sanitized !== ""
   return (
     <div className="flex flex-col gap-2" data-testid="css-editor">
-      <Label htmlFor="css-editor-input">{label}</Label>
+      <Label htmlFor="css-editor-input">
+        {label ?? t("cssEditor.label")}
+      </Label>
       <p className="text-xs text-muted-foreground">
-        CSS is sanitized server-side before it is applied to your public pages.
-        Limit: {limitBytes.toLocaleString()} bytes.
+        {t("cssEditor.hint", { limit: limitBytes.toLocaleString() })}
       </p>
       <Textarea
         id="css-editor-input"
@@ -62,11 +65,14 @@ export function CssEditor({
           )}
           data-testid="css-editor-counter"
         >
-          {used.toLocaleString()} / {limitBytes.toLocaleString()} bytes
+          {t("cssEditor.counter", {
+            used: used.toLocaleString(),
+            limit: limitBytes.toLocaleString(),
+          })}
         </span>
         {overLimit && (
           <span className="text-destructive" role="alert">
-            Reduce the CSS below the limit before saving.
+            {t("cssEditor.overLimit")}
           </span>
         )}
       </div>
@@ -76,7 +82,7 @@ export function CssEditor({
           data-testid="css-editor-sanitized"
         >
           <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Sanitized CSS applied to your public pages
+            {t("cssEditor.sanitizedHeading")}
           </p>
           <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs font-mono">
             {sanitized}

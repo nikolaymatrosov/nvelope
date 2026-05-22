@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Trash2Icon, XIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { Subscriber } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -40,6 +41,7 @@ export function SubscriberDetail() {
   const { slug, id } = Route.useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("subscribers")
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const subscriberQuery = useQuery({
@@ -64,7 +66,7 @@ export function SubscriberDetail() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.subscribers(slug),
       })
-      toast.success("Subscriber deleted.")
+      toast.success(t("detail.deleteSuccess"))
       navigate({ to: "/t/$slug/subscribers", params: { slug } })
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -78,7 +80,7 @@ export function SubscriberDetail() {
           params={{ slug }}
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Subscribers
+          {t("detail.back")}
         </Link>
       </div>
 
@@ -105,9 +107,9 @@ export function SubscriberDetail() {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Delete this subscriber?"
-        description="The subscriber and all their list memberships will be removed."
-        confirmLabel="Delete subscriber"
+        title={t("detail.deleteTitle")}
+        description={t("detail.deleteDescription")}
+        confirmLabel={t("detail.deleteConfirm")}
         busy={remove.isPending}
         onConfirm={() => remove.mutate()}
       />
@@ -126,6 +128,7 @@ function EditSubscriberCard({
   onSaved: () => void
   onDelete: () => void
 }) {
+  const { t } = useTranslation("subscribers")
   const [attributes, setAttributes] = useState<Record<string, unknown>>(
     subscriber.Attributes,
   )
@@ -140,7 +143,7 @@ function EditSubscriberCard({
         state,
       }),
     onSuccess: () => {
-      toast.success("Subscriber updated.")
+      toast.success(t("edit.success"))
       onSaved()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -170,11 +173,13 @@ function EditSubscriberCard({
         >
           <form.Field
             name="name"
-            validators={{ onBlur: compose(rules.required("Enter a name.")) }}
+            validators={{
+              onBlur: compose(rules.required(t("edit.nameRequired"))),
+            }}
           >
             {(field) => (
               <FormField
-                label="Name"
+                label={t("edit.name")}
                 required
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -183,7 +188,7 @@ function EditSubscriberCard({
               />
             )}
           </form.Field>
-          <FormField label="State">
+          <FormField label={t("edit.state")}>
             <Select value={state} onValueChange={setState}>
               <SelectTrigger>
                 <SelectValue />
@@ -206,10 +211,10 @@ function EditSubscriberCard({
           />
           <div className="flex justify-between">
             <Button type="submit" disabled={update.isPending || !attrsValid}>
-              {update.isPending ? "Saving…" : "Save changes"}
+              {update.isPending ? t("edit.saving") : t("edit.save")}
             </Button>
             <Button type="button" variant="destructive" onClick={onDelete}>
-              <Trash2Icon /> Delete
+              <Trash2Icon /> {t("edit.delete")}
             </Button>
           </div>
         </form>
@@ -229,6 +234,7 @@ function MembershipsCard({
   lists: Array<{ ID: string; Name: string }>
   onChanged: () => void
 }) {
+  const { t } = useTranslation("subscribers")
   const [addListId, setAddListId] = useState("")
   const listName = (id: string) =>
     lists.find((l) => l.ID === id)?.Name ?? id
@@ -237,7 +243,7 @@ function MembershipsCard({
     mutationFn: (listId: string) =>
       api.addToList(slug, subscriber.ID, listId),
     onSuccess: () => {
-      toast.success("Added to list.")
+      toast.success(t("memberships.addSuccess"))
       setAddListId("")
       onChanged()
     },
@@ -248,7 +254,7 @@ function MembershipsCard({
     mutationFn: (listId: string) =>
       api.removeFromList(slug, subscriber.ID, listId),
     onSuccess: () => {
-      toast.success("Removed from list.")
+      toast.success(t("memberships.removeSuccess"))
       onChanged()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -258,7 +264,7 @@ function MembershipsCard({
     mutationFn: (v: { listId: string; status: string }) =>
       api.changeSubscription(slug, subscriber.ID, v.listId, v.status),
     onSuccess: () => {
-      toast.success("Subscription updated.")
+      toast.success(t("memberships.statusSuccess"))
       onChanged()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -270,12 +276,12 @@ function MembershipsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>List memberships</CardTitle>
+        <CardTitle>{t("memberships.title")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {subscriber.Memberships.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Not a member of any list yet.
+            {t("memberships.empty")}
           </p>
         ) : (
           <div className="flex flex-col gap-2">
@@ -310,7 +316,7 @@ function MembershipsCard({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Remove from list"
+                  aria-label={t("memberships.removeFromList")}
                   onClick={() => removeFrom.mutate(m.ListID)}
                 >
                   <XIcon />
@@ -324,7 +330,7 @@ function MembershipsCard({
           <div className="flex items-center gap-2">
             <Select value={addListId} onValueChange={setAddListId}>
               <SelectTrigger className="w-56">
-                <SelectValue placeholder="Add to a list…" />
+                <SelectValue placeholder={t("memberships.addPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -341,14 +347,14 @@ function MembershipsCard({
               disabled={!addListId || addTo.isPending}
               onClick={() => addTo.mutate(addListId)}
             >
-              Add
+              {t("memberships.add")}
             </Button>
           </div>
         )}
 
         <p className="text-xs text-muted-foreground">
-          <Badge variant="secondary">{subscriber.Memberships.length}</Badge> list
-          membership{subscriber.Memberships.length === 1 ? "" : "s"}
+          <Badge variant="secondary">{subscriber.Memberships.length}</Badge>{" "}
+          {t("memberships.count", { count: subscriber.Memberships.length })}
         </p>
       </CardContent>
     </Card>

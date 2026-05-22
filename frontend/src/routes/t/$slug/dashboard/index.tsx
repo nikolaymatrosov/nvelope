@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronRightIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import type { DashboardView } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/t/$slug/dashboard/")({
 
 export function DashboardPage() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("dashboard")
 
   const query = useQuery({
     queryKey: queryKeys.dashboard(slug),
@@ -30,9 +32,9 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Deliverability health across this workspace.
+          {t("index.description")}
         </p>
       </header>
 
@@ -41,8 +43,8 @@ export function DashboardPage() {
         isEmpty={(d) =>
           d.totals.sent === 0 && d.recentCampaigns.length === 0
         }
-        emptyTitle="No sending activity yet"
-        emptyMessage="Once you send a campaign, its delivery health will appear here."
+        emptyTitle={t("index.emptyTitle")}
+        emptyMessage={t("index.emptyMessage")}
       >
         {(data) => <DashboardBody slug={slug} data={data} />}
       </AsyncState>
@@ -57,21 +59,22 @@ function DashboardBody({
   slug: string
   data: DashboardView
 }) {
+  const { t } = useTranslation("dashboard")
   const { totals, deliverability, recentCampaigns } = data
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <MetricTile label="Sent" value={totals.sent} />
-        <MetricTile label="Delivered" value={totals.delivered} />
-        <MetricTile label="Opened" value={totals.opened} />
-        <MetricTile label="Clicked" value={totals.clicked} />
+        <MetricTile label={t("metrics.sent")} value={totals.sent} />
+        <MetricTile label={t("metrics.delivered")} value={totals.delivered} />
+        <MetricTile label={t("metrics.opened")} value={totals.opened} />
+        <MetricTile label={t("metrics.clicked")} value={totals.clicked} />
         <MetricTile
-          label="Bounced"
+          label={t("metrics.bounced")}
           value={totals.bounced}
           rate={<RateValue value={deliverability.bounceRate} />}
         />
         <MetricTile
-          label="Complained"
+          label={t("metrics.complained")}
           value={totals.complained}
           rate={<RateValue value={deliverability.complaintRate} />}
         />
@@ -79,12 +82,12 @@ function DashboardBody({
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent campaigns</CardTitle>
+          <CardTitle>{t("recentCampaigns.title")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {recentCampaigns.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No campaigns have been sent yet.
+              {t("recentCampaigns.empty")}
             </p>
           ) : (
             recentCampaigns.map((c) => (
@@ -97,15 +100,20 @@ function DashboardBody({
                 <div className="flex-1">
                   <p className="text-sm font-medium">{c.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {c.sent.toLocaleString()} sent
+                    {t("recentCampaigns.sentCount", {
+                      count: c.sent,
+                    })}
                   </p>
                 </div>
                 <div className="text-right text-xs text-muted-foreground tabular-nums">
                   <p>
-                    Open <RateValue value={c.openRate} />
+                    {t("recentCampaigns.openRate")}{" "}
+                    <RateValue value={c.openRate} />
                   </p>
                   <p>
-                    Bounce <RateValue value={c.bounceRate} /> · Complaint{" "}
+                    {t("recentCampaigns.bounceRate")}{" "}
+                    <RateValue value={c.bounceRate} /> ·{" "}
+                    {t("recentCampaigns.complaintRate")}{" "}
                     <RateValue value={c.complaintRate} />
                   </p>
                 </div>

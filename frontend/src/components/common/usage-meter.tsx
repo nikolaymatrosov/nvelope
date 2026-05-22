@@ -1,6 +1,7 @@
 // Renders metered sends consumed against a plan's included allowance as a
 // proportional bar with a near-limit / exhausted visual cue (Phase 5 US3).
 
+import { useTranslation } from "react-i18next"
 import { Progress } from "@/components/ui/progress"
 
 type UsageMeterProps = {
@@ -9,6 +10,7 @@ type UsageMeterProps = {
 }
 
 export function UsageMeter({ used, included }: UsageMeterProps) {
+  const { t } = useTranslation()
   const ratio = included > 0 ? used / included : used > 0 ? 1 : 0
   const percent = Math.min(100, Math.round(ratio * 100))
   const exhausted = included > 0 && used >= included
@@ -27,7 +29,7 @@ export function UsageMeter({ used, included }: UsageMeterProps) {
           {used.toLocaleString()}
           <span className="text-base font-normal text-muted-foreground">
             {" "}
-            / {included.toLocaleString()} sends
+            / {included.toLocaleString()} {t("usageMeter.sendsUnit")}
           </span>
         </span>
         <span className={`text-sm font-medium tabular-nums ${tone}`}>
@@ -37,10 +39,13 @@ export function UsageMeter({ used, included }: UsageMeterProps) {
       <Progress value={percent} />
       <p className={`text-sm ${tone}`}>
         {exhausted
-          ? "Plan allowance reached for this period."
+          ? t("usageMeter.exhausted")
           : nearLimit
-            ? "Approaching the plan allowance for this period."
-            : `${Math.max(0, included - used).toLocaleString()} sends remaining this period.`}
+            ? t("usageMeter.nearLimit")
+            : t("usageMeter.remaining", {
+                count: Math.max(0, included - used),
+                formattedCount: Math.max(0, included - used).toLocaleString(),
+              })}
       </p>
     </div>
   )

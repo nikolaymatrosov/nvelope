@@ -1,0 +1,74 @@
+{
+  "page": {
+    "title": "Settings",
+    "description": "Configure this workspace."
+  },
+  "form": {
+    "title": "Workspace settings",
+    "description": "These values apply across the whole workspace.",
+    "displayName": {
+      "label": "Display name",
+      "required": "Enter a display name."
+    },
+    "timezone": {
+      "label": "Timezone",
+      "hint": "An IANA timezone, e.g. Europe/Berlin."
+    },
+    "submit": "Save settings",
+    "savedToast": "Settings saved."
+  },
+  "fields": {
+    "page": {
+      "title": "Subscriber fields",
+      "description": "Define the custom subscriber attributes that appear in the merge-tag picker, on subscription pages, and in segment filters."
+    },
+    "forbidden": "You do not have permission to manage subscriber fields.",
+    "card": {
+      "title": "Fields",
+      "description": "Built-in fields cannot be renamed or removed."
+    },
+    "addField": "Add field",
+    "table": {
+      "displayName": "Display name",
+      "slug": "Slug",
+      "type": "Type",
+      "default": "Default",
+      "emptyDefault": "—"
+    },
+    "row": {
+      "builtIn": "built-in",
+      "moveUp": "Move {{name}} up",
+      "moveDown": "Move {{name}} down",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "delete": {
+      "title": "Delete \"{{name}}\"?",
+      "description": "Existing subscribers keep their attribute data; the registry definition is removed.",
+      "confirmLabel": "Delete field"
+    },
+    "toast": {
+      "deleted": "Field deleted.",
+      "created": "Field created.",
+      "saved": "Field saved."
+    },
+    "dialog": {
+      "createTitle": "New subscriber field",
+      "editTitle": "Edit subscriber field",
+      "slug": {
+        "label": "Slug",
+        "required": "Enter a slug."
+      },
+      "displayName": {
+        "label": "Display name",
+        "required": "Enter a display name."
+      },
+      "type": {
+        "label": "Type"
+      },
+      "defaultValue": {
+        "label": "Default value"
+      }
+    }
+  }
+}

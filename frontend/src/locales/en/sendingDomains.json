@@ -1,0 +1,41 @@
+{
+  "status": {
+    "verified": "verified",
+    "pending": "pending",
+    "failed": "failed"
+  },
+  "index": {
+    "title": "Sending domains",
+    "description": "Verify the domains you send mail from.",
+    "addDomain": "Add domain",
+    "emptyTitle": "No sending domains yet",
+    "emptyMessage": "Add a domain to publish its DNS records and start sending.",
+    "added": "Added {{date}}",
+    "recheckAria": "Re-check domain",
+    "recheckRequested": "Re-check requested."
+  },
+  "create": {
+    "title": "Add a sending domain",
+    "description": "Enter the domain you want to send mail from. You will be shown the DNS records to publish.",
+    "domainLabel": "Domain",
+    "domainPlaceholder": "mail.example.com",
+    "domainRequired": "Enter a domain name.",
+    "submit": "Add domain",
+    "submitting": "Adding…",
+    "success": "Domain added. Publish its DNS records to verify it."
+  },
+  "detail": {
+    "back": "← Sending domains",
+    "recheckNow": "Re-check now",
+    "recheckRequested": "Re-check requested.",
+    "failedTitle": "Verification failed",
+    "verifiedTitle": "Domain verified",
+    "verifiedMessage": "Verified {{date}}. You can send campaigns and transactional mail from this domain.",
+    "dnsTitle": "DNS records",
+    "dnsDescription": "Publish these records at your DNS provider. Verification runs automatically once they are visible.",
+    "lastChecked": " Last checked {{date}}.",
+    "dkimRecordType": "DKIM ({{type}})",
+    "spfRecordType": "SPF (TXT)",
+    "dmarcRecordType": "DMARC (TXT)"
+  }
+}

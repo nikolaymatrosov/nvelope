@@ -3,6 +3,7 @@ import { useRef, useState } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { DownloadIcon, UploadIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { ExportSelection, JobStatusView, Node } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -39,6 +40,7 @@ export const Route = createFileRoute("/t/$slug/import-export/")({
 
 export function ImportExportView() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("importExport")
   const { can } = usePermissions(slug)
   const canImport = can("subscribers:import")
   const canExport = can("subscribers:export")
@@ -46,29 +48,35 @@ export function ImportExportView() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Import / Export</h1>
+        <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Bring subscribers in from a CSV, or export them out.
+          {t("index.description")}
         </p>
       </header>
 
       <Tabs defaultValue="import">
         <TabsList>
-          <TabsTrigger value="import">Import</TabsTrigger>
-          <TabsTrigger value="export">Export</TabsTrigger>
+          <TabsTrigger value="import">{t("tabs.import")}</TabsTrigger>
+          <TabsTrigger value="export">{t("tabs.export")}</TabsTrigger>
         </TabsList>
         <TabsContent value="import" className="pt-4">
           {canImport ? (
             <ImportPanel slug={slug} />
           ) : (
-            <PermissionNotice action="import subscribers" permission="subscribers:import" />
+            <PermissionNotice
+              action={t("permissionNotice.importAction")}
+              permission="subscribers:import"
+            />
           )}
         </TabsContent>
         <TabsContent value="export" className="pt-4">
           {canExport ? (
             <ExportPanel slug={slug} />
           ) : (
-            <PermissionNotice action="export subscribers" permission="subscribers:export" />
+            <PermissionNotice
+              action={t("permissionNotice.exportAction")}
+              permission="subscribers:export"
+            />
           )}
         </TabsContent>
       </Tabs>
@@ -83,24 +91,25 @@ function PermissionNotice({
   action: string
   permission: string
 }) {
+  const { t } = useTranslation("importExport")
   return (
     <Alert>
-      <AlertTitle>Not available</AlertTitle>
+      <AlertTitle>{t("permissionNotice.title")}</AlertTitle>
       <AlertDescription>
-        You need the “{permission}” permission to {action}. Ask a workspace
-        admin to grant it.
+        {t("permissionNotice.description", { permission, action })}
       </AlertDescription>
     </Alert>
   )
 }
 
 function JobProgress({ job }: { job: JobStatusView }) {
+  const { t } = useTranslation("importExport")
   const done = job.CreatedCount + job.UpdatedCount + job.FailedCount
   const pct = job.RowCount > 0 ? Math.round((done / job.RowCount) * 100) : 0
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between text-sm">
-        <span>Status</span>
+        <span>{t("job.status")}</span>
         <Badge variant="secondary">{job.Status}</Badge>
       </div>
       {job.RowCount > 0 && <Progress value={pct} />}
@@ -109,20 +118,29 @@ function JobProgress({ job }: { job: JobStatusView }) {
 }
 
 function JobSummary({ job }: { job: JobStatusView }) {
+  const { t } = useTranslation("importExport")
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
-        <Badge variant="secondary">{job.CreatedCount} created</Badge>
-        <Badge variant="secondary">{job.UpdatedCount} updated</Badge>
-        <Badge variant="secondary">{job.FailedCount} failed</Badge>
-        <Badge variant="secondary">{job.RowCount} rows</Badge>
+        <Badge variant="secondary">
+          {t("job.createdCount", { count: job.CreatedCount })}
+        </Badge>
+        <Badge variant="secondary">
+          {t("job.updatedCount", { count: job.UpdatedCount })}
+        </Badge>
+        <Badge variant="secondary">
+          {t("job.failedCount", { count: job.FailedCount })}
+        </Badge>
+        <Badge variant="secondary">
+          {t("job.rowCount", { count: job.RowCount })}
+        </Badge>
       </div>
       {job.Failures.length > 0 && (
         <div className="flex flex-col gap-1 rounded-lg border p-3">
-          <p className="text-sm font-medium">Row failures</p>
+          <p className="text-sm font-medium">{t("job.rowFailures")}</p>
           {job.Failures.map((f) => (
             <p key={f.Row} className="text-xs text-muted-foreground">
-              Row {f.Row}: {f.Reason}
+              {t("job.rowFailure", { row: f.Row, reason: f.Reason })}
             </p>
           ))}
         </div>
@@ -134,6 +152,7 @@ function JobSummary({ job }: { job: JobStatusView }) {
 // ── Import ───────────────────────────────────────────────────────────────────
 
 export function ImportPanel({ slug }: { slug: string }) {
+  const { t } = useTranslation("importExport")
   const fileRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [listIds, setListIds] = useState<Array<string>>([])
@@ -150,7 +169,7 @@ export function ImportPanel({ slug }: { slug: string }) {
     mutationFn: () => api.startImport(slug, file as File, listIds),
     onSuccess: (res) => {
       setJobId(res.data.job_id)
-      toast.success("Import started.")
+      toast.success(t("import.started"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -158,14 +177,12 @@ export function ImportPanel({ slug }: { slug: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Import subscribers</CardTitle>
-        <CardDescription>
-          Upload a CSV or ZIP file and choose which lists to add subscribers to.
-        </CardDescription>
+        <CardTitle>{t("import.cardTitle")}</CardTitle>
+        <CardDescription>{t("import.cardDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="import-file">CSV or ZIP file</Label>
+          <Label htmlFor="import-file">{t("import.fileLabel")}</Label>
           <input
             id="import-file"
             ref={fileRef}
@@ -177,7 +194,7 @@ export function ImportPanel({ slug }: { slug: string }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label>Target lists</Label>
+          <Label>{t("import.targetLists")}</Label>
           {listsQuery.data && listsQuery.data.length > 0 ? (
             <div className="flex flex-col gap-2 rounded-lg border p-3">
               {listsQuery.data.map((list) => (
@@ -200,7 +217,9 @@ export function ImportPanel({ slug }: { slug: string }) {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">No lists available.</p>
+            <p className="text-xs text-muted-foreground">
+              {t("import.noLists")}
+            </p>
           )}
         </div>
 
@@ -209,7 +228,7 @@ export function ImportPanel({ slug }: { slug: string }) {
             disabled={!file || start.isPending || isPolling}
             onClick={() => start.mutate()}
           >
-            <UploadIcon /> Start import
+            <UploadIcon /> {t("import.start")}
           </Button>
         </div>
 
@@ -227,6 +246,7 @@ export function ImportPanel({ slug }: { slug: string }) {
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export function ExportPanel({ slug }: { slug: string }) {
+  const { t } = useTranslation("importExport")
   const [selection, setSelection] = useState<ExportSelection>("all")
   const [listId, setListId] = useState("")
   const [segment, setSegment] = useState<Node>(emptyGroup())
@@ -248,7 +268,7 @@ export function ExportPanel({ slug }: { slug: string }) {
       }),
     onSuccess: (res) => {
       setJobId(res.data.job_id)
-      toast.success("Export started.")
+      toast.success(t("export.started"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -256,14 +276,12 @@ export function ExportPanel({ slug }: { slug: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Export subscribers</CardTitle>
-        <CardDescription>
-          Choose what to export. The result downloads as a CSV.
-        </CardDescription>
+        <CardTitle>{t("export.cardTitle")}</CardTitle>
+        <CardDescription>{t("export.cardDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label>Selection</Label>
+          <Label>{t("export.selectionLabel")}</Label>
           <Select
             value={selection}
             onValueChange={(v) => setSelection(v as ExportSelection)}
@@ -273,9 +291,13 @@ export function ExportPanel({ slug }: { slug: string }) {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="all">All subscribers</SelectItem>
-                <SelectItem value="list">A list</SelectItem>
-                <SelectItem value="segment">A segment</SelectItem>
+                <SelectItem value="all">{t("export.selectionAll")}</SelectItem>
+                <SelectItem value="list">
+                  {t("export.selectionList")}
+                </SelectItem>
+                <SelectItem value="segment">
+                  {t("export.selectionSegment")}
+                </SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -283,10 +305,10 @@ export function ExportPanel({ slug }: { slug: string }) {
 
         {selection === "list" && (
           <div className="flex flex-col gap-1.5">
-            <Label>List</Label>
+            <Label>{t("export.listLabel")}</Label>
             <Select value={listId} onValueChange={setListId}>
               <SelectTrigger className="w-56">
-                <SelectValue placeholder="Choose a list…" />
+                <SelectValue placeholder={t("export.listPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -314,7 +336,7 @@ export function ExportPanel({ slug }: { slug: string }) {
             }
             onClick={() => start.mutate()}
           >
-            Start export
+            {t("export.start")}
           </Button>
         </div>
 
@@ -324,7 +346,7 @@ export function ExportPanel({ slug }: { slug: string }) {
             {job.Status === "completed" && (
               <Button asChild variant="outline">
                 <a href={api.downloadExportUrl(slug, job.ID)}>
-                  <DownloadIcon /> Download CSV
+                  <DownloadIcon /> {t("export.downloadCsv")}
                 </a>
               </Button>
             )}

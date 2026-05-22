@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CopyIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { Member, Permission, Role } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -49,23 +50,24 @@ export const Route = createFileRoute("/t/$slug/access/")({
 
 export function AccessView() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation("access")
   const { can } = usePermissions(slug)
   const canManageRoles = can("roles:manage")
 
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">People & Access</h1>
+        <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Manage members, invitations, and roles.
+          {t("index.description")}
         </p>
       </header>
 
       <Tabs defaultValue="members">
         <TabsList>
-          <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="invitations">Invitations</TabsTrigger>
-          <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="members">{t("tabs.members")}</TabsTrigger>
+          <TabsTrigger value="invitations">{t("tabs.invitations")}</TabsTrigger>
+          <TabsTrigger value="roles">{t("tabs.roles")}</TabsTrigger>
         </TabsList>
         <TabsContent value="members" className="pt-4">
           <MembersPanel slug={slug} canManageRoles={canManageRoles} />
@@ -90,6 +92,7 @@ export function MembersPanel({
   slug: string
   canManageRoles: boolean
 }) {
+  const { t } = useTranslation("access")
   const { members, isLoading, isError, error } = useWorkspace(slug)
   const rolesQuery = useQuery({
     queryKey: queryKeys.roles(slug),
@@ -99,24 +102,23 @@ export function MembersPanel({
   if (isError) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Could not load members</AlertTitle>
+        <AlertTitle>{t("members.loadErrorTitle")}</AlertTitle>
         <AlertDescription>{errorMessage(error)}</AlertDescription>
       </Alert>
     )
   }
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading members…</p>
+    return (
+      <p className="text-sm text-muted-foreground">{t("members.loading")}</p>
+    )
   }
 
   return (
     <div className="flex flex-col gap-3">
       {!canManageRoles && (
         <Alert>
-          <AlertTitle>View only</AlertTitle>
-          <AlertDescription>
-            You can see members but need the “roles:manage” permission to
-            change role assignments.
-          </AlertDescription>
+          <AlertTitle>{t("members.viewOnlyTitle")}</AlertTitle>
+          <AlertDescription>{t("members.viewOnlyMessage")}</AlertDescription>
         </Alert>
       )}
       {members.map((member) => (
@@ -144,6 +146,7 @@ function MemberRow({
   canManageRoles: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("access")
   const [listRolesOpen, setListRolesOpen] = useState(false)
   const currentRole = roles.find((r) => r.Name === member.role)
 
@@ -151,7 +154,7 @@ function MemberRow({
     mutationFn: (roleId: string) => api.assignRole(slug, member.user_id, roleId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.tenant(slug) })
-      toast.success("Role updated.")
+      toast.success(t("members.roleUpdated"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -189,7 +192,7 @@ function MemberRow({
           size="sm"
           onClick={() => setListRolesOpen(true)}
         >
-          List access
+          {t("members.listAccess")}
         </Button>
       )}
       <ListRolesDialog
@@ -216,6 +219,7 @@ function ListRolesDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation(["access", "common"])
   const [listId, setListId] = useState("")
   const [roleId, setRoleId] = useState("")
 
@@ -229,7 +233,7 @@ function ListRolesDialog({
   const grant = useMutation({
     mutationFn: () => api.assignListRole(slug, member.user_id, listId, roleId),
     onSuccess: () => {
-      toast.success("Per-list role granted.")
+      toast.success(t("listRoles.grantSuccess"))
       setListId("")
       setRoleId("")
     },
@@ -239,7 +243,7 @@ function ListRolesDialog({
   const revoke = useMutation({
     mutationFn: () => api.removeListRole(slug, member.user_id, listId),
     onSuccess: () => {
-      toast.success("Per-list role removed.")
+      toast.success(t("listRoles.removeSuccess"))
       setListId("")
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -249,16 +253,16 @@ function ListRolesDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>List access for {member.name}</DialogTitle>
-          <DialogDescription>
-            Grant or remove a role scoped to a single list.
-          </DialogDescription>
+          <DialogTitle>
+            {t("listRoles.title", { name: member.name })}
+          </DialogTitle>
+          <DialogDescription>{t("listRoles.description")}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
-          <FormField label="List">
+          <FormField label={t("listRoles.listLabel")}>
             <Select value={listId} onValueChange={setListId}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose a list…" />
+                <SelectValue placeholder={t("listRoles.listPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -271,10 +275,10 @@ function ListRolesDialog({
               </SelectContent>
             </Select>
           </FormField>
-          <FormField label="Role">
+          <FormField label={t("listRoles.roleLabel")}>
             <Select value={roleId} onValueChange={setRoleId}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose a role…" />
+                <SelectValue placeholder={t("listRoles.rolePlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -294,13 +298,13 @@ function ListRolesDialog({
             disabled={!listId || revoke.isPending}
             onClick={() => revoke.mutate()}
           >
-            Remove role on list
+            {t("listRoles.removeRole")}
           </Button>
           <Button
             disabled={!listId || !roleId || grant.isPending}
             onClick={() => grant.mutate()}
           >
-            Grant role
+            {t("listRoles.grantRole")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -312,6 +316,7 @@ function ListRolesDialog({
 
 export function InvitationsPanel({ slug }: { slug: string }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("access")
   const [acceptUrl, setAcceptUrl] = useState("")
   const [revoking, setRevoking] = useState<string | null>(null)
 
@@ -327,7 +332,7 @@ export function InvitationsPanel({ slug }: { slug: string }) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.invitations(slug),
       })
-      toast.success("Invitation sent.")
+      toast.success(t("invitations.inviteSent"))
       form.reset()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -339,7 +344,7 @@ export function InvitationsPanel({ slug }: { slug: string }) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.invitations(slug),
       })
-      toast.success("Invitation revoked.")
+      toast.success(t("invitations.inviteRevoked"))
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -355,7 +360,7 @@ export function InvitationsPanel({ slug }: { slug: string }) {
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Invite a teammate</CardTitle>
+          <CardTitle>{t("invitations.inviteTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form
@@ -373,7 +378,7 @@ export function InvitationsPanel({ slug }: { slug: string }) {
               >
                 {(field) => (
                   <FormField
-                    label="Email address"
+                    label={t("invitations.emailLabel")}
                     type="email"
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -384,22 +389,22 @@ export function InvitationsPanel({ slug }: { slug: string }) {
               </form.Field>
             </div>
             <Button type="submit" disabled={invite.isPending}>
-              Send invite
+              {t("invitations.sendInvite")}
             </Button>
           </form>
           {acceptUrl && (
             <Alert className="mt-3">
-              <AlertTitle>Invitation link</AlertTitle>
+              <AlertTitle>{t("invitations.linkTitle")}</AlertTitle>
               <AlertDescription>
                 <span className="flex items-center gap-2">
                   <code className="truncate text-xs">{acceptUrl}</code>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Copy link"
+                    aria-label={t("invitations.copyLink")}
                     onClick={() => {
                       navigator.clipboard.writeText(acceptUrl)
-                      toast.success("Link copied.")
+                      toast.success(t("invitations.linkCopied"))
                     }}
                   >
                     <CopyIcon />
@@ -414,8 +419,8 @@ export function InvitationsPanel({ slug }: { slug: string }) {
       <AsyncState
         query={invitationsQuery}
         isEmpty={(d) => d.length === 0}
-        emptyTitle="No pending invitations"
-        emptyMessage="Invitations you send will appear here until accepted."
+        emptyTitle={t("invitations.emptyTitle")}
+        emptyMessage={t("invitations.emptyMessage")}
       >
         {(invitations) => (
           <div className="flex flex-col gap-2">
@@ -427,7 +432,9 @@ export function InvitationsPanel({ slug }: { slug: string }) {
                 <div className="flex-1">
                   <p className="text-sm font-medium">{inv.email}</p>
                   <p className="text-xs text-muted-foreground">
-                    Expires {formatDate(inv.expires_at)}
+                    {t("invitations.expires", {
+                      date: formatDate(inv.expires_at),
+                    })}
                   </p>
                 </div>
                 <Badge variant="secondary">{inv.status}</Badge>
@@ -437,7 +444,7 @@ export function InvitationsPanel({ slug }: { slug: string }) {
                   disabled={revoke.isPending}
                   onClick={() => setRevoking(inv.id)}
                 >
-                  Revoke
+                  {t("invitations.revoke")}
                 </Button>
               </div>
             ))}
@@ -448,9 +455,9 @@ export function InvitationsPanel({ slug }: { slug: string }) {
       <ConfirmDialog
         open={revoking !== null}
         onOpenChange={(o) => !o && setRevoking(null)}
-        title="Revoke this invitation?"
-        description="The invitation link will stop working and cannot be reused."
-        confirmLabel="Revoke invitation"
+        title={t("invitations.confirmRevokeTitle")}
+        description={t("invitations.confirmRevokeDescription")}
+        confirmLabel={t("invitations.confirmRevokeLabel")}
         busy={revoke.isPending}
         onConfirm={() => {
           if (revoking) revoke.mutate(revoking)
@@ -470,6 +477,7 @@ export function RolesPanel({
   slug: string
   canManageRoles: boolean
 }) {
+  const { t } = useTranslation("access")
   const [editing, setEditing] = useState<Role | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<Role | null>(null)
@@ -484,7 +492,7 @@ export function RolesPanel({
     mutationFn: (id: string) => api.deleteRole(slug, id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.roles(slug) })
-      toast.success("Role deleted.")
+      toast.success(t("roles.deleteSuccess"))
       setDeleting(null)
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -494,15 +502,13 @@ export function RolesPanel({
     <div className="flex flex-col gap-4">
       {!canManageRoles ? (
         <Alert>
-          <AlertTitle>Role management unavailable</AlertTitle>
-          <AlertDescription>
-            You need the “roles:manage” permission to create or change roles.
-          </AlertDescription>
+          <AlertTitle>{t("roles.unavailableTitle")}</AlertTitle>
+          <AlertDescription>{t("roles.unavailableMessage")}</AlertDescription>
         </Alert>
       ) : (
         <div>
           <Button onClick={() => setCreating(true)}>
-            <PlusIcon /> New role
+            <PlusIcon /> {t("roles.newRole")}
           </Button>
         </div>
       )}
@@ -510,8 +516,8 @@ export function RolesPanel({
       <AsyncState
         query={rolesQuery}
         isEmpty={(d) => d.length === 0}
-        emptyTitle="No roles yet"
-        emptyMessage="Create a role to grant scoped permissions."
+        emptyTitle={t("roles.emptyTitle")}
+        emptyMessage={t("roles.emptyMessage")}
       >
         {(roles) => (
           <div className="flex flex-col gap-2">
@@ -523,8 +529,9 @@ export function RolesPanel({
                 <div className="flex-1">
                   <p className="text-sm font-medium">{role.Name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {role.Permissions.length} permission
-                    {role.Permissions.length === 1 ? "" : "s"}
+                    {t("roles.permissionCount", {
+                      count: role.Permissions.length,
+                    })}
                   </p>
                 </div>
                 {canManageRoles && (
@@ -534,12 +541,12 @@ export function RolesPanel({
                       size="sm"
                       onClick={() => setEditing(role)}
                     >
-                      Edit
+                      {t("roles.edit")}
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Delete role"
+                      aria-label={t("roles.deleteRole")}
                       onClick={() => setDeleting(role)}
                     >
                       <Trash2Icon />
@@ -567,9 +574,9 @@ export function RolesPanel({
       <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title={`Delete the “${deleting?.Name}” role?`}
-        description="Members assigned this role will lose its permissions."
-        confirmLabel="Delete role"
+        title={t("roles.confirmDeleteTitle", { name: deleting?.Name ?? "" })}
+        description={t("roles.confirmDeleteDescription")}
+        confirmLabel={t("roles.confirmDeleteLabel")}
         busy={remove.isPending}
         onConfirm={() => deleting && remove.mutate(deleting.ID)}
       />
@@ -589,6 +596,7 @@ function RoleDialog({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["access", "common"])
   const [permissions, setPermissions] = useState<Array<Permission>>(
     role?.Permissions ?? [],
   )
@@ -600,7 +608,9 @@ function RoleDialog({
         : api.createRole(slug, name.trim(), permissions),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.roles(slug) })
-      toast.success(role ? "Role updated." : "Role created.")
+      toast.success(
+        role ? t("roleDialog.updateSuccess") : t("roleDialog.createSuccess"),
+      )
       onClose()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -617,10 +627,10 @@ function RoleDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{role ? "Edit role" : "New role"}</DialogTitle>
-          <DialogDescription>
-            Name the role and choose the permissions it grants.
-          </DialogDescription>
+          <DialogTitle>
+            {role ? t("roleDialog.editTitle") : t("roleDialog.newTitle")}
+          </DialogTitle>
+          <DialogDescription>{t("roleDialog.description")}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -632,11 +642,13 @@ function RoleDialog({
         >
           <form.Field
             name="name"
-            validators={{ onBlur: compose(rules.required("Enter a role name.")) }}
+            validators={{
+              onBlur: compose(rules.required(t("roleDialog.nameRequired"))),
+            }}
           >
             {(field) => (
               <FormField
-                label="Role name"
+                label={t("roleDialog.nameLabel")}
                 required
                 autoFocus
                 value={field.state.value}
@@ -647,7 +659,9 @@ function RoleDialog({
             )}
           </form.Field>
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Permissions</p>
+            <p className="text-sm font-medium">
+              {t("roleDialog.permissionsLabel")}
+            </p>
             <div className="grid grid-cols-2 gap-2 rounded-lg border p-3">
               {ALL_PERMISSIONS.map((perm) => (
                 <label key={perm} className="flex items-center gap-2 text-sm">
@@ -668,10 +682,14 @@ function RoleDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? "Saving…" : role ? "Save role" : "Create role"}
+              {save.isPending
+                ? t("roleDialog.saving")
+                : role
+                  ? t("roleDialog.saveRole")
+                  : t("roleDialog.createRole")}
             </Button>
           </DialogFooter>
         </form>

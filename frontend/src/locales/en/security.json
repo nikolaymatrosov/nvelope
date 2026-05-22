@@ -1,0 +1,55 @@
+{
+  "apiKeys": {
+    "confirmRevokeDescription": "Any integration using this key will immediately stop working.",
+    "confirmRevokeLabel": "Revoke key",
+    "confirmRevokeTitle": "Revoke this API key?",
+    "emptyMessage": "Issue an API key to access the workspace programmatically.",
+    "emptyTitle": "No API keys",
+    "issue": "Issue API key",
+    "issuedDate": "Issued {{date}}",
+    "issuedNote": "This secret is shown only once and cannot be retrieved later.",
+    "issuedTitle": "Copy your API key now",
+    "permissionCount_few": "{{count}} permissions",
+    "permissionCount_many": "{{count}} permissions",
+    "permissionCount_one": "{{count}} permission",
+    "permissionCount_other": "{{count}} permissions",
+    "revokeKeyAria": "Revoke key",
+    "revokedSuffix": " · revoked",
+    "revokedToast": "API key revoked."
+  },
+  "index": {
+    "description": "Two-factor authentication and API keys.",
+    "tabs": {
+      "apiKeys": "API keys",
+      "totp": "Two-factor"
+    },
+    "title": "Security"
+  },
+  "issueDialog": {
+    "description": "The key’s secret is shown once after it is created.",
+    "issuedToast": "API key issued.",
+    "nameLabel": "Key name",
+    "nameRequired": "Name the key.",
+    "permissionsLabel": "Permissions",
+    "submit": "Issue key",
+    "submitting": "Issuing…",
+    "title": "Issue an API key"
+  },
+  "totp": {
+    "cardDescription": "Add a time-based one-time code to workspace sign-in.",
+    "cardTitle": "Two-factor authentication",
+    "codeLabel": "Authentication code",
+    "codeRequired": "Enter the code.",
+    "confirm": "Confirm",
+    "confirmDisableDescription": "Workspace sign-in will no longer require a one-time code.",
+    "confirmDisableLabel": "Disable",
+    "confirmDisableTitle": "Disable two-factor authentication?",
+    "disable": "Disable two-factor",
+    "disabledToast": "Two-factor authentication disabled.",
+    "enable": "Enable two-factor",
+    "enabledToast": "Two-factor authentication enabled.",
+    "openInApp": "Open in authenticator app",
+    "recoveryCodesTitle": "Save your recovery codes",
+    "secretLabel": "Add this secret to your authenticator app"
+  }
+}

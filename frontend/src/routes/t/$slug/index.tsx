@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 import {
   ArrowDownUpIcon,
   ListIcon,
@@ -19,61 +20,34 @@ import { useWorkspace } from "@/hooks/use-workspace"
 export const Route = createFileRoute("/t/$slug/")({ component: Overview })
 
 type Tile = {
-  label: string
+  // Key under the `common` namespace's `overview.tiles` group.
+  tileKey: "subscribers" | "lists" | "access" | "importExport" | "audit" | "settings"
   segment: string
-  description: string
   icon: LucideIcon
 }
 
 const TILES: Array<Tile> = [
-  {
-    label: "Subscribers",
-    segment: "subscribers",
-    description: "Browse, search, and manage subscribers.",
-    icon: UsersIcon,
-  },
-  {
-    label: "Lists",
-    segment: "lists",
-    description: "Organise subscribers into lists.",
-    icon: ListIcon,
-  },
-  {
-    label: "People & Access",
-    segment: "access",
-    description: "Invite teammates and manage roles.",
-    icon: ShieldIcon,
-  },
-  {
-    label: "Import / Export",
-    segment: "import-export",
-    description: "Bring subscribers in and out via CSV.",
-    icon: ArrowDownUpIcon,
-  },
-  {
-    label: "Audit",
-    segment: "audit",
-    description: "Review recent workspace activity.",
-    icon: ScrollTextIcon,
-  },
-  {
-    label: "Settings",
-    segment: "settings",
-    description: "Configure this workspace.",
-    icon: SettingsIcon,
-  },
+  { tileKey: "subscribers", segment: "subscribers", icon: UsersIcon },
+  { tileKey: "lists", segment: "lists", icon: ListIcon },
+  { tileKey: "access", segment: "access", icon: ShieldIcon },
+  { tileKey: "importExport", segment: "import-export", icon: ArrowDownUpIcon },
+  { tileKey: "audit", segment: "audit", icon: ScrollTextIcon },
+  { tileKey: "settings", segment: "settings", icon: SettingsIcon },
 ]
 
 function Overview() {
   const { slug } = Route.useParams()
   const { name } = useWorkspace(slug)
+  const { t } = useTranslation()
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">{name ?? "Workspace"}</h1>
+        <h1 className="text-2xl font-semibold">
+          {name ?? t("workspace.fallbackName")}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Everything for this workspace, in one place.
+          {t("overview.subtitle")}
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -84,8 +58,12 @@ function Overview() {
             <Card className="h-full transition-colors hover:border-primary">
               <CardHeader>
                 <tile.icon className="size-5 text-muted-foreground" />
-                <CardTitle>{tile.label}</CardTitle>
-                <CardDescription>{tile.description}</CardDescription>
+                <CardTitle>
+                  {t(`overview.tiles.${tile.tileKey}.label`)}
+                </CardTitle>
+                <CardDescription>
+                  {t(`overview.tiles.${tile.tileKey}.description`)}
+                </CardDescription>
               </CardHeader>
             </Card>
           </Link>

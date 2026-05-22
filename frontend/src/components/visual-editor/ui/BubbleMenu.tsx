@@ -7,12 +7,14 @@
 // the menu DOM is rendered inside the editor host container.
 
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { BubbleMenu as TipTapBubbleMenu } from "@tiptap/react/menus"
 import type { Editor } from "@tiptap/core"
 
 type Props = { editor: Editor | null }
 
 export function VisualBubbleMenu({ editor }: Props) {
+  const { t } = useTranslation("visualEditor")
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkHref, setLinkHref] = useState("")
 
@@ -92,7 +94,7 @@ export function VisualBubbleMenu({ editor }: Props) {
         <BMButton
           testId="ve-bm-color"
           onClick={() => {
-            const next = window.prompt("Color (CSS hex / rgb / name):")
+            const next = window.prompt(t("bubbleMenu.colorPrompt"))
             if (next == null) return
             const trimmed = next.trim()
             if (!trimmed) {
@@ -159,7 +161,7 @@ export function VisualBubbleMenu({ editor }: Props) {
             autoFocus
             type="url"
             value={linkHref}
-            placeholder="https://…"
+            placeholder={t("bubbleMenu.linkPlaceholder")}
             onChange={(e) => setLinkHref(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -175,7 +177,7 @@ export function VisualBubbleMenu({ editor }: Props) {
             }}
           />
           <button type="button" onClick={applyLink}>
-            Apply
+            {t("bubbleMenu.apply")}
           </button>
         </div>
       ) : null}

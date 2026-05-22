@@ -84,7 +84,7 @@ describe("CampaignsView", () => {
     )
     renderWithClient(<CampaignsView />)
     expect(await screen.findByText("Spring Sale")).toBeDefined()
-    expect(screen.getByText("draft")).toBeDefined()
+    expect(screen.getByText("Draft")).toBeDefined()
   })
 
   it("shows an empty state when there are no campaigns", async () => {

@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { AlertCircleIcon, ArrowLeftIcon } from "lucide-react"
 import type { CampaignAnalytics } from "@/lib/api-types"
 import { api } from "@/lib/api"
@@ -25,6 +26,7 @@ export const Route = createFileRoute("/t/$slug/campaigns/$id/analytics")({
 
 export function CampaignAnalyticsView() {
   const { slug, id } = Route.useParams()
+  const { t } = useTranslation("analytics")
 
   const query = useQuery({
     queryKey: queryKeys.campaignAnalytics(slug, id),
@@ -37,13 +39,13 @@ export function CampaignAnalyticsView() {
       <header className="flex flex-col gap-2">
         <Button variant="ghost" size="sm" className="w-fit -ml-2" asChild>
           <Link to="/t/$slug/campaigns/$id" params={{ slug, id }}>
-            <ArrowLeftIcon /> Back to campaign
+            <ArrowLeftIcon /> {t("campaign.backToCampaign")}
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-semibold">Campaign analytics</h1>
+          <h1 className="text-2xl font-semibold">{t("campaign.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            How this campaign performed across delivery, opens, and clicks.
+            {t("campaign.description")}
           </p>
         </div>
       </header>
@@ -54,9 +56,9 @@ export function CampaignAnalyticsView() {
             <EmptyMedia variant="icon">
               <AlertCircleIcon className="text-destructive" />
             </EmptyMedia>
-            <EmptyTitle>Campaign not found</EmptyTitle>
+            <EmptyTitle>{t("campaign.notFound.title")}</EmptyTitle>
             <EmptyDescription>
-              This campaign does not exist in this workspace.
+              {t("campaign.notFound.description")}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -71,42 +73,47 @@ export function CampaignAnalyticsView() {
 
 function AnalyticsBody({ data }: { data: CampaignAnalytics }) {
   const { counts, rates, refreshedAt } = data
+  const { t } = useTranslation("analytics")
   return (
     <div className="flex flex-col gap-4">
       {refreshedAt === null ? (
         <Alert data-testid="analytics-awaiting">
-          <AlertTitle>Awaiting data</AlertTitle>
+          <AlertTitle>{t("campaign.awaiting.title")}</AlertTitle>
           <AlertDescription>
-            Delivery feedback has not been processed for this campaign yet.
-            Counts and rates will appear here once the first refresh runs.
+            {t("campaign.awaiting.description")}
           </AlertDescription>
         </Alert>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Figures last refreshed {formatDateTime(refreshedAt)}.
+          {t("campaign.refreshedAt", {
+            timestamp: formatDateTime(refreshedAt),
+          })}
         </p>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <MetricTile label="Sent" value={counts.sent} />
-        <MetricTile label="Delivered" value={counts.delivered} />
+        <MetricTile label={t("campaign.metrics.sent")} value={counts.sent} />
         <MetricTile
-          label="Opened"
+          label={t("campaign.metrics.delivered")}
+          value={counts.delivered}
+        />
+        <MetricTile
+          label={t("campaign.metrics.opened")}
           value={counts.opened}
           rate={<RateValue value={rates.openRate} />}
         />
         <MetricTile
-          label="Clicked"
+          label={t("campaign.metrics.clicked")}
           value={counts.clicked}
           rate={<RateValue value={rates.clickRate} />}
         />
         <MetricTile
-          label="Bounced"
+          label={t("campaign.metrics.bounced")}
           value={counts.bounced}
           rate={<RateValue value={rates.bounceRate} />}
         />
         <MetricTile
-          label="Complained"
+          label={t("campaign.metrics.complained")}
           value={counts.complained}
           rate={<RateValue value={rates.complaintRate} />}
         />

@@ -1,0 +1,53 @@
+{
+  "index": {
+    "title": "Transactional sending",
+    "description": "Issue a scoped API key and integrate the transactional endpoint."
+  },
+  "domainAlert": {
+    "title": "A verified sending domain is required",
+    "description": "Transactional sends will fail until at least one sending domain is verified. Verify a domain under Sending Domains first."
+  },
+  "endpoint": {
+    "title": "Endpoint reference",
+    "description": "Send transactional mail by calling this endpoint with the API key above as a Bearer token.",
+    "endpointLabel": "Endpoint",
+    "requestBodyLabel": "Request body",
+    "templateNotePrefix": "Each request must reference an existing ",
+    "templateNoteEmphasis": "transactional",
+    "templateNoteSuffix": " template by id and a verified sending domain id.",
+    "errorNotePrefix": "The endpoint responds ",
+    "errorNoteWith": " with ",
+    "errorNoteQuota": " when the workspace has used its plan's send allowance, or ",
+    "errorNoteSuspended": " when the account is suspended for non-payment. Check ",
+    "errorNoteLink": "billing",
+    "errorNoteEnd": " if transactional sends start failing."
+  },
+  "apiKeys": {
+    "title": "API keys",
+    "description": "Keys scoped for transactional sending.",
+    "issueKey": "Issue API key",
+    "restrictedTitle": "Key management is restricted",
+    "restrictedDescription": "You do not have permission to issue or revoke API keys in this workspace.",
+    "copyNowTitle": "Copy your API key now",
+    "copyNowDescription": "This secret is shown only once and cannot be retrieved later. If you lose it, revoke the key and issue a new one.",
+    "emptyTitle": "No API keys",
+    "emptyMessage": "Issue an API key to integrate transactional sending.",
+    "issued": "Issued {{date}}",
+    "revokedSuffix": " · revoked",
+    "revokeKey": "Revoke key",
+    "revokeSuccess": "API key revoked.",
+    "confirmRevokeTitle": "Revoke this API key?",
+    "confirmRevokeDescription": "Any integration using this key will immediately stop working.",
+    "confirmRevokeLabel": "Revoke key"
+  },
+  "issueDialog": {
+    "title": "Issue a transactional API key",
+    "descriptionPrefix": "The key is scoped to ",
+    "descriptionSuffix": ". Its secret is shown once after it is created.",
+    "keyName": "Key name",
+    "nameRequired": "Name the key.",
+    "issue": "Issue key",
+    "issuing": "Issuing…",
+    "issueSuccess": "API key issued."
+  }
+}

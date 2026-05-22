@@ -18,6 +18,7 @@
 // means pinned. See contracts/tenant-api.md.
 
 import { useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import type { Theme } from "@/lib/api-types"
 
 type Props = {
@@ -38,6 +39,7 @@ const CONTAINER_MIN = 320
 const CONTAINER_MAX = 800
 
 export function ThemeControls({ value, resolved, onChange, disabled = false }: Props) {
+  const { t } = useTranslation("visualEditor")
   const inherited = value === null
 
   const onPin = useCallback(() => {
@@ -65,23 +67,23 @@ export function ThemeControls({ value, resolved, onChange, disabled = false }: P
     <section
       className="ve-theme-controls"
       data-testid="ve-theme-controls"
-      aria-label="Theme controls"
+      aria-label={t("theme.panelAriaLabel")}
     >
       <header className="ve-theme-controls__header">
-        <h3 className="ve-theme-controls__title">Theme</h3>
+        <h3 className="ve-theme-controls__title">{t("theme.title")}</h3>
         {inherited ? (
           <span
             className="ve-theme-controls__inherit-badge"
             data-testid="ve-theme-inherit-badge"
           >
-            Using tenant defaults
+            {t("theme.inheritBadge")}
           </span>
         ) : (
           <span
             className="ve-theme-controls__pinned-badge"
             data-testid="ve-theme-pinned-badge"
           >
-            Pinned override
+            {t("theme.pinnedBadge")}
           </span>
         )}
       </header>
@@ -89,9 +91,7 @@ export function ThemeControls({ value, resolved, onChange, disabled = false }: P
       {inherited ? (
         <div className="ve-theme-controls__inherit-body">
           <p className="ve-theme-controls__hint">
-            This {/* campaign or template */}row uses the tenant&apos;s
-            branding. Pin an override to customize colors, font, and
-            container width just for this row.
+            {t("theme.inheritHint")}
           </p>
           <button
             type="button"
@@ -100,41 +100,53 @@ export function ThemeControls({ value, resolved, onChange, disabled = false }: P
             onClick={onPin}
             disabled={disabled}
           >
-            Pin a theme override
+            {t("theme.pinOverride")}
           </button>
         </div>
       ) : (
         <div className="ve-theme-controls__body" data-testid="ve-theme-pinned-body">
           <ColorField
-            label="Text color"
+            label={t("theme.textColor")}
+            swatchAriaLabel={t("theme.colorSwatchAriaLabel", {
+              label: t("theme.textColor"),
+            })}
             testId="ve-theme-text-color"
             value={value.textColor}
             onChange={(v) => patch({ textColor: v })}
             disabled={disabled}
           />
           <ColorField
-            label="Link color"
+            label={t("theme.linkColor")}
+            swatchAriaLabel={t("theme.colorSwatchAriaLabel", {
+              label: t("theme.linkColor"),
+            })}
             testId="ve-theme-link-color"
             value={value.linkColor}
             onChange={(v) => patch({ linkColor: v })}
             disabled={disabled}
           />
           <ColorField
-            label="Button color"
+            label={t("theme.buttonColor")}
+            swatchAriaLabel={t("theme.colorSwatchAriaLabel", {
+              label: t("theme.buttonColor"),
+            })}
             testId="ve-theme-button-color"
             value={value.buttonColor}
             onChange={(v) => patch({ buttonColor: v })}
             disabled={disabled}
           />
           <ColorField
-            label="Button text color"
+            label={t("theme.buttonTextColor")}
+            swatchAriaLabel={t("theme.colorSwatchAriaLabel", {
+              label: t("theme.buttonTextColor"),
+            })}
             testId="ve-theme-button-text-color"
             value={value.buttonTextColor}
             onChange={(v) => patch({ buttonTextColor: v })}
             disabled={disabled}
           />
           <label className="ve-theme-controls__row">
-            <span className="ve-theme-controls__label">Font family</span>
+            <span className="ve-theme-controls__label">{t("theme.fontFamily")}</span>
             <input
               type="text"
               className="ve-theme-controls__text-input"
@@ -147,7 +159,7 @@ export function ThemeControls({ value, resolved, onChange, disabled = false }: P
           </label>
           <label className="ve-theme-controls__row">
             <span className="ve-theme-controls__label">
-              Container width (px)
+              {t("theme.containerWidth")}
             </span>
             <input
               type="number"
@@ -172,7 +184,7 @@ export function ThemeControls({ value, resolved, onChange, disabled = false }: P
             onClick={onUnpin}
             disabled={disabled}
           >
-            Reset to tenant defaults
+            {t("theme.resetDefaults")}
           </button>
         </div>
       )}
@@ -182,6 +194,8 @@ export function ThemeControls({ value, resolved, onChange, disabled = false }: P
 
 type ColorFieldProps = {
   label: string
+  // Pre-translated aria-label for the native color swatch input.
+  swatchAriaLabel: string
   value: string
   onChange: (next: string) => void
   testId: string
@@ -191,7 +205,14 @@ type ColorFieldProps = {
 // ColorField pairs the native `<input type="color">` for visual picking
 // with a text input so the operator can type a precise hex / rgb value
 // (the native picker only emits `#rrggbb`). Both update the same field.
-function ColorField({ label, value, onChange, testId, disabled }: ColorFieldProps) {
+function ColorField({
+  label,
+  swatchAriaLabel,
+  value,
+  onChange,
+  testId,
+  disabled,
+}: ColorFieldProps) {
   const colorPickerValue = /^#[0-9a-f]{6}$/i.test(value) ? value : "#000000"
   return (
     <label className="ve-theme-controls__row">
@@ -204,7 +225,7 @@ function ColorField({ label, value, onChange, testId, disabled }: ColorFieldProp
           value={colorPickerValue}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          aria-label={`${label} swatch`}
+          aria-label={swatchAriaLabel}
         />
         <input
           type="text"

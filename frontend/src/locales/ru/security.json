@@ -1,0 +1,55 @@
+{
+  "index": {
+    "title": "Безопасность",
+    "description": "Двухфакторная аутентификация и API-ключи.",
+    "tabs": {
+      "totp": "Двухфакторная",
+      "apiKeys": "API-ключи"
+    }
+  },
+  "totp": {
+    "cardTitle": "Двухфакторная аутентификация",
+    "cardDescription": "Добавьте одноразовый код по времени ко входу в рабочее пространство.",
+    "recoveryCodesTitle": "Сохраните коды восстановления",
+    "enable": "Включить двухфакторную",
+    "disable": "Отключить двухфакторную",
+    "secretLabel": "Добавьте этот секрет в приложение-аутентификатор",
+    "openInApp": "Открыть в приложении-аутентификаторе",
+    "codeLabel": "Код аутентификации",
+    "codeRequired": "Введите код.",
+    "confirm": "Подтвердить",
+    "enabledToast": "Двухфакторная аутентификация включена.",
+    "disabledToast": "Двухфакторная аутентификация отключена.",
+    "confirmDisableTitle": "Отключить двухфакторную аутентификацию?",
+    "confirmDisableDescription": "Для входа в рабочее пространство больше не потребуется одноразовый код.",
+    "confirmDisableLabel": "Отключить"
+  },
+  "apiKeys": {
+    "issue": "Создать API-ключ",
+    "issuedTitle": "Скопируйте API-ключ сейчас",
+    "issuedNote": "Этот секрет показывается только один раз и не может быть получен позже.",
+    "emptyTitle": "Нет API-ключей",
+    "emptyMessage": "Создайте API-ключ для программного доступа к рабочему пространству.",
+    "issuedDate": "Создан {{date}}",
+    "revokedSuffix": " · отозван",
+    "permissionCount_one": "{{count}} разрешение",
+    "permissionCount_few": "{{count}} разрешения",
+    "permissionCount_many": "{{count}} разрешений",
+    "permissionCount_other": "{{count}} разрешения",
+    "revokeKeyAria": "Отозвать ключ",
+    "revokedToast": "API-ключ отозван.",
+    "confirmRevokeTitle": "Отозвать этот API-ключ?",
+    "confirmRevokeDescription": "Любая интеграция, использующая этот ключ, немедленно перестанет работать.",
+    "confirmRevokeLabel": "Отозвать ключ"
+  },
+  "issueDialog": {
+    "title": "Создать API-ключ",
+    "description": "Секрет ключа показывается один раз после его создания.",
+    "nameLabel": "Название ключа",
+    "nameRequired": "Укажите название ключа.",
+    "permissionsLabel": "Разрешения",
+    "issuedToast": "API-ключ создан.",
+    "submit": "Создать ключ",
+    "submitting": "Создание…"
+  }
+}

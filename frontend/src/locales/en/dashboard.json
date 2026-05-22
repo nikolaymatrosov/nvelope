@@ -1,0 +1,27 @@
+{
+  "index": {
+    "description": "Deliverability health across this workspace.",
+    "emptyMessage": "Once you send a campaign, its delivery health will appear here.",
+    "emptyTitle": "No sending activity yet",
+    "title": "Dashboard"
+  },
+  "metrics": {
+    "bounced": "Bounced",
+    "clicked": "Clicked",
+    "complained": "Complained",
+    "delivered": "Delivered",
+    "opened": "Opened",
+    "sent": "Sent"
+  },
+  "recentCampaigns": {
+    "bounceRate": "Bounce",
+    "complaintRate": "Complaint",
+    "empty": "No campaigns have been sent yet.",
+    "openRate": "Open",
+    "sentCount_few": "{{count}} sent",
+    "sentCount_many": "{{count}} sent",
+    "sentCount_one": "{{count}} sent",
+    "sentCount_other": "{{count}} sent",
+    "title": "Recent campaigns"
+  }
+}

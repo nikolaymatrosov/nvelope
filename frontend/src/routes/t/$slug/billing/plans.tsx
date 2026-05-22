@@ -3,6 +3,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import type { PlanView } from "@/lib/api-types"
 import { api } from "@/lib/api"
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/t/$slug/billing/plans")({
 
 export function PlansPage() {
   const { slug } = Route.useParams()
+  const { t } = useTranslation(["billing", "common"])
   const { can } = usePermissions(slug)
   const canManage = can("billing:manage")
   const queryClient = useQueryClient()
@@ -80,7 +82,7 @@ export function PlansPage() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.subscription(slug),
       })
-      toast.success("Subscription active — your plan is now in effect.")
+      toast.success(t("plans.toast.subscribed"))
     },
     onError: (e) => {
       setSelected(null)
@@ -89,7 +91,7 @@ export function PlansPage() {
         return
       }
       if (e instanceof ApiError && e.slug === "subscription_exists") {
-        toast.error("This workspace already has a subscription.")
+        toast.error(t("plans.toast.subscriptionExists"))
         return
       }
       toast.error(errorMessage(e))
@@ -99,9 +101,9 @@ export function PlansPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-2xl font-semibold">Plans</h1>
+        <h1 className="text-2xl font-semibold">{t("plans.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Choose a plan to subscribe this workspace.
+          {t("plans.description")}
         </p>
       </header>
 
@@ -109,28 +111,26 @@ export function PlansPage() {
 
       {alreadySubscribed && (
         <Alert data-testid="plans-already-subscribed">
-          <AlertTitle>This workspace already has a subscription</AlertTitle>
+          <AlertTitle>{t("plans.alreadySubscribed.title")}</AlertTitle>
           <AlertDescription>
-            A workspace may hold only one subscription at a time. Manage the
-            current subscription from the{" "}
+            {t("plans.alreadySubscribed.descriptionPrefix")}
             <Link
               to="/t/$slug/billing"
               params={{ slug }}
               className="text-primary hover:underline"
             >
-              billing overview
+              {t("plans.alreadySubscribed.link")}
             </Link>
-            .
+            {t("plans.alreadySubscribed.descriptionSuffix")}
           </AlertDescription>
         </Alert>
       )}
 
       {declined && (
         <Alert variant="destructive" data-testid="plans-declined">
-          <AlertTitle>Payment declined</AlertTitle>
+          <AlertTitle>{t("plans.declined.title")}</AlertTitle>
           <AlertDescription>
-            The first charge for that plan was declined, so the subscription
-            was not activated. You can try subscribing again.
+            {t("plans.declined.description")}
           </AlertDescription>
         </Alert>
       )}
@@ -146,7 +146,7 @@ export function PlansPage() {
       {plansQuery.isError && (
         <Empty data-testid="plans-error" className="border">
           <EmptyHeader>
-            <EmptyTitle>Could not load plans</EmptyTitle>
+            <EmptyTitle>{t("plans.loadError.title")}</EmptyTitle>
             <EmptyDescription>
               {errorMessage(plansQuery.error)}
             </EmptyDescription>
@@ -157,10 +157,9 @@ export function PlansPage() {
       {plansQuery.data && plansQuery.data.length === 0 && (
         <Empty data-testid="plans-empty" className="border">
           <EmptyHeader>
-            <EmptyTitle>No plans available</EmptyTitle>
+            <EmptyTitle>{t("plans.empty.title")}</EmptyTitle>
             <EmptyDescription>
-              There are no plans to subscribe to right now. Please check back
-              later.
+              {t("plans.empty.description")}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -190,12 +189,17 @@ export function PlansPage() {
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle>Subscribe to {selected.name}</DialogTitle>
+                <DialogTitle>
+                  {t("plans.dialog.title", { plan: selected.name })}
+                </DialogTitle>
                 <DialogDescription>
-                  You will be charged{" "}
-                  {formatMoney(selected.priceMinor, selected.currency)} now for
-                  the first {selected.billingPeriod} period. The subscription
-                  becomes active once the charge succeeds.
+                  {t("plans.dialog.description", {
+                    price: formatMoney(
+                      selected.priceMinor,
+                      selected.currency,
+                    ),
+                    period: selected.billingPeriod,
+                  })}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -205,7 +209,7 @@ export function PlansPage() {
                   onClick={() => setSelected(null)}
                   disabled={subscribe.isPending}
                 >
-                  Cancel
+                  {t("common:actions.cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -213,8 +217,8 @@ export function PlansPage() {
                   onClick={() => subscribe.mutate(selected.id)}
                 >
                   {subscribe.isPending
-                    ? "Processing payment…"
-                    : "Confirm & pay"}
+                    ? t("plans.dialog.processing")
+                    : t("plans.dialog.confirm")}
                 </Button>
               </DialogFooter>
             </>
@@ -234,6 +238,7 @@ function PlanCard({
   canSubscribe: boolean
   onSubscribe: () => void
 }) {
+  const { t } = useTranslation("billing")
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -242,19 +247,25 @@ function PlanCard({
           <span className="text-xl font-semibold text-foreground">
             <Money amountMinor={plan.priceMinor} currency={plan.currency} />
           </span>{" "}
-          / {plan.billingPeriod}
+          {t("plans.card.perPeriod", { period: plan.billingPeriod })}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3 text-sm">
         <ul className="flex flex-col gap-1 text-muted-foreground">
-          <li>{plan.includedSends.toLocaleString()} sends included</li>
+          <li>
+            {t("plans.card.includedSends", {
+              sends: plan.includedSends.toLocaleString(),
+            })}
+          </li>
           <li>
             {plan.overageMode === "block"
-              ? "Sends over the allowance are blocked"
-              : `Overage billed at ${formatMoney(
-                  plan.overagePriceMinor,
-                  plan.currency,
-                )} per send`}
+              ? t("plans.card.overageBlocked")
+              : t("plans.card.overageBilled", {
+                  price: formatMoney(
+                    plan.overagePriceMinor,
+                    plan.currency,
+                  ),
+                })}
           </li>
         </ul>
         <div className="mt-auto">
@@ -263,7 +274,7 @@ function PlanCard({
             disabled={!canSubscribe}
             onClick={onSubscribe}
           >
-            Subscribe
+            {t("plans.card.subscribe")}
           </Button>
         </div>
       </CardContent>

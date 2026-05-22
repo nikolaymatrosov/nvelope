@@ -1,0 +1,150 @@
+{
+  "create": {
+    "description": "Name the campaign. You can optionally start from a campaign template, then edit its content.",
+    "nameLabel": "Name",
+    "nameRequired": "Enter a campaign name.",
+    "noTemplate": "No template",
+    "submit": "Create campaign",
+    "submitting": "Creating…",
+    "success": "Campaign created.",
+    "templateLabel": "Start from a template (optional)",
+    "title": "New campaign"
+  },
+  "detail": {
+    "actions": {
+      "cancel": "Cancel campaign",
+      "pause": "Pause",
+      "resume": "Resume",
+      "start": "Start campaign"
+    },
+    "archive": {
+      "description": "When enabled, this campaign appears in the tenant's public archive index, on its standalone page, and in the RSS feed.",
+      "hidden": "Campaign is hidden from the public archive.",
+      "shown": "Campaign is now visible in the public archive.",
+      "title": "Public archive",
+      "toggle": "Visible in the public archive"
+    },
+    "autoPaused": {
+      "description": "Sending was paused automatically after reaching {{count}} send errors. Review and resume, or cancel the campaign.",
+      "title": "Campaign auto-paused"
+    },
+    "backToCampaigns": "← Campaigns",
+    "confirmCancel": {
+      "confirm": "Cancel campaign",
+      "description": "The campaign will stop sending and cannot be resumed.",
+      "title": "Cancel this campaign?"
+    },
+    "confirmStart": {
+      "confirm": "Start sending",
+      "description": "Sending begins immediately and cannot be undone. You can pause or cancel it once running.",
+      "title": "Start this campaign?"
+    },
+    "content": {
+      "bodyLabel": "Body",
+      "description": "Edit the campaign’s subject and content. HTML is sent as-is.",
+      "htmlBodyLabel": "HTML body",
+      "insertFromMedia": "Insert from media library",
+      "nameLabel": "Name",
+      "nameRequired": "Enter a campaign name.",
+      "subjectLabel": "Subject",
+      "subjectRequired": "Enter a subject.",
+      "textBodyLabel": "Plain-text body",
+      "title": "Content"
+    },
+    "domainRequired": {
+      "description": "Select a verified sending domain below before this campaign can be started.",
+      "title": "A verified sending domain is required"
+    },
+    "quotaBlocked": {
+      "descriptionAfter": " to continue sending.",
+      "descriptionBefore": "This campaign was not started because the workspace has used its plan's send allowance for the current period. Review your ",
+      "link": "usage and plan",
+      "title": "Send allowance reached"
+    },
+    "recipients": {
+      "description": "Select one or more lists to send to.",
+      "emptyMessage": "Create a list of subscribers to target.",
+      "emptyTitle": "No lists",
+      "title": "Recipients"
+    },
+    "save": "Save changes",
+    "saveSuccess": "Campaign saved.",
+    "saveWarnings_few": "Campaign saved with {{count}} content warnings.",
+    "saveWarnings_many": "Campaign saved with {{count}} content warnings.",
+    "saveWarnings_one": "Campaign saved with {{count}} content warning.",
+    "saveWarnings_other": "Campaign saved with {{count}} content warnings.",
+    "saving": "Saving…",
+    "sender": {
+      "description": "Choose a verified sending domain and the from address.",
+      "domainLabel": "Sending domain",
+      "domainPlaceholder": "Select a verified domain",
+      "fromLocalPartLabel": "From address (local part)",
+      "fromLocalPartPlaceholder": "news",
+      "fromNameLabel": "From name",
+      "noDomain": "No domain selected",
+      "noVerifiedDomains": "No verified domains yet. Verify a domain under Sending Domains first.",
+      "title": "Sender"
+    },
+    "startSuccess": "Campaign started.",
+    "summary": {
+      "fromLabel": "From: ",
+      "subjectLabel": "Subject: "
+    },
+    "suspendedBlocked": {
+      "descriptionAfter": " to re-enable sending.",
+      "descriptionBefore": "This campaign was not started because the workspace is suspended for non-payment. Settle the outstanding balance in ",
+      "link": "billing",
+      "title": "Account suspended"
+    },
+    "viewAnalytics": "View analytics →"
+  },
+  "list": {
+    "columns": {
+      "created": "Created",
+      "name": "Name",
+      "progress": "Progress",
+      "status": "Status"
+    },
+    "description": "Author and send campaigns to your lists.",
+    "emptyMessage": "Create your first campaign to start sending.",
+    "emptyTitle": "No campaigns yet",
+    "newCampaign": "New campaign",
+    "progress": {
+      "draft": "—",
+      "summary": "{{sent}} sent · {{failed}} failed · {{remaining}} left"
+    },
+    "title": "Campaigns"
+  },
+  "sendProgress": {
+    "failed": "Failed",
+    "remaining": "Remaining",
+    "sent": "Sent",
+    "title": "Send progress"
+  },
+  "status": {
+    "cancelled": "Cancelled",
+    "draft": "Draft",
+    "finished": "Finished",
+    "paused": "Paused",
+    "running": "Running"
+  },
+  "visual": {
+    "convert": "Convert to visual editor",
+    "convertedSuccess": "Converted to visual editor. Review and save to keep it.",
+    "convertedWarnings_few": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_many": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_one": "Converted to visual editor with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_other": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "converting": "Converting…",
+    "forceOverwrite": "Force overwrite",
+    "optOut": {
+      "confirm": "Switch to HTML only",
+      "description": "Your structured visual document will be discarded. The last saved HTML body stays intact so the campaign remains sendable, but blocks, columns, and merge-tag chips will no longer be available unless you convert back later.",
+      "switching": "Switching…",
+      "title": "Switch to HTML-only editing?"
+    },
+    "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared.",
+    "reload": "Reload",
+    "staleTitle": "Changed in another tab/session"
+  }
+}

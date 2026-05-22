@@ -7,6 +7,9 @@ export default defineConfig({
   locales: ["en", "ru"],
   extract: {
     input: ["src/**/*.{ts,tsx}"],
+    // Test files assert on literal copy — they are not UI surfaces and must
+    // not be linted for hardcoded strings.
+    ignore: ["src/**/*.test.{ts,tsx}"],
     output: "src/locales/{{language}}/{{namespace}}.json",
     defaultNS: "common",
     primaryLanguage: "en",

@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { SuppressionEntry, SuppressionReason } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -36,12 +37,6 @@ export const Route = createFileRoute("/t/$slug/suppressions/")({
   component: SuppressionsView,
 })
 
-const REASON_LABEL: Record<SuppressionReason, string> = {
-  hard_bounce: "Hard bounce",
-  complaint: "Complaint",
-  manual: "Manual",
-}
-
 const REASON_VARIANT: Record<
   SuppressionReason,
   "default" | "secondary" | "destructive"
@@ -51,15 +46,23 @@ const REASON_VARIANT: Record<
   manual: "secondary",
 }
 
+const REASON_KEY = {
+  hard_bounce: "reasons.hardBounce",
+  complaint: "reasons.complaint",
+  manual: "reasons.manual",
+} as const satisfies Record<SuppressionReason, string>
+
 function ReasonBadge({ reason }: { reason: SuppressionReason }) {
+  const { t } = useTranslation("suppressions")
   return (
-    <Badge variant={REASON_VARIANT[reason]}>{REASON_LABEL[reason]}</Badge>
+    <Badge variant={REASON_VARIANT[reason]}>{t(REASON_KEY[reason])}</Badge>
   )
 }
 
 export function SuppressionsView() {
   const { slug } = Route.useParams()
   const queryClient = useQueryClient()
+  const { t } = useTranslation("suppressions")
   const { can } = usePermissions(slug)
   const canManage = can("sending:manage")
 
@@ -110,7 +113,7 @@ export function SuppressionsView() {
     mutationFn: (target: string) => api.suppressions.remove(slug, target),
     onSuccess: async () => {
       await invalidate()
-      toast.success("Address removed from the suppression list.")
+      toast.success(t("remove.successToast"))
     },
     onError: async (e) => {
       // A concurrent removal already deleted the entry — reconcile silently.
@@ -127,20 +130,20 @@ export function SuppressionsView() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Suppression list</h1>
+          <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Addresses that will not be mailed for this workspace.
+            {t("index.description")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" asChild>
             <Link to="/t/$slug/suppressions/settings" params={{ slug }}>
-              <SettingsIcon /> Bounce settings
+              <SettingsIcon /> {t("index.bounceSettings")}
             </Link>
           </Button>
           {canManage && (
             <Button onClick={() => setCreateOpen(true)}>
-              <PlusIcon /> Add address
+              <PlusIcon /> {t("index.addAddress")}
             </Button>
           )}
         </div>
@@ -153,20 +156,22 @@ export function SuppressionsView() {
             setReason(v === "all" ? "" : (v as SuppressionReason))
           }
         >
-          <SelectTrigger className="w-48" aria-label="Filter by reason">
+          <SelectTrigger className="w-48" aria-label={t("index.filterReasonAria")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All reasons</SelectItem>
-            <SelectItem value="hard_bounce">Hard bounce</SelectItem>
-            <SelectItem value="complaint">Complaint</SelectItem>
-            <SelectItem value="manual">Manual</SelectItem>
+            <SelectItem value="all">{t("index.allReasons")}</SelectItem>
+            <SelectItem value="hard_bounce">
+              {t("reasons.hardBounce")}
+            </SelectItem>
+            <SelectItem value="complaint">{t("reasons.complaint")}</SelectItem>
+            <SelectItem value="manual">{t("reasons.manual")}</SelectItem>
           </SelectContent>
         </Select>
         <Input
           className="w-64"
-          placeholder="Search by address"
-          aria-label="Search by address"
+          placeholder={t("index.searchPlaceholder")}
+          aria-label={t("index.searchAria")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -175,16 +180,20 @@ export function SuppressionsView() {
       <AsyncState
         query={listState}
         isEmpty={(d) => d.length === 0}
-        emptyTitle={hasFilter ? "No matching addresses" : "No suppressed addresses"}
+        emptyTitle={
+          hasFilter
+            ? t("index.emptyFilteredTitle")
+            : t("index.emptyTitle")
+        }
         emptyMessage={
           hasFilter
-            ? "No suppressed addresses match the current filter."
-            : "Bounces and complaints are added here automatically. You can also add an address manually."
+            ? t("index.emptyFilteredMessage")
+            : t("index.emptyMessage")
         }
         emptyAction={
           canManage && !hasFilter ? (
             <Button onClick={() => setCreateOpen(true)}>
-              <PlusIcon /> Add address
+              <PlusIcon /> {t("index.addAddress")}
             </Button>
           ) : undefined
         }
@@ -206,7 +215,9 @@ export function SuppressionsView() {
                 disabled={query.isFetchingNextPage}
                 onClick={() => query.fetchNextPage()}
               >
-                {query.isFetchingNextPage ? "Loading…" : "Load more"}
+                {query.isFetchingNextPage
+                  ? t("index.loadingMore")
+                  : t("index.loadMore")}
               </Button>
             )}
           </div>
@@ -222,14 +233,14 @@ export function SuppressionsView() {
       <ConfirmDialog
         open={removeTarget !== null}
         onOpenChange={(o) => !o && setRemoveTarget(null)}
-        title="Remove from suppression list?"
+        title={t("remove.confirmTitle")}
         description={
           <>
-            <span className="font-medium">{removeTarget}</span> will become
-            mailable again and may receive future campaigns.
+            <span className="font-medium">{removeTarget}</span>{" "}
+            {t("remove.confirmDescription")}
           </>
         }
-        confirmLabel="Remove"
+        confirmLabel={t("remove.confirmLabel")}
         busy={remove.isPending}
         onConfirm={() => removeTarget && remove.mutate(removeTarget)}
       />
@@ -246,12 +257,13 @@ function SuppressionRow({
   canManage: boolean
   onRemove: () => void
 }) {
+  const { t } = useTranslation("suppressions")
   return (
     <div className="flex items-center gap-3 rounded-lg border p-3">
       <div className="flex-1">
         <p className="text-sm font-medium">{entry.email}</p>
         <p className="text-xs text-muted-foreground">
-          Suppressed {formatDate(entry.suppressedAt)}
+          {t("row.suppressedAt", { date: formatDate(entry.suppressedAt) })}
           {entry.note ? ` · ${entry.note}` : ""}
         </p>
       </div>
@@ -260,7 +272,7 @@ function SuppressionRow({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`Remove ${entry.email}`}
+          aria-label={t("row.removeAria", { email: entry.email })}
           onClick={onRemove}
         >
           <Trash2Icon />
@@ -280,6 +292,7 @@ function AddAddressDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["suppressions", "common"])
   const [serverError, setServerError] = useState<string | undefined>()
 
   const add = useMutation({
@@ -288,7 +301,7 @@ function AddAddressDialog({
       await queryClient.invalidateQueries({
         queryKey: ["t", slug, "suppressions"],
       })
-      toast.success("Address added to the suppression list.")
+      toast.success(t("addDialog.successToast"))
       onOpenChange(false)
       form.reset()
     },
@@ -322,9 +335,9 @@ function AddAddressDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add an address</DialogTitle>
+          <DialogTitle>{t("addDialog.title")}</DialogTitle>
           <DialogDescription>
-            The address will be skipped on all future sends until you remove it.
+            {t("addDialog.description")}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -339,18 +352,18 @@ function AddAddressDialog({
             name="email"
             validators={{
               onBlur: compose(
-                rules.required("Enter an email address."),
+                rules.required(t("addDialog.emailRequired")),
                 rules.email(),
               ),
             }}
           >
             {(field) => (
               <FormField
-                label="Email address"
+                label={t("addDialog.emailLabel")}
                 required
                 autoFocus
                 type="email"
-                placeholder="person@example.com"
+                placeholder={t("addDialog.emailPlaceholder")}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => {
@@ -367,10 +380,12 @@ function AddAddressDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={add.isPending}>
-              {add.isPending ? "Adding…" : "Add address"}
+              {add.isPending
+                ? t("addDialog.submitting")
+                : t("addDialog.submit")}
             </Button>
           </DialogFooter>
         </form>

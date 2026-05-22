@@ -74,7 +74,7 @@ ci:
 		&& git diff --exit-code src/i18n/resources.d.ts src/i18n/i18next.d.ts \
 		&& pnpm typecheck \
 		&& pnpm lint \
-		&& { pnpm i18n:lint || true; } \
+		&& pnpm i18n:lint \
 		&& pnpm test \
 		&& pnpm build
 

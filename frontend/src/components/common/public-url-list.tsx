@@ -5,6 +5,8 @@
 
 import { CopyIcon, ExternalLinkIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
+import i18n from "@/i18n"
 import { Button } from "@/components/ui/button"
 
 export type PublicUrlKind = "subscription" | "preference-template" | "archive" | "rss"
@@ -26,27 +28,29 @@ type PublicUrlListProps = {
 async function copy(url: string) {
   try {
     await navigator.clipboard.writeText(url)
-    toast.success("Copied")
+    toast.success(i18n.t("common:clipboard.copied"))
   } catch {
-    toast.error("Could not copy — copy the URL manually.")
+    toast.error(i18n.t("common:clipboard.copyFailed"))
   }
-}
-
-function kindHint(kind: PublicUrlKind): string | undefined {
-  if (kind === "preference-template") {
-    return "The {token} placeholder is filled in automatically when this link is sent to a subscriber."
-  }
-  return undefined
 }
 
 export function PublicUrlList({ rows }: PublicUrlListProps) {
+  const { t } = useTranslation()
+
+  function kindHint(kind: PublicUrlKind): string | undefined {
+    if (kind === "preference-template") {
+      return t("publicUrlList.tokenHint")
+    }
+    return undefined
+  }
+
   if (rows.length === 0) {
     return (
       <p
         className="text-sm text-muted-foreground"
         data-testid="public-url-list-empty"
       >
-        No public URLs to share yet.
+        {t("publicUrlList.empty")}
       </p>
     )
   }
@@ -76,23 +80,27 @@ export function PublicUrlList({ rows }: PublicUrlListProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => copy(row.url)}
-                  aria-label={`Copy ${row.label}`}
+                  aria-label={t("publicUrlList.copyLabel", {
+                    label: row.label,
+                  })}
                 >
-                  <CopyIcon /> Copy
+                  <CopyIcon /> {t("actions.copy")}
                 </Button>
                 {previewable && (
                   <Button
                     variant="ghost"
                     size="sm"
                     asChild
-                    aria-label={`Preview ${row.label}`}
+                    aria-label={t("publicUrlList.previewLabel", {
+                      label: row.label,
+                    })}
                   >
                     <a
                       href={row.previewUrl ?? row.url}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      <ExternalLinkIcon /> Preview
+                      <ExternalLinkIcon /> {t("actions.preview")}
                     </a>
                   </Button>
                 )}

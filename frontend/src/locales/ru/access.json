@@ -1,0 +1,78 @@
+{
+  "index": {
+    "title": "Участники и доступ",
+    "description": "Управляйте участниками, приглашениями и ролями."
+  },
+  "tabs": {
+    "members": "Участники",
+    "invitations": "Приглашения",
+    "roles": "Роли"
+  },
+  "members": {
+    "loadErrorTitle": "Не удалось загрузить участников",
+    "loading": "Загрузка участников…",
+    "viewOnlyTitle": "Только просмотр",
+    "viewOnlyMessage": "Вы можете видеть участников, но для изменения назначений ролей требуется разрешение «roles:manage».",
+    "listAccess": "Доступ к спискам",
+    "roleUpdated": "Роль обновлена."
+  },
+  "listRoles": {
+    "title": "Доступ к спискам для {{name}}",
+    "description": "Назначьте или удалите роль в рамках одного списка.",
+    "listLabel": "Список",
+    "listPlaceholder": "Выберите список…",
+    "roleLabel": "Роль",
+    "rolePlaceholder": "Выберите роль…",
+    "removeRole": "Удалить роль для списка",
+    "grantRole": "Назначить роль",
+    "grantSuccess": "Роль для списка назначена.",
+    "removeSuccess": "Роль для списка удалена."
+  },
+  "invitations": {
+    "inviteTitle": "Пригласить коллегу",
+    "emailLabel": "Адрес электронной почты",
+    "sendInvite": "Отправить приглашение",
+    "linkTitle": "Ссылка приглашения",
+    "copyLink": "Скопировать ссылку",
+    "linkCopied": "Ссылка скопирована.",
+    "emptyTitle": "Нет ожидающих приглашений",
+    "emptyMessage": "Отправленные приглашения будут отображаться здесь, пока их не примут.",
+    "expires": "Истекает {{date}}",
+    "revoke": "Отозвать",
+    "inviteSent": "Приглашение отправлено.",
+    "inviteRevoked": "Приглашение отозвано.",
+    "confirmRevokeTitle": "Отозвать это приглашение?",
+    "confirmRevokeDescription": "Ссылка приглашения перестанет работать и не может быть использована повторно.",
+    "confirmRevokeLabel": "Отозвать приглашение"
+  },
+  "roles": {
+    "unavailableTitle": "Управление ролями недоступно",
+    "unavailableMessage": "Для создания или изменения ролей требуется разрешение «roles:manage».",
+    "newRole": "Новая роль",
+    "emptyTitle": "Ролей пока нет",
+    "emptyMessage": "Создайте роль, чтобы предоставить ограниченные разрешения.",
+    "permissionCount_one": "{{count}} разрешение",
+    "permissionCount_few": "{{count}} разрешения",
+    "permissionCount_many": "{{count}} разрешений",
+    "permissionCount_other": "{{count}} разрешения",
+    "edit": "Изменить",
+    "deleteRole": "Удалить роль",
+    "deleteSuccess": "Роль удалена.",
+    "confirmDeleteTitle": "Удалить роль «{{name}}»?",
+    "confirmDeleteDescription": "Участники с этой ролью потеряют её разрешения.",
+    "confirmDeleteLabel": "Удалить роль"
+  },
+  "roleDialog": {
+    "editTitle": "Изменить роль",
+    "newTitle": "Новая роль",
+    "description": "Назовите роль и выберите разрешения, которые она предоставляет.",
+    "nameLabel": "Название роли",
+    "nameRequired": "Введите название роли.",
+    "permissionsLabel": "Разрешения",
+    "saving": "Сохранение…",
+    "saveRole": "Сохранить роль",
+    "createRole": "Создать роль",
+    "updateSuccess": "Роль обновлена.",
+    "createSuccess": "Роль создана."
+  }
+}

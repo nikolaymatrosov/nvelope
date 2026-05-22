@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 import type { List } from "@/lib/api-types"
 import type { ColumnDef } from "@/components/common/data-table"
 import { api } from "@/lib/api"
@@ -28,37 +29,40 @@ import { FormField, compose, fieldError, rules } from "@/components/common/form-
 
 export const Route = createFileRoute("/t/$slug/lists/")({ component: ListsView })
 
-const columns: Array<ColumnDef<List, unknown>> = [
-  { accessorKey: "Name", header: "Name" },
-  {
-    accessorKey: "Description",
-    header: "Description",
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.original.Description || "—"}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "Visibility",
-    header: "Visibility",
-    cell: ({ row }) => <Badge variant="secondary">{row.original.Visibility}</Badge>,
-  },
-  {
-    accessorKey: "CreatedAt",
-    header: "Created",
-    cell: ({ row }) => formatDate(row.original.CreatedAt),
-  },
-]
-
 export function ListsView() {
   const { slug } = Route.useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation("lists")
   const { can } = usePermissions(slug)
   const canManage = can("lists:manage")
   const [offset, setOffset] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
   const limit = DEFAULT_PAGE_SIZE
+
+  const columns: Array<ColumnDef<List, unknown>> = [
+    { accessorKey: "Name", header: t("columns.name") },
+    {
+      accessorKey: "Description",
+      header: t("columns.description"),
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {row.original.Description || "—"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "Visibility",
+      header: t("columns.visibility"),
+      cell: ({ row }) => (
+        <Badge variant="secondary">{row.original.Visibility}</Badge>
+      ),
+    },
+    {
+      accessorKey: "CreatedAt",
+      header: t("columns.created"),
+      cell: ({ row }) => formatDate(row.original.CreatedAt),
+    },
+  ]
 
   const listsQuery = useQuery({
     queryKey: queryKeys.listsPage(slug, limit, offset),
@@ -69,14 +73,14 @@ export function ListsView() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Lists</h1>
+          <h1 className="text-2xl font-semibold">{t("index.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Organise subscribers into lists.
+            {t("index.description")}
           </p>
         </div>
         {canManage && (
           <Button onClick={() => setCreateOpen(true)}>
-            <PlusIcon /> New list
+            <PlusIcon /> {t("index.newList")}
           </Button>
         )}
       </header>
@@ -84,12 +88,12 @@ export function ListsView() {
       <AsyncState
         query={listsQuery}
         isEmpty={(d) => d.total === 0}
-        emptyTitle="No lists yet"
-        emptyMessage="Create your first list to start grouping subscribers."
+        emptyTitle={t("index.emptyTitle")}
+        emptyMessage={t("index.emptyMessage")}
         emptyAction={
           canManage ? (
             <Button onClick={() => setCreateOpen(true)}>
-              <PlusIcon /> New list
+              <PlusIcon /> {t("index.newList")}
             </Button>
           ) : undefined
         }
@@ -132,13 +136,14 @@ function CreateListDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const queryClient = useQueryClient()
+  const { t } = useTranslation(["lists", "common"])
 
   const create = useMutation({
     mutationFn: (v: { name: string; description: string }) =>
       api.createList(slug, { name: v.name.trim(), description: v.description }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists(slug) })
-      toast.success("List created.")
+      toast.success(t("create.success"))
       onOpenChange(false)
       form.reset()
     },
@@ -156,10 +161,8 @@ function CreateListDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New list</DialogTitle>
-          <DialogDescription>
-            Give the list a name. You can add subscribers afterwards.
-          </DialogDescription>
+          <DialogTitle>{t("create.title")}</DialogTitle>
+          <DialogDescription>{t("create.description")}</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -171,11 +174,13 @@ function CreateListDialog({
         >
           <form.Field
             name="name"
-            validators={{ onBlur: compose(rules.required("Enter a list name.")) }}
+            validators={{
+              onBlur: compose(rules.required(t("form.nameRequired"))),
+            }}
           >
             {(field) => (
               <FormField
-                label="Name"
+                label={t("form.name")}
                 required
                 autoFocus
                 value={field.state.value}
@@ -188,7 +193,7 @@ function CreateListDialog({
           <form.Field name="description">
             {(field) => (
               <FormField
-                label="Description"
+                label={t("form.description")}
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
@@ -200,10 +205,10 @@ function CreateListDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating…" : "Create list"}
+              {create.isPending ? t("create.submitting") : t("create.submit")}
             </Button>
           </DialogFooter>
         </form>
