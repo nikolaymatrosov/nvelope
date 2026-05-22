@@ -18,10 +18,11 @@ type LogIn struct {
 
 // LogInResult carries the authenticated user and the raw session token.
 type LogInResult struct {
-	UserID    string
-	UserEmail string
-	UserName  string
-	Token     string
+	UserID     string
+	UserEmail  string
+	UserName   string
+	UserLocale string
+	Token      string
 }
 
 // LogInHandler handles the LogIn command.
@@ -74,9 +75,10 @@ func (h LogInHandler) Handle(ctx context.Context, cmd LogIn) (LogInResult, error
 		return LogInResult{}, err
 	}
 	return LogInResult{
-		UserID:    user.ID(),
-		UserEmail: user.Email().String(),
-		UserName:  user.Name(),
-		Token:     raw,
+		UserID:     user.ID(),
+		UserEmail:  user.Email().String(),
+		UserName:   user.Name(),
+		UserLocale: user.Locale().String(),
+		Token:      raw,
 	}, nil
 }

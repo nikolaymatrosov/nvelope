@@ -1,0 +1,11 @@
+{
+  "title": "Account settings",
+  "description": "Manage your personal preferences. These apply to your account everywhere you sign in.",
+  "back": "Back",
+  "language": {
+    "title": "Language",
+    "cardDescription": "Choose the language for the nvelope interface.",
+    "label": "Interface language",
+    "hint": "Applies across all your workspaces and devices."
+  }
+}

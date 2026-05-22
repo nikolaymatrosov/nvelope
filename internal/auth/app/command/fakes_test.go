@@ -30,10 +30,21 @@ func (f *fakeUsers) Create(_ context.Context, u *domain.User, passwordHash strin
 	}
 	f.nextID++
 	id := "user-" + strconv.Itoa(f.nextID)
-	stored := domain.HydrateUser(id, u.Email().String(), u.Name())
+	stored := domain.HydrateUser(id, u.Email().String(), u.Name(), u.Locale().String())
 	f.byID[id] = stored
 	f.hashes[u.Email().String()] = passwordHash
 	return stored, nil
+}
+
+func (f *fakeUsers) UpdateLocale(_ context.Context, userID string, locale domain.Locale) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.byID[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.SetLocale(locale)
+	return nil
 }
 
 func (f *fakeUsers) CreateWithSession(ctx context.Context, u *domain.User, passwordHash string,

@@ -17,6 +17,9 @@ type AuthenticatedUser struct {
 	ID    string
 	Email string
 	Name  string
+	// Locale is the user's chosen interface language, empty when the user has
+	// never explicitly chosen one.
+	Locale string
 }
 
 // AuthenticateSessionHandler handles the AuthenticateSession query.
@@ -52,5 +55,10 @@ func (h AuthenticateSessionHandler) Handle(ctx context.Context, q AuthenticateSe
 	if err != nil {
 		return AuthenticatedUser{}, err
 	}
-	return AuthenticatedUser{ID: user.ID(), Email: user.Email().String(), Name: user.Name()}, nil
+	return AuthenticatedUser{
+		ID:     user.ID(),
+		Email:  user.Email().String(),
+		Name:   user.Name(),
+		Locale: user.Locale().String(),
+	}, nil
 }

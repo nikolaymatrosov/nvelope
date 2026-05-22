@@ -2,6 +2,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { errorMessage, isConflict } from "@/lib/errors"
 import { queryClient } from "@/lib/query"
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/signup")({ component: Signup })
 
 export function Signup() {
   const navigate = useNavigate()
+  const { t } = useTranslation("auth")
   const [formError, setFormError] = useState("")
   const [emailTaken, setEmailTaken] = useState(false)
 
@@ -53,10 +55,8 @@ export function Signup() {
     <main className="grid min-h-svh place-items-center p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Create your nvelope account</CardTitle>
-          <CardDescription>
-            Sign up, then create your first workspace.
-          </CardDescription>
+          <CardTitle>{t("signup.title")}</CardTitle>
+          <CardDescription>{t("signup.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -69,17 +69,19 @@ export function Signup() {
           >
             {formError && (
               <Alert variant="destructive">
-                <AlertTitle>Sign-up failed</AlertTitle>
+                <AlertTitle>{t("signup.errorTitle")}</AlertTitle>
                 <AlertDescription>{formError}</AlertDescription>
               </Alert>
             )}
             <form.Field
               name="name"
-              validators={{ onBlur: compose(rules.required("Enter your name.")) }}
+              validators={{
+                onBlur: compose(rules.required(t("signup.nameRequired"))),
+              }}
             >
               {(field) => (
                 <FormField
-                  label="Name"
+                  label={t("signup.name")}
                   required
                   autoComplete="name"
                   value={field.state.value}
@@ -95,7 +97,7 @@ export function Signup() {
             >
               {(field) => (
                 <FormField
-                  label="Email"
+                  label={t("signup.email")}
                   type="email"
                   required
                   autoComplete="email"
@@ -107,7 +109,7 @@ export function Signup() {
                   }}
                   error={
                     emailTaken
-                      ? "An account with this email already exists."
+                      ? t("signup.emailTaken")
                       : fieldError(field.state.meta.errors)
                   }
                 />
@@ -116,16 +118,18 @@ export function Signup() {
             <form.Field
               name="password"
               validators={{
-                onBlur: compose(rules.minLength(8, "Use at least 8 characters.")),
+                onBlur: compose(
+                  rules.minLength(8, t("signup.passwordTooShort")),
+                ),
               }}
             >
               {(field) => (
                 <FormField
-                  label="Password"
+                  label={t("signup.password")}
                   type="password"
                   required
                   autoComplete="new-password"
-                  hint="At least 8 characters."
+                  hint={t("signup.passwordHint")}
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
@@ -134,18 +138,18 @@ export function Signup() {
               )}
             </form.Field>
             <Button type="submit" disabled={signup.isPending}>
-              {signup.isPending ? "Creating…" : "Sign up"}
+              {signup.isPending ? t("signup.submitting") : t("signup.submit")}
             </Button>
           </form>
         </CardContent>
         <CardFooter>
           <p className="text-sm text-muted-foreground">
-            Already have an account?{" "}
+            {t("signup.haveAccount")}{" "}
             <Link
               className="text-primary underline-offset-4 hover:underline"
               to="/login"
             >
-              Log in
+              {t("signup.logInLink")}
             </Link>
           </p>
         </CardFooter>

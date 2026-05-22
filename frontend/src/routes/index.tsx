@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import { isUnauthorized } from "@/lib/errors"
 import { queryClient } from "@/lib/query"
 import { useSession } from "@/hooks/use-session"
+import { useSyncAccountLocale } from "@/hooks/use-locale"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -29,6 +30,8 @@ export const Route = createFileRoute("/")({ component: Home })
 function Home() {
   const navigate = useNavigate()
   const { account, user, tenants, isLoading, isError, error } = useSession()
+  // Apply the signed-in user's stored language preference (FR-004).
+  useSyncAccountLocale()
 
   const logout = useMutation({
     mutationFn: () => api.logout(),

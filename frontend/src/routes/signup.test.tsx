@@ -42,7 +42,7 @@ describe("Signup", () => {
     vi.mocked(api.signup).mockResolvedValue({
       status: 200,
       ok: true,
-      data: { user: { id: "u1", name: "Ann Lee", email: "ann@example.com" }, tenants: [] },
+      data: { user: { id: "u1", name: "Ann Lee", email: "ann@example.com", locale: null }, tenants: [] },
     })
     renderWithClient(<Signup />)
     fill()

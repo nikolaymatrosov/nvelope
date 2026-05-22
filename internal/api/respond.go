@@ -37,9 +37,14 @@ func decodeJSON(r *http.Request, v any) error {
 	return dec.Decode(v)
 }
 
-// userPayload builds the JSON object for a platform user.
-func userPayload(id, email, name string) map[string]string {
-	return map[string]string{"id": id, "email": email, "name": name}
+// userPayload builds the JSON object for a platform user. An empty locale —
+// the user has never chosen an interface language — is emitted as JSON null.
+func userPayload(id, email, name, locale string) map[string]any {
+	var loc any
+	if locale != "" {
+		loc = locale
+	}
+	return map[string]any{"id": id, "email": email, "name": name, "locale": loc}
 }
 
 // tenantPayload builds the JSON object for a workspace.

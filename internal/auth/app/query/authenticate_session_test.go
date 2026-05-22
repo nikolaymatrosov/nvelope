@@ -48,12 +48,15 @@ func (f fakeUsers) GetByID(_ context.Context, id string) (*domain.User, error) {
 	}
 	return nil, domain.ErrUserNotFound
 }
+func (f fakeUsers) UpdateLocale(context.Context, string, domain.Locale) error {
+	return nil
+}
 
 func TestAuthenticateSessionResolvesUser(t *testing.T) {
 	t.Parallel()
 	raw := "raw-token"
 	session := domain.HydrateSession("s1", "user-1", time.Now().Add(time.Hour), nil)
-	user := domain.HydrateUser("user-1", "ada@example.com", "Ada")
+	user := domain.HydrateUser("user-1", "ada@example.com", "Ada", "")
 
 	h := query.NewAuthenticateSessionHandler(
 		fakeSessions{byHash: map[string]*domain.Session{token.Hash(raw): session}},

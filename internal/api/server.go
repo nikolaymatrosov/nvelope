@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 			r.Use(s.requireUser)
 			r.Post("/logout", s.handleLogout)
 			r.Get("/me", s.handleMe)
+			r.Put("/me", s.handleUpdateMe)
 			r.Post("/tenants", s.handleCreateTenant)
 			r.Get("/tenants", s.handleListTenants)
 		})

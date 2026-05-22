@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "group": "Рабочее пространство",
+    "dashboard": "Панель",
+    "subscribers": "Подписчики",
+    "lists": "Списки",
+    "sendingDomains": "Домены отправки",
+    "templates": "Шаблоны",
+    "campaigns": "Кампании",
+    "suppressions": "Список подавления",
+    "transactional": "Транзакционная отправка",
+    "access": "Люди и доступ",
+    "importExport": "Импорт / Экспорт",
+    "audit": "Аудит",
+    "billing": "Биллинг",
+    "publicPages": "Публичные страницы",
+    "branding": "Брендинг",
+    "media": "Медиафайлы",
+    "settings": "Настройки"
+  },
+  "account": {
+    "menu": "Меню аккаунта",
+    "switchWorkspace": "Сменить пространство",
+    "signOut": "Выйти",
+    "settings": "Настройки аккаунта"
+  },
+  "actions": {
+    "save": "Сохранить",
+    "saving": "Сохранение…",
+    "cancel": "Отмена"
+  },
+  "state": {
+    "loading": "Загрузка…",
+    "error": "Что-то пошло не так."
+  }
+}

@@ -3,7 +3,8 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import { useMutation } from "@tanstack/react-query"
-import { LogOutIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { LogOutIcon, SettingsIcon } from "lucide-react"
 import { api } from "@/lib/api"
 import { queryClient } from "@/lib/query"
 import { useSession } from "@/hooks/use-session"
@@ -33,6 +34,7 @@ function initials(name: string): string {
 export function TopBar({ workspaceName }: { workspaceName: string }) {
   const navigate = useNavigate()
   const { user } = useSession()
+  const { t } = useTranslation("common")
 
   const logout = useMutation({
     mutationFn: () => api.logout(),
@@ -52,7 +54,7 @@ export function TopBar({ workspaceName }: { workspaceName: string }) {
           <DropdownMenuTrigger asChild>
             <button
               className="flex items-center gap-2 rounded-md p-1 hover:bg-muted"
-              aria-label="Account menu"
+              aria-label={t("account.menu")}
             >
               <Avatar className="size-7">
                 <AvatarFallback>{initials(user?.name ?? "")}</AvatarFallback>
@@ -69,15 +71,19 @@ export function TopBar({ workspaceName }: { workspaceName: string }) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate({ to: "/account" })}>
+              <SettingsIcon />
+              {t("account.settings")}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate({ to: "/" })}>
-              Switch workspace
+              {t("account.switchWorkspace")}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={logout.isPending}
               onClick={() => logout.mutate()}
             >
               <LogOutIcon />
-              Sign out
+              {t("account.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

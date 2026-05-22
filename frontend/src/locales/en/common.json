@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "group": "Workspace",
+    "dashboard": "Dashboard",
+    "subscribers": "Subscribers",
+    "lists": "Lists",
+    "sendingDomains": "Sending Domains",
+    "templates": "Templates",
+    "campaigns": "Campaigns",
+    "suppressions": "Suppression list",
+    "transactional": "Transactional Sending",
+    "access": "People & Access",
+    "importExport": "Import / Export",
+    "audit": "Audit",
+    "billing": "Billing",
+    "publicPages": "Public pages",
+    "branding": "Branding",
+    "media": "Media",
+    "settings": "Settings"
+  },
+  "account": {
+    "menu": "Account menu",
+    "switchWorkspace": "Switch workspace",
+    "signOut": "Sign out",
+    "settings": "Account settings"
+  },
+  "actions": {
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
+  "state": {
+    "loading": "Loading…",
+    "error": "Something went wrong."
+  }
+}

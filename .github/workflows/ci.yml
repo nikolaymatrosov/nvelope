@@ -50,15 +50,28 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: i18n types drift check
+        run: pnpm i18n:types && git diff --exit-code src/i18n/resources.d.ts src/i18n/i18next.d.ts
+
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Lint
         run: pnpm lint
+
+      # Advisory while the string migration is in progress — surfaces
+      # remaining hardcoded UI strings. Flip to a hard gate once every
+      # feature area has been migrated to t().
+      - name: i18n key lint
+        run: pnpm i18n:lint
+        continue-on-error: true
 
       - name: Test
         run: pnpm test

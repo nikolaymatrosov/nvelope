@@ -2,6 +2,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { errorMessage, isUnauthorized } from "@/lib/errors"
 import { queryClient } from "@/lib/query"
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/login")({ component: Login })
 
 export function Login() {
   const navigate = useNavigate()
+  const { t } = useTranslation("auth")
   const [formError, setFormError] = useState("")
 
   const login = useMutation({
@@ -34,9 +36,7 @@ export function Login() {
       // Invalid credentials are reported non-specifically (FR-002) — never
       // reveal whether the email or the password was wrong.
       setFormError(
-        isUnauthorized(e)
-          ? "That email and password do not match."
-          : errorMessage(e),
+        isUnauthorized(e) ? t("login.invalidCredentials") : errorMessage(e),
       )
     },
   })
@@ -53,10 +53,8 @@ export function Login() {
     <main className="grid min-h-svh place-items-center p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Log in to nvelope</CardTitle>
-          <CardDescription>
-            Welcome back. Sign in to your workspaces.
-          </CardDescription>
+          <CardTitle>{t("login.title")}</CardTitle>
+          <CardDescription>{t("login.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -69,7 +67,7 @@ export function Login() {
           >
             {formError && (
               <Alert variant="destructive">
-                <AlertTitle>Could not sign in</AlertTitle>
+                <AlertTitle>{t("login.errorTitle")}</AlertTitle>
                 <AlertDescription>{formError}</AlertDescription>
               </Alert>
             )}
@@ -79,7 +77,7 @@ export function Login() {
             >
               {(field) => (
                 <FormField
-                  label="Email"
+                  label={t("login.email")}
                   type="email"
                   required
                   autoComplete="email"
@@ -96,7 +94,7 @@ export function Login() {
             >
               {(field) => (
                 <FormField
-                  label="Password"
+                  label={t("login.password")}
                   type="password"
                   required
                   autoComplete="current-password"
@@ -108,18 +106,18 @@ export function Login() {
               )}
             </form.Field>
             <Button type="submit" disabled={login.isPending}>
-              {login.isPending ? "Signing in…" : "Log in"}
+              {login.isPending ? t("login.submitting") : t("login.submit")}
             </Button>
           </form>
         </CardContent>
         <CardFooter>
           <p className="text-sm text-muted-foreground">
-            Need an account?{" "}
+            {t("login.needAccount")}{" "}
             <Link
               className="text-primary underline-offset-4 hover:underline"
               to="/signup"
             >
-              Sign up
+              {t("login.signUpLink")}
             </Link>
           </p>
         </CardFooter>

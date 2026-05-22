@@ -155,6 +155,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				authcommand.NewLogInHandler(users, sessions, hasher, cfg.SessionTTL), "LogIn", logger),
 			LogOut: decorator.ApplyCommandDecorators(
 				authcommand.NewLogOutHandler(sessions), "LogOut", logger),
+			SetLocale: decorator.ApplyCommandDecorators(
+				authcommand.NewSetLocaleHandler(users), "SetLocale", logger),
 		},
 		Queries: authapp.Queries{
 			AuthenticateSession: decorator.ApplyQueryDecorators(

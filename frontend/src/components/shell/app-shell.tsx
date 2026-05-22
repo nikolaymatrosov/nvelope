@@ -7,6 +7,7 @@ import { TopBar } from "./top-bar"
 import { SuspensionBanner } from "./suspension-banner"
 import type { ReactNode } from "react"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { useSyncAccountLocale } from "@/hooks/use-locale"
 
 type AppShellProps = {
   slug: string
@@ -15,6 +16,9 @@ type AppShellProps = {
 }
 
 export function AppShell({ slug, workspaceName, children }: AppShellProps) {
+  // Apply the signed-in user's stored language preference (FR-004).
+  useSyncAccountLocale()
+
   return (
     <SidebarProvider>
       <WorkspaceSidebar slug={slug} />

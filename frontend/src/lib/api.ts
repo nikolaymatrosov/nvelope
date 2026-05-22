@@ -40,6 +40,7 @@ import type {
   Permission,
   PlanView,
   PlatformAccount,
+  PlatformUser,
   RenderPreviewInput,
   RenderPreviewResponse,
   Role,
@@ -144,6 +145,8 @@ export const api = {
     request("POST", "/api/platform/login", { email, password }),
   logout: () => request("POST", "/api/platform/logout"),
   me: () => request<PlatformAccount>("GET", "/api/platform/me"),
+  updateMyLocale: (locale: string) =>
+    request<{ user: PlatformUser }>("PUT", "/api/platform/me", { locale }),
   createTenant: (name: string, slug: string) =>
     request<{ id: string }>("POST", "/api/platform/tenants", { name, slug }),
   listTenants: () =>

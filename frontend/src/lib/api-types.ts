@@ -20,6 +20,13 @@ export type PlatformUser = {
   id: string
   name: string
   email: string
+  // The user's chosen interface language; null until they pick one.
+  locale: string | null
+}
+
+// Body of PUT /api/platform/me — updates the caller's language preference.
+export type AccountLocaleInput = {
+  locale: string
 }
 
 export type PlatformAccount = {

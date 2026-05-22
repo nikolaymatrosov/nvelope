@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -12,6 +13,11 @@ import (
 
 // sessionCookie is the name of the platform session cookie.
 const sessionCookie = "nv_session"
+
+// localeCookie carries the user's effective interface language. It is read by
+// the frontend (including its server-side render) to pick the initial locale,
+// so unlike the session cookie it is not HttpOnly.
+const localeCookie = "nv_locale"
 
 type ctxKey int
 
@@ -126,5 +132,19 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
+	})
+}
+
+// setLocaleCookie mirrors the user's effective interface language into the
+// locale cookie so the next server-side render picks the right language.
+func (s *Server) setLocaleCookie(w http.ResponseWriter, locale string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     localeCookie,
+		Value:    locale,
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int((365 * 24 * time.Hour).Seconds()),
 	})
 }

@@ -39,7 +39,8 @@ func (r *Users) Create(ctx context.Context, u *domain.User, passwordHash string)
 		}
 		return nil, fmt.Errorf("inserting platform user: %w", err)
 	}
-	return domain.HydrateUser(id, email, name), nil
+	// A freshly inserted user has no locale yet (NULL column).
+	return domain.HydrateUser(id, email, name, ""), nil
 }
 
 // CreateWithSession atomically inserts a new user and issues an initial
@@ -71,7 +72,7 @@ func (r *Users) CreateWithSession(ctx context.Context, u *domain.User, passwordH
 			return err
 		}
 
-		created = domain.HydrateUser(id, email, name)
+		created = domain.HydrateUser(id, email, name, "")
 		return nil
 	})
 	if err != nil {
@@ -82,47 +83,62 @@ func (r *Users) CreateWithSession(ctx context.Context, u *domain.User, passwordH
 
 // GetByID returns the user with the given id, or domain.ErrUserNotFound.
 func (r *Users) GetByID(ctx context.Context, id string) (*domain.User, error) {
-	var gotID, email, name string
+	var gotID, email, name, locale string
 	err := r.pool.QueryRow(ctx,
-		"SELECT id, email, name FROM platform_users WHERE id = $1", id).
-		Scan(&gotID, &email, &name)
+		"SELECT id, email, name, COALESCE(locale, '') FROM platform_users WHERE id = $1", id).
+		Scan(&gotID, &email, &name, &locale)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrUserNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("loading platform user: %w", err)
 	}
-	return domain.HydrateUser(gotID, email, name), nil
+	return domain.HydrateUser(gotID, email, name, locale), nil
+}
+
+// UpdateLocale persists the user's interface-language preference. It returns
+// domain.ErrUserNotFound when no user has the given id.
+func (r *Users) UpdateLocale(ctx context.Context, userID string, locale domain.Locale) error {
+	tag, err := r.pool.Exec(ctx,
+		"UPDATE platform_users SET locale = $1, updated_at = now() WHERE id = $2",
+		locale.String(), userID)
+	if err != nil {
+		return fmt.Errorf("updating user locale: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
 }
 
 // LookupByEmail returns the user with the given email, or
 // domain.ErrUserNotFound.
 func (r *Users) LookupByEmail(ctx context.Context, email string) (*domain.User, error) {
-	var id, gotEmail, name string
+	var id, gotEmail, name, locale string
 	err := r.pool.QueryRow(ctx,
-		"SELECT id, email, name FROM platform_users WHERE email = $1", email).
-		Scan(&id, &gotEmail, &name)
+		"SELECT id, email, name, COALESCE(locale, '') FROM platform_users WHERE email = $1", email).
+		Scan(&id, &gotEmail, &name, &locale)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrUserNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("looking up user: %w", err)
 	}
-	return domain.HydrateUser(id, gotEmail, name), nil
+	return domain.HydrateUser(id, gotEmail, name, locale), nil
 }
 
 // GetCredentials returns the user and the stored bcrypt hash for an email, or
 // domain.ErrUserNotFound. The hash never leaves the adapter/app boundary.
 func (r *Users) GetCredentials(ctx context.Context, email string) (*domain.User, string, error) {
-	var id, gotEmail, name, hash string
+	var id, gotEmail, name, locale, hash string
 	err := r.pool.QueryRow(ctx,
-		"SELECT id, email, name, password_hash FROM platform_users WHERE email = $1", email).
-		Scan(&id, &gotEmail, &name, &hash)
+		"SELECT id, email, name, COALESCE(locale, ''), password_hash FROM platform_users WHERE email = $1", email).
+		Scan(&id, &gotEmail, &name, &locale, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", domain.ErrUserNotFound
 	}
 	if err != nil {
 		return nil, "", fmt.Errorf("loading credentials: %w", err)
 	}
-	return domain.HydrateUser(id, gotEmail, name), hash, nil
+	return domain.HydrateUser(id, gotEmail, name, locale), hash, nil
 }

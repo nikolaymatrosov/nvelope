@@ -1,5 +1,5 @@
 .PHONY: build run-api run-worker run-scheduler test test-db-clean lint lint-arch \
-        verify tidy migrate-up migrate-down migrate-version migrate-create \
+        verify ci tidy migrate-up migrate-down migrate-version migrate-create \
         k8s-images k8s-tls k8s-deploy k8s-delete
 
 GO      ?= go
@@ -60,6 +60,23 @@ verify: lint-arch
 	$(GO) build ./...
 	$(GO) vet ./...
 	$(GO) test ./...
+
+# ci reproduces .github/workflows/ci.yml locally, step for step and in the
+# same order, so a green `make ci` predicts a green pipeline. The i18n
+# key-lint is advisory (mirrors the workflow's continue-on-error).
+ci:
+	$(GO) build ./...
+	$(GO) test ./...
+	$(MAKE) lint-arch
+	golangci-lint run
+	cd frontend && pnpm install --frozen-lockfile \
+		&& pnpm i18n:types \
+		&& git diff --exit-code src/i18n/resources.d.ts src/i18n/i18next.d.ts \
+		&& pnpm typecheck \
+		&& pnpm lint \
+		&& { pnpm i18n:lint || true; } \
+		&& pnpm test \
+		&& pnpm build
 
 tidy:
 	$(GO) mod tidy

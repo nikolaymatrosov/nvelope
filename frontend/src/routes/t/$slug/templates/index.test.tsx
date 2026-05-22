@@ -47,7 +47,7 @@ const sampleTemplate = {
 
 function setupOwner() {
   vi.mocked(api.me).mockResolvedValue(
-    ok({ user: { id: "u1", name: "Ann", email: "ann@ex.com" }, tenants: [] }),
+    ok({ user: { id: "u1", name: "Ann", email: "ann@ex.com", locale: null }, tenants: [] }),
   )
   vi.mocked(api.tenant).mockResolvedValue(
     ok({

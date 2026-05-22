@@ -66,7 +66,7 @@ describe("WorkspaceLayout", () => {
     )
     vi.mocked(api.me).mockResolvedValue(
       ok({
-        user: { id: "u1", name: "Ann", email: "ann@example.com" },
+        user: { id: "u1", name: "Ann", email: "ann@example.com", locale: null },
         tenants: [],
       }),
     )

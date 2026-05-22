@@ -73,8 +73,9 @@ func TestNewUserValidatesNameAndEmail(t *testing.T) {
 func TestHydrateUserSkipsValidation(t *testing.T) {
 	t.Parallel()
 
-	u := domain.HydrateUser("user-123", "grace@example.com", "Grace")
+	u := domain.HydrateUser("user-123", "grace@example.com", "Grace", "ru")
 	require.Equal(t, "user-123", u.ID())
 	require.Equal(t, "grace@example.com", u.Email().String())
 	require.Equal(t, "Grace", u.Name())
+	require.Equal(t, "ru", u.Locale().String())
 }

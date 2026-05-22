@@ -17,6 +17,9 @@ type UserRepository interface {
 		issueSession func(userID string) (s *Session, tokenHash string, err error)) (*User, error)
 	// GetByID returns the user with the given id, or ErrUserNotFound.
 	GetByID(ctx context.Context, id string) (*User, error)
+	// UpdateLocale persists the user's interface-language preference. It
+	// returns ErrUserNotFound when no user has the given id.
+	UpdateLocale(ctx context.Context, userID string, locale Locale) error
 	// LookupByEmail returns the user with the given email, or ErrUserNotFound.
 	LookupByEmail(ctx context.Context, email string) (*User, error)
 	// GetCredentials returns the user and the stored bcrypt hash for an email,

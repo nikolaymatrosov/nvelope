@@ -3,6 +3,7 @@
 // router's current location.
 
 import { Link, useLocation } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 import {
   ArrowDownUpIcon,
   CreditCardIcon,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react"
 import type { Permission } from "@/lib/api-types"
 import type { LucideIcon } from "lucide-react"
+import type Resources from "@/i18n/resources"
 import {
   Sidebar,
   SidebarContent,
@@ -36,8 +38,11 @@ import {
 } from "@/components/ui/sidebar"
 import { usePermissions } from "@/hooks/use-permissions"
 
+// A key under the `common` namespace's `nav` group.
+type NavLabelKey = `nav.${keyof Resources["common"]["nav"]}`
+
 type NavEntry = {
-  label: string
+  labelKey: NavLabelKey
   segment: string
   icon: LucideIcon
   // Visible when the user holds at least one of these. Empty = always visible.
@@ -46,81 +51,82 @@ type NavEntry = {
 
 const NAV: Array<NavEntry> = [
   {
-    label: "Dashboard",
+    labelKey: "nav.dashboard",
     segment: "dashboard",
     icon: LayoutDashboardIcon,
     requires: ["campaigns:get", "campaigns:manage"],
   },
-  { label: "Subscribers", segment: "subscribers", icon: UsersIcon, requires: ["subscribers:get"] },
-  { label: "Lists", segment: "lists", icon: ListIcon, requires: ["lists:get"] },
+  { labelKey: "nav.subscribers", segment: "subscribers", icon: UsersIcon, requires: ["subscribers:get"] },
+  { labelKey: "nav.lists", segment: "lists", icon: ListIcon, requires: ["lists:get"] },
   {
-    label: "Sending Domains",
+    labelKey: "nav.sendingDomains",
     segment: "sending-domains",
     icon: GlobeIcon,
     requires: ["sending:get", "sending:manage"],
   },
   {
-    label: "Templates",
+    labelKey: "nav.templates",
     segment: "templates",
     icon: FileTextIcon,
     requires: ["campaigns:get", "campaigns:manage"],
   },
   {
-    label: "Campaigns",
+    labelKey: "nav.campaigns",
     segment: "campaigns",
     icon: SendIcon,
     requires: ["campaigns:get", "campaigns:manage"],
   },
   {
-    label: "Suppression list",
+    labelKey: "nav.suppressions",
     segment: "suppressions",
     icon: ShieldXIcon,
     requires: ["sending:get", "sending:manage"],
   },
   {
-    label: "Transactional Sending",
+    labelKey: "nav.transactional",
     segment: "transactional",
     icon: ZapIcon,
     requires: ["transactional:send", "apikeys:get", "apikeys:manage"],
   },
-  { label: "People & Access", segment: "access", icon: ShieldIcon, requires: [] },
+  { labelKey: "nav.access", segment: "access", icon: ShieldIcon, requires: [] },
   {
-    label: "Import / Export",
+    labelKey: "nav.importExport",
     segment: "import-export",
     icon: ArrowDownUpIcon,
     requires: ["subscribers:import", "subscribers:export"],
   },
-  { label: "Audit", segment: "audit", icon: ScrollTextIcon, requires: ["audit:get"] },
+  { labelKey: "nav.audit", segment: "audit", icon: ScrollTextIcon, requires: ["audit:get"] },
   {
-    label: "Billing",
+    labelKey: "nav.billing",
     segment: "billing",
     icon: CreditCardIcon,
     requires: ["billing:get", "billing:manage"],
   },
   {
-    label: "Public pages",
+    labelKey: "nav.publicPages",
     segment: "public-pages",
     icon: Share2Icon,
     requires: ["subscription_pages:manage"],
   },
   {
-    label: "Branding",
+    labelKey: "nav.branding",
     segment: "branding",
     icon: PaletteIcon,
     requires: ["branding:manage"],
   },
   {
-    label: "Media",
+    labelKey: "nav.media",
     segment: "media",
     icon: ImageIcon,
     requires: ["media:get", "media:manage"],
   },
-  { label: "Settings", segment: "settings", icon: SettingsIcon, requires: ["settings:get"] },
+  { labelKey: "nav.settings", segment: "settings", icon: SettingsIcon, requires: ["settings:get"] },
 ]
 
 export function WorkspaceSidebar({ slug }: { slug: string }) {
   const location = useLocation()
   const { canAny } = usePermissions(slug)
+  const { t } = useTranslation("common")
   const base = `/t/${slug}`
 
   return (
@@ -135,7 +141,7 @@ export function WorkspaceSidebar({ slug }: { slug: string }) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          <SidebarGroupLabel>{t("nav.group")}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {NAV.filter(
@@ -148,7 +154,7 @@ export function WorkspaceSidebar({ slug }: { slug: string }) {
                     <SidebarMenuButton asChild isActive={active}>
                       <Link to={href}>
                         <entry.icon />
-                        <span>{entry.label}</span>
+                        <span>{t(entry.labelKey)}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

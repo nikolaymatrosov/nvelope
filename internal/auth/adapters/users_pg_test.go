@@ -86,3 +86,42 @@ func TestUsersNotFound(t *testing.T) {
 	_, _, err = repo.GetCredentials(ctx, dbtest.RandString()+"@example.com")
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
+
+func TestUsersUpdateLocale(t *testing.T) {
+	t.Parallel()
+	repo := adapters.NewUsers(dbtest.AppPool(t))
+	ctx := context.Background()
+
+	u, _ := newUser(t, "Ada")
+	created, err := repo.Create(ctx, u, "hash")
+	require.NoError(t, err)
+	require.True(t, created.Locale().IsZero(), "a new user has no locale")
+
+	ru, err := domain.NewLocale("ru")
+	require.NoError(t, err)
+	require.NoError(t, repo.UpdateLocale(ctx, created.ID(), ru))
+
+	reloaded, err := repo.GetByID(ctx, created.ID())
+	require.NoError(t, err)
+	require.Equal(t, "ru", reloaded.Locale().String())
+
+	// The preference can change between supported locales.
+	en, err := domain.NewLocale("en")
+	require.NoError(t, err)
+	require.NoError(t, repo.UpdateLocale(ctx, created.ID(), en))
+	reloaded, err = repo.GetByID(ctx, created.ID())
+	require.NoError(t, err)
+	require.Equal(t, "en", reloaded.Locale().String())
+}
+
+func TestUsersUpdateLocaleUnknownUser(t *testing.T) {
+	t.Parallel()
+	repo := adapters.NewUsers(dbtest.AppPool(t))
+	ctx := context.Background()
+
+	ru, err := domain.NewLocale("ru")
+	require.NoError(t, err)
+
+	err = repo.UpdateLocale(ctx, "00000000-0000-0000-0000-000000000000", ru)
+	require.ErrorIs(t, err, domain.ErrUserNotFound)
+}

@@ -32,9 +32,33 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setSessionCookie(w, result.Token)
+	locale := s.resolveAuthLocale(w, r, result.UserID, "")
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"user": userPayload(result.UserID, result.UserEmail, result.UserName),
+		"user": userPayload(result.UserID, result.UserEmail, result.UserName, locale),
 	})
+}
+
+// resolveAuthLocale picks the user's effective interface language right after
+// authentication and mirrors it into the nv_locale cookie. An existing stored
+// preference wins; otherwise, when the request carries a supported nv_locale
+// cookie, that choice is adopted as the account preference (FR-008). An
+// unsupported or absent cookie leaves the locale unset.
+func (s *Server) resolveAuthLocale(w http.ResponseWriter, r *http.Request, userID, stored string) string {
+	effective := stored
+	if effective == "" {
+		if c, err := r.Cookie(localeCookie); err == nil && c.Value != "" {
+			// SetLocale validates the value; adoption is silently skipped when
+			// the cookie carries an unsupported locale.
+			if err := s.auth.Commands.SetLocale.Handle(r.Context(),
+				authcommand.SetLocale{UserID: userID, Locale: c.Value}); err == nil {
+				effective = c.Value
+			}
+		}
+	}
+	if effective != "" {
+		s.setLocaleCookie(w, effective)
+	}
+	return effective
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -51,8 +75,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setSessionCookie(w, result.Token)
+	locale := s.resolveAuthLocale(w, r, result.UserID, result.UserLocale)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user": userPayload(result.UserID, result.UserEmail, result.UserName),
+		"user": userPayload(result.UserID, result.UserEmail, result.UserName, locale),
 	})
 }
 
@@ -78,8 +103,34 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user":    userPayload(user.ID, user.Email, user.Name),
+		"user":    userPayload(user.ID, user.Email, user.Name, user.Locale),
 		"tenants": memberships,
+	})
+}
+
+// handleUpdateMe changes the authenticated user's interface-language
+// preference. The target user is always the caller resolved from the session,
+// so one user can never write another's locale.
+func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
+	var req struct {
+		Locale string `json:"locale"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	if err := s.auth.Commands.SetLocale.Handle(r.Context(), authcommand.SetLocale{
+		UserID: user.ID, Locale: req.Locale,
+	}); err != nil {
+		s.fail(w, "set locale", err)
+		return
+	}
+	// Mirror the chosen locale into the cookie so the next server render is in
+	// the new language.
+	s.setLocaleCookie(w, req.Locale)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user": userPayload(user.ID, user.Email, user.Name, req.Locale),
 	})
 }
 
@@ -162,13 +213,18 @@ func (s *Server) handleAcceptInvitation(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	user := userPayload(currentUser.ID, currentUser.Email, currentUser.Name)
+	userID, userEmail, userName := currentUser.ID, currentUser.Email, currentUser.Name
+	stored := currentUser.Locale
 	if result.NewUser != nil {
 		s.setSessionCookie(w, result.NewUser.SessionToken)
-		user = userPayload(result.NewUser.ID, result.NewUser.Email, result.NewUser.Name)
+		userID = result.NewUser.ID
+		userEmail = result.NewUser.Email
+		userName = result.NewUser.Name
+		stored = ""
 	}
+	locale := s.resolveAuthLocale(w, r, userID, stored)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user":   user,
+		"user":   userPayload(userID, userEmail, userName, locale),
 		"tenant": tenantPayload(result.TenantID, result.TenantSlug, result.TenantName, result.TenantStatus),
 	})
 }

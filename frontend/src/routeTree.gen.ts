@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountIndexRouteImport } from './routes/account/index'
 import { Route as TenantsNewRouteImport } from './routes/tenants/new'
 import { Route as InviteTokenRouteImport } from './routes/invite/$token'
 import { Route as TSlugRouteRouteImport } from './routes/t/$slug/route'
@@ -60,6 +61,11 @@ const LoginRoute = LoginRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountIndexRoute = AccountIndexRouteImport.update({
+  id: '/account/',
+  path: '/account/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TenantsNewRoute = TenantsNewRouteImport.update({
@@ -244,6 +250,7 @@ export interface FileRoutesByFullPath {
   '/t/$slug': typeof TSlugRouteRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
   '/tenants/new': typeof TenantsNewRoute
+  '/account/': typeof AccountIndexRoute
   '/t/$slug/': typeof TSlugIndexRoute
   '/t/$slug/billing/invoices': typeof TSlugBillingInvoicesRoute
   '/t/$slug/billing/plans': typeof TSlugBillingPlansRoute
@@ -282,6 +289,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/invite/$token': typeof InviteTokenRoute
   '/tenants/new': typeof TenantsNewRoute
+  '/account': typeof AccountIndexRoute
   '/t/$slug': typeof TSlugIndexRoute
   '/t/$slug/billing/invoices': typeof TSlugBillingInvoicesRoute
   '/t/$slug/billing/plans': typeof TSlugBillingPlansRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/t/$slug': typeof TSlugRouteRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
   '/tenants/new': typeof TenantsNewRoute
+  '/account/': typeof AccountIndexRoute
   '/t/$slug/': typeof TSlugIndexRoute
   '/t/$slug/billing/invoices': typeof TSlugBillingInvoicesRoute
   '/t/$slug/billing/plans': typeof TSlugBillingPlansRoute
@@ -363,6 +372,7 @@ export interface FileRouteTypes {
     | '/t/$slug'
     | '/invite/$token'
     | '/tenants/new'
+    | '/account/'
     | '/t/$slug/'
     | '/t/$slug/billing/invoices'
     | '/t/$slug/billing/plans'
@@ -401,6 +411,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/invite/$token'
     | '/tenants/new'
+    | '/account'
     | '/t/$slug'
     | '/t/$slug/billing/invoices'
     | '/t/$slug/billing/plans'
@@ -440,6 +451,7 @@ export interface FileRouteTypes {
     | '/t/$slug'
     | '/invite/$token'
     | '/tenants/new'
+    | '/account/'
     | '/t/$slug/'
     | '/t/$slug/billing/invoices'
     | '/t/$slug/billing/plans'
@@ -480,6 +492,7 @@ export interface RootRouteChildren {
   TSlugRouteRoute: typeof TSlugRouteRouteWithChildren
   InviteTokenRoute: typeof InviteTokenRoute
   TenantsNewRoute: typeof TenantsNewRoute
+  AccountIndexRoute: typeof AccountIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -503,6 +516,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account/': {
+      id: '/account/'
+      path: '/account'
+      fullPath: '/account/'
+      preLoaderRoute: typeof AccountIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tenants/new': {
@@ -834,6 +854,7 @@ const rootRouteChildren: RootRouteChildren = {
   TSlugRouteRoute: TSlugRouteRouteWithChildren,
   InviteTokenRoute: InviteTokenRoute,
   TenantsNewRoute: TenantsNewRoute,
+  AccountIndexRoute: AccountIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
