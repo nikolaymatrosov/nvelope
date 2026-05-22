@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -73,9 +74,40 @@ func TestNewUserValidatesNameAndEmail(t *testing.T) {
 func TestHydrateUserSkipsValidation(t *testing.T) {
 	t.Parallel()
 
-	u := domain.HydrateUser("user-123", "grace@example.com", "Grace", "ru")
+	u := domain.HydrateUser("user-123", "grace@example.com", "Grace", "ru", nil)
 	require.Equal(t, "user-123", u.ID())
 	require.Equal(t, "grace@example.com", u.Email().String())
 	require.Equal(t, "Grace", u.Name())
 	require.Equal(t, "ru", u.Locale().String())
+	require.False(t, u.IsEmailVerified(), "a hydrated user with nil verified-at is unverified")
+}
+
+func TestEmailDomain(t *testing.T) {
+	t.Parallel()
+
+	e, err := domain.NewEmail("Ada@Example.COM")
+	require.NoError(t, err)
+	require.Equal(t, "example.com", e.Domain(), "the domain is lower-cased")
+
+	require.Equal(t, "", domain.Email{}.Domain(), "the zero-value Email has no domain")
+}
+
+func TestUserEmailVerification(t *testing.T) {
+	t.Parallel()
+
+	email, err := domain.NewEmail("ada@example.com")
+	require.NoError(t, err)
+	u, err := domain.NewUser(email, "Ada")
+	require.NoError(t, err)
+	require.False(t, u.IsEmailVerified(), "a newly constructed user is unverified")
+	require.Nil(t, u.EmailVerifiedAt())
+
+	first := time.Now()
+	u.MarkEmailVerified(first)
+	require.True(t, u.IsEmailVerified())
+	require.NotNil(t, u.EmailVerifiedAt())
+	require.Equal(t, first, *u.EmailVerifiedAt())
+
+	u.MarkEmailVerified(first.Add(time.Hour))
+	require.Equal(t, first, *u.EmailVerifiedAt(), "MarkEmailVerified is idempotent")
 }

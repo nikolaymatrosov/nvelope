@@ -33,6 +33,7 @@ func setPhase3Env(t *testing.T) {
 	t.Setenv("NVELOPE_OBJECT_STORAGE_ACCESS_KEY_ID", "test-os-access-key")
 	t.Setenv("NVELOPE_OBJECT_STORAGE_SECRET_ACCESS_KEY", "test-os-secret-key")
 	t.Setenv("NVELOPE_OBJECT_STORAGE_PUBLIC_BASE_URL", "https://media.example.com")
+	t.Setenv("NVELOPE_VERIFICATION_SENDER_DOMAIN", "nvelope.ru")
 }
 
 func TestLoadValidConfig(t *testing.T) {
@@ -91,6 +92,45 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	require.Equal(t, "http://localhost:8080", cfg.PublicBaseURL)
 	require.Equal(t, 168*time.Hour, cfg.OptinConfirmationTTL)
 	require.Equal(t, int64(10<<20), cfg.MediaMaxBytes)
+	require.Equal(t, "nvelope", cfg.VerificationSenderName)
+	require.Equal(t, 24*time.Hour, cfg.EmailVerificationTTL)
+	require.Equal(t, 5, cfg.VerificationResendLimit)
+	require.Equal(t, time.Hour, cfg.VerificationResendWindow)
+	require.Equal(t, 24*time.Hour, cfg.VerificationCleanupInterval)
+	require.Empty(t, cfg.RegistrationAllowedDomains)
+}
+
+func TestLoadVerificationConfig(t *testing.T) {
+	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	t.Setenv("NVELOPE_EMAIL_VERIFICATION_TTL", "12h")
+	t.Setenv("NVELOPE_VERIFICATION_SENDER_NAME", "Nvelope Mail")
+	t.Setenv("NVELOPE_VERIFICATION_RESEND_LIMIT", "9")
+	t.Setenv("NVELOPE_VERIFICATION_RESEND_WINDOW", "30m")
+	t.Setenv("NVELOPE_VERIFICATION_CLEANUP_INTERVAL", "6h")
+	t.Setenv("NVELOPE_REGISTRATION_ALLOWED_DOMAINS", " example.com, Partner.IO ,, ")
+	setPhase3Env(t)
+
+	cfg, err := Load("")
+	require.NoError(t, err)
+	require.Equal(t, "nvelope.ru", cfg.VerificationSenderDomain)
+	require.Equal(t, "Nvelope Mail", cfg.VerificationSenderName)
+	require.Equal(t, 12*time.Hour, cfg.EmailVerificationTTL)
+	require.Equal(t, 9, cfg.VerificationResendLimit)
+	require.Equal(t, 30*time.Minute, cfg.VerificationResendWindow)
+	require.Equal(t, 6*time.Hour, cfg.VerificationCleanupInterval)
+	require.Equal(t, []string{"example.com", "Partner.IO"}, cfg.RegistrationAllowedDomains)
+}
+
+func TestLoadMissingVerificationSenderDomainFails(t *testing.T) {
+	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	setPhase3Env(t)
+	t.Setenv("NVELOPE_VERIFICATION_SENDER_DOMAIN", "")
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_VERIFICATION_SENDER_DOMAIN")
 }
 
 func TestLoadObjectStorageConfig(t *testing.T) {

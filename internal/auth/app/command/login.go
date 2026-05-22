@@ -62,6 +62,12 @@ func (h LogInHandler) Handle(ctx context.Context, cmd LogIn) (LogInResult, error
 	if !h.hasher.Verify(hash, cmd.Password) {
 		return LogInResult{}, domain.ErrInvalidCredentials
 	}
+	// The verification gate is checked only after the password is verified, so
+	// a 403 is shown only to someone who already proved they own the account —
+	// it never leaks account existence.
+	if !user.IsEmailVerified() {
+		return LogInResult{}, domain.ErrEmailNotVerified
+	}
 
 	session, err := domain.NewSession(user.ID(), h.sessionTTL)
 	if err != nil {

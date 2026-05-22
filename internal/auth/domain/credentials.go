@@ -36,6 +36,16 @@ func NewEmail(raw string) (Email, error) {
 // String returns the normalized address.
 func (e Email) String() string { return e.value }
 
+// Domain returns the address's domain — the portion after the "@" —
+// lower-cased. It is the empty string for the zero-value Email.
+func (e Email) Domain() string {
+	at := strings.LastIndexByte(e.value, '@')
+	if at < 0 {
+		return ""
+	}
+	return strings.ToLower(e.value[at+1:])
+}
+
 // IsZero reports whether e is the unset zero value.
 func (e Email) IsZero() bool { return e.value == "" }
 

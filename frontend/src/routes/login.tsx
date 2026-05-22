@@ -4,7 +4,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
-import { errorMessage, isUnauthorized } from "@/lib/errors"
+import { ApiError, errorMessage, isUnauthorized } from "@/lib/errors"
 import { queryClient } from "@/lib/query"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,7 @@ export function Login() {
   const navigate = useNavigate()
   const { t } = useTranslation("auth")
   const [formError, setFormError] = useState("")
+  const [unverifiedEmail, setUnverifiedEmail] = useState("")
 
   const login = useMutation({
     mutationFn: (v: { email: string; password: string }) =>
@@ -32,7 +33,14 @@ export function Login() {
       await queryClient.invalidateQueries({ queryKey: ["me"] })
       await navigate({ to: "/" })
     },
-    onError: (e) => {
+    onError: (e, v) => {
+      // A correct password on an unverified account returns 403
+      // email_not_verified — distinct from bad credentials.
+      if (e instanceof ApiError && e.slug === "email_not_verified") {
+        setFormError(t("login.emailNotVerified"))
+        setUnverifiedEmail(v.email.trim())
+        return
+      }
       // Invalid credentials are reported non-specifically (FR-002) — never
       // reveal whether the email or the password was wrong.
       setFormError(
@@ -41,10 +49,16 @@ export function Login() {
     },
   })
 
+  const resend = useMutation({
+    mutationFn: (email: string) => api.resendVerification(email),
+  })
+
   const form = useForm({
     defaultValues: { email: "", password: "" },
     onSubmit: async ({ value }) => {
       setFormError("")
+      setUnverifiedEmail("")
+      resend.reset()
       await login.mutateAsync(value).catch(() => {})
     },
   })
@@ -71,6 +85,23 @@ export function Login() {
                 <AlertDescription>{formError}</AlertDescription>
               </Alert>
             )}
+            {unverifiedEmail &&
+              (resend.isSuccess ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("login.resendSent")}
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={resend.isPending}
+                  onClick={() => resend.mutate(unverifiedEmail)}
+                >
+                  {resend.isPending
+                    ? t("login.resendSending")
+                    : t("login.resendButton")}
+                </Button>
+              ))}
             <form.Field
               name="email"
               validators={{ onBlur: compose(rules.required(), rules.email()) }}

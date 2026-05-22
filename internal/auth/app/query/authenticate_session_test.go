@@ -36,6 +36,13 @@ func (f fakeUsers) CreateWithSession(context.Context, *domain.User, string,
 	func(string) (*domain.Session, string, error)) (*domain.User, error) {
 	return nil, nil
 }
+func (f fakeUsers) CreateWithVerification(context.Context, *domain.User, string,
+	func(string) (*domain.EmailVerification, string, error)) (*domain.User, error) {
+	return nil, nil
+}
+func (f fakeUsers) MarkEmailVerified(context.Context, string, time.Time) error {
+	return nil
+}
 func (f fakeUsers) LookupByEmail(context.Context, string) (*domain.User, error) {
 	return nil, domain.ErrUserNotFound
 }
@@ -56,7 +63,7 @@ func TestAuthenticateSessionResolvesUser(t *testing.T) {
 	t.Parallel()
 	raw := "raw-token"
 	session := domain.HydrateSession("s1", "user-1", time.Now().Add(time.Hour), nil)
-	user := domain.HydrateUser("user-1", "ada@example.com", "Ada", "")
+	user := domain.HydrateUser("user-1", "ada@example.com", "Ada", "", nil)
 
 	h := query.NewAuthenticateSessionHandler(
 		fakeSessions{byHash: map[string]*domain.Session{token.Hash(raw): session}},

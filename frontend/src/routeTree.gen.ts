@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
@@ -48,6 +49,11 @@ import { Route as TSlugBillingInvoicesRouteImport } from './routes/t/$slug/billi
 import { Route as TSlugSettingsFieldsIndexRouteImport } from './routes/t/$slug/settings/fields/index'
 import { Route as TSlugCampaignsIdAnalyticsRouteImport } from './routes/t/$slug/campaigns/$id.analytics'
 
+const VerifyEmailRoute = VerifyEmailRouteImport.update({
+  id: '/verify-email',
+  path: '/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -247,6 +253,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/t/$slug': typeof TSlugRouteRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
   '/tenants/new': typeof TenantsNewRoute
@@ -287,6 +294,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/invite/$token': typeof InviteTokenRoute
   '/tenants/new': typeof TenantsNewRoute
   '/account': typeof AccountIndexRoute
@@ -327,6 +335,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/t/$slug': typeof TSlugRouteRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
   '/tenants/new': typeof TenantsNewRoute
@@ -369,6 +378,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/signup'
+    | '/verify-email'
     | '/t/$slug'
     | '/invite/$token'
     | '/tenants/new'
@@ -409,6 +419,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/signup'
+    | '/verify-email'
     | '/invite/$token'
     | '/tenants/new'
     | '/account'
@@ -448,6 +459,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/signup'
+    | '/verify-email'
     | '/t/$slug'
     | '/invite/$token'
     | '/tenants/new'
@@ -489,6 +501,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  VerifyEmailRoute: typeof VerifyEmailRoute
   TSlugRouteRoute: typeof TSlugRouteRouteWithChildren
   InviteTokenRoute: typeof InviteTokenRoute
   TenantsNewRoute: typeof TenantsNewRoute
@@ -497,6 +510,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify-email': {
+      id: '/verify-email'
+      path: '/verify-email'
+      fullPath: '/verify-email'
+      preLoaderRoute: typeof VerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -851,6 +871,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  VerifyEmailRoute: VerifyEmailRoute,
   TSlugRouteRoute: TSlugRouteRouteWithChildren,
   InviteTokenRoute: InviteTokenRoute,
   TenantsNewRoute: TenantsNewRoute,

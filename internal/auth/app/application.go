@@ -16,10 +16,12 @@ type Application struct {
 
 // Commands gathers the auth context's state-changing handlers.
 type Commands struct {
-	SignUp    decorator.ResultCommandHandler[command.SignUp, command.SignUpResult]
-	LogIn     decorator.ResultCommandHandler[command.LogIn, command.LogInResult]
-	LogOut    decorator.CommandHandler[command.LogOut]
-	SetLocale decorator.CommandHandler[command.SetLocale]
+	SignUp                  decorator.ResultCommandHandler[command.SignUp, command.SignUpResult]
+	LogIn                   decorator.ResultCommandHandler[command.LogIn, command.LogInResult]
+	LogOut                  decorator.CommandHandler[command.LogOut]
+	SetLocale               decorator.CommandHandler[command.SetLocale]
+	VerifyEmail             decorator.ResultCommandHandler[command.VerifyEmail, command.VerifyEmailResult]
+	ResendEmailVerification decorator.CommandHandler[command.ResendEmailVerification]
 }
 
 // Queries gathers the auth context's read-only handlers.

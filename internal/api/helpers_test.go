@@ -100,6 +100,9 @@ type testServer struct {
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 	pool := dbtest.AppPool(t)
+	// Every signup enqueues a verification-email job, so the River queue tables
+	// must exist before the first request.
+	ensureRiverMigrated(t)
 	// Each test gets its own send queue so the campaign workers one test
 	// starts never pick up another parallel test's jobs.
 	sendQueue := "sending-" + dbtest.RandString()
@@ -111,8 +114,9 @@ func newTestServer(t *testing.T) *testServer {
 		WorkerSendQueue:         sendQueue,
 		WorkerTenantConcurrency: 2,
 		// A fixed 32-byte key (hex-encoded) so the TOTP capability builds.
-		TOTPEncryptionKey: "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
-		MediaMaxBytes:     10 << 20,
+		TOTPEncryptionKey:    "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+		MediaMaxBytes:        10 << 20,
+		EmailVerificationTTL: time.Hour,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	txMessenger := &capturingMessenger{}
@@ -181,8 +185,19 @@ func (ts *testServer) request(method, path string, body any) (int, map[string]an
 	return ts.do(ts.client, method, path, body)
 }
 
-// signup registers a new account on the session-carrying client and returns
-// its email. The jar then holds the session.
+// markVerified flips an account's email to verified directly in the database —
+// the test-suite shortcut for the verification email a real registrant would
+// open. platform_users is control-plane, so the app role may update it.
+func (ts *testServer) markVerified(email string) {
+	ts.t.Helper()
+	_, err := ts.pool.Exec(context.Background(),
+		"UPDATE platform_users SET email_verified_at = now() WHERE email = $1", email)
+	require.NoError(ts.t, err)
+}
+
+// signup registers a new account on the session-carrying client, verifies its
+// email, and logs it in — so the jar then holds a session, the state most
+// tests need before exercising authenticated endpoints.
 func (ts *testServer) signup() string {
 	ts.t.Helper()
 	email := dbtest.RandString() + "@example.com"
@@ -190,6 +205,11 @@ func (ts *testServer) signup() string {
 		"email": email, "password": "a-good-password", "name": "Test User",
 	})
 	require.Equal(ts.t, http.StatusCreated, status)
+	ts.markVerified(email)
+	status, _ = ts.request(http.MethodPost, "/api/platform/login", map[string]string{
+		"email": email, "password": "a-good-password",
+	})
+	require.Equal(ts.t, http.StatusOK, status)
 	return email
 }
 
@@ -224,14 +244,20 @@ func (ts *testServer) enterWorkspaceOn(client *http.Client, slug string) {
 	require.Equal(ts.t, http.StatusCreated, status)
 }
 
-// signupClient registers a new account on a fresh client and returns that
-// client — a second, independent authenticated caller.
+// signupClient registers, verifies, and logs in a new account on a fresh
+// client and returns that client — a second, independent authenticated caller.
 func (ts *testServer) signupClient() *http.Client {
 	ts.t.Helper()
 	client := ts.newClient()
+	email := dbtest.RandString() + "@example.com"
 	status, _ := ts.do(client, http.MethodPost, "/api/platform/signup", map[string]string{
-		"email": dbtest.RandString() + "@example.com", "password": "a-good-password", "name": "User",
+		"email": email, "password": "a-good-password", "name": "User",
 	})
 	require.Equal(ts.t, http.StatusCreated, status)
+	ts.markVerified(email)
+	status, _ = ts.do(client, http.MethodPost, "/api/platform/login", map[string]string{
+		"email": email, "password": "a-good-password",
+	})
+	require.Equal(ts.t, http.StatusOK, status)
 	return client
 }

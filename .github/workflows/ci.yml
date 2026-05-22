@@ -60,6 +60,11 @@ jobs:
       - name: i18n types drift check
         run: pnpm i18n:types && git diff --exit-code src/i18n/resources.d.ts src/i18n/i18next.d.ts
 
+      # Hard gate: the embedded verification email artifacts must match the
+      # react-email templates they are rendered from.
+      - name: Email templates drift check
+        run: pnpm emails:build && git diff --exit-code ../internal/auth/adapters/emails
+
       - name: Typecheck
         run: pnpm typecheck
 

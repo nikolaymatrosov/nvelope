@@ -1,0 +1,13 @@
+{
+  "verify": {
+    "subject": "Confirm your email address to start using nvelope",
+    "preview": "Confirm your email address to start using nvelope",
+    "heading": "Confirm your email",
+    "greeting": "Hi {{name}}, thanks for creating your nvelope account.",
+    "instruction": "To start building and sending newsletters, please confirm this email address.",
+    "button": "Verify email address",
+    "linkHint": "If the button doesn't work, copy and paste this link into your browser:",
+    "about": "nvelope is a managed platform for building, sending, and tracking newsletters and email campaigns.",
+    "ignore": "If you didn't create an nvelope account, you can safely ignore this email — no account will be activated without confirmation."
+  }
+}

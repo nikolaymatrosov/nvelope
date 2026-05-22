@@ -18,6 +18,7 @@ import (
 	authapp "github.com/nikolaymatrosov/nvelope/internal/auth/app"
 	authcommand "github.com/nikolaymatrosov/nvelope/internal/auth/app/command"
 	authquery "github.com/nikolaymatrosov/nvelope/internal/auth/app/query"
+	authdomain "github.com/nikolaymatrosov/nvelope/internal/auth/domain"
 	billingadapters "github.com/nikolaymatrosov/nvelope/internal/billing/adapters"
 	billingapp "github.com/nikolaymatrosov/nvelope/internal/billing/app"
 	billingcommand "github.com/nikolaymatrosov/nvelope/internal/billing/app/command"
@@ -138,6 +139,29 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	users := authadapters.NewUsers(pool)
 	sessions := authadapters.NewSessions(pool)
 	hasher := authadapters.NewPasswordHasher()
+	emailVerifications := authadapters.NewEmailVerifications(pool)
+
+	// The API service only enqueues verification-email jobs; the worker sends
+	// them. Verification mail rides the dedicated sending queue.
+	authRiverClient, err := jobs.NewInsertOnlyClient(pool)
+	if err != nil {
+		panic("building river client: " + err.Error())
+	}
+	verificationEnqueuer := jobs.NewSendEnqueuer(authRiverClient, cfg.WorkerSendQueue)
+	registrationPolicy := authdomain.NewRegistrationPolicy(cfg.RegistrationAllowedDomains)
+
+	// The resend throttle needs Redis. Production config always supplies a DSN
+	// (config.Validate requires it); a config without one — only constructed
+	// directly in tests — gets a permissive no-op throttle.
+	var resendThrottle authdomain.ResendThrottle = allowAllResendThrottle{}
+	if cfg.RedisURL != "" {
+		rt, err := authadapters.NewResendThrottle(cfg.RedisURL,
+			cfg.VerificationResendLimit, cfg.VerificationResendWindow)
+		if err != nil {
+			panic("building resend throttle: " + err.Error())
+		}
+		resendThrottle = rt
+	}
 
 	tenants := tenantadapters.NewTenants(pool)
 	invitations := tenantadapters.NewInvitations(pool)
@@ -150,13 +174,21 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	auth := authapp.Application{
 		Commands: authapp.Commands{
 			SignUp: decorator.ApplyResultCommandDecorators(
-				authcommand.NewSignUpHandler(users, hasher, cfg.SessionTTL), "SignUp", logger),
+				authcommand.NewSignUpHandler(users, hasher, verificationEnqueuer,
+					registrationPolicy, cfg.EmailVerificationTTL),
+				"SignUp", logger),
 			LogIn: decorator.ApplyResultCommandDecorators(
 				authcommand.NewLogInHandler(users, sessions, hasher, cfg.SessionTTL), "LogIn", logger),
 			LogOut: decorator.ApplyCommandDecorators(
 				authcommand.NewLogOutHandler(sessions), "LogOut", logger),
 			SetLocale: decorator.ApplyCommandDecorators(
 				authcommand.NewSetLocaleHandler(users), "SetLocale", logger),
+			VerifyEmail: decorator.ApplyResultCommandDecorators(
+				authcommand.NewVerifyEmailHandler(users, emailVerifications), "VerifyEmail", logger),
+			ResendEmailVerification: decorator.ApplyCommandDecorators(
+				authcommand.NewResendEmailVerificationHandler(users, emailVerifications,
+					verificationEnqueuer, resendThrottle, cfg.EmailVerificationTTL),
+				"ResendEmailVerification", logger),
 		},
 		Queries: authapp.Queries{
 			AuthenticateSession: decorator.ApplyQueryDecorators(

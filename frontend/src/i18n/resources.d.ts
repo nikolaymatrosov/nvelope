@@ -147,18 +147,27 @@ export default interface Resources {
     "login": {
       "description": "Welcome back. Sign in to your workspaces.",
       "email": "Email",
+      "emailNotVerified": "Verify your email address before signing in. Check your inbox for the verification link.",
       "errorTitle": "Could not sign in",
       "invalidCredentials": "That email and password do not match.",
       "needAccount": "Need an account?",
       "password": "Password",
+      "resendButton": "Resend verification email",
+      "resendSending": "Sending…",
+      "resendSent": "If that address has an unverified account, a new verification link is on its way.",
       "signUpLink": "Sign up",
       "submit": "Log in",
       "submitting": "Signing in…",
       "title": "Log in to nvelope"
     },
     "signup": {
+      "backToLogin": "Back to log in",
+      "checkInboxDescription": "We sent a verification link to {{email}}.",
+      "checkInboxHint": "Open the link in that email to activate your account, then sign in.",
+      "checkInboxTitle": "Check your inbox",
       "description": "Sign up, then create your first workspace.",
       "email": "Email",
+      "emailDomainNotAllowed": "Registration is not open to this email domain.",
       "emailTaken": "An account with this email already exists.",
       "errorTitle": "Sign-up failed",
       "haveAccount": "Already have an account?",
@@ -171,6 +180,23 @@ export default interface Resources {
       "submit": "Sign up",
       "submitting": "Creating…",
       "title": "Create your nvelope account"
+    },
+    "verifyEmail": {
+      "alreadyVerifiedDescription": "This account has already been verified. You can sign in.",
+      "alreadyVerifiedTitle": "Already verified",
+      "goToLogin": "Go to log in",
+      "invalidDescription": "This verification link is invalid or has expired.",
+      "invalidTitle": "Link invalid or expired",
+      "missingToken": "This verification link is missing its token.",
+      "resendButton": "Send a new link",
+      "resendEmailLabel": "Email",
+      "resendPrompt": "Need a new link?",
+      "resendSending": "Sending…",
+      "resendSent": "If that address has an unverified account, a new verification link is on its way.",
+      "title": "Email verification",
+      "verifiedDescription": "Your email address is confirmed. You can now sign in.",
+      "verifiedTitle": "Email verified",
+      "verifying": "Verifying your email address…"
     }
   },
   "billing": {
@@ -735,6 +761,19 @@ export default interface Resources {
       "sentCount_one": "{{count}} sent",
       "sentCount_other": "{{count}} sent",
       "title": "Recent campaigns"
+    }
+  },
+  "emails": {
+    "verify": {
+      "about": "nvelope is a managed platform for building, sending, and tracking newsletters and email campaigns.",
+      "button": "Verify email address",
+      "greeting": "Hi {{name}}, thanks for creating your nvelope account.",
+      "heading": "Confirm your email",
+      "ignore": "If you didn't create an nvelope account, you can safely ignore this email — no account will be activated without confirmation.",
+      "instruction": "To start building and sending newsletters, please confirm this email address.",
+      "linkHint": "If the button doesn't work, copy and paste this link into your browser:",
+      "preview": "Confirm your email address to start using nvelope",
+      "subject": "Confirm your email address to start using nvelope"
     }
   },
   "errors": {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
+	authdomain "github.com/nikolaymatrosov/nvelope/internal/auth/domain"
 	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
@@ -233,6 +234,35 @@ func (m *confirmationMailer) Send(ctx context.Context, msg audiencedomain.Confir
 	return err
 }
 
+// verificationMailer adapts the campaign context's messenger to the auth
+// context's VerificationMailer port, so the verification worker can send
+// registration verification mail without depending on the campaign package.
+type verificationMailer struct {
+	messenger campaigndomain.Messenger
+}
+
+var _ authdomain.VerificationMailer = (*verificationMailer)(nil)
+
+// NewVerificationMailer builds the bridge over the campaign messenger.
+func NewVerificationMailer(messenger campaigndomain.Messenger) *verificationMailer {
+	return &verificationMailer{messenger: messenger}
+}
+
+// Send delivers one verification message via the campaign messenger,
+// discarding the provider reference the verification worker does not need.
+func (m *verificationMailer) Send(ctx context.Context, msg authdomain.VerificationEmail) error {
+	_, err := m.messenger.Send(ctx, campaigndomain.OutboundMessage{
+		FromName:    msg.FromName,
+		FromAddress: msg.FromAddress,
+		To:          msg.To,
+		Subject:     msg.Subject,
+		HTMLBody:    msg.HTMLBody,
+		TextBody:    msg.TextBody,
+		Headers:     msg.Headers,
+	})
+	return err
+}
+
 // sendingDomainResolver adapts the sending context's repository to the
 // audience context's SendingDomainResolver port, so the opt-in worker can
 // resolve a page's sending domain without depending on the sending package.
@@ -270,3 +300,13 @@ var _ audiencedomain.SubmissionThrottle = allowAllThrottle{}
 
 // Allow always admits the submission.
 func (allowAllThrottle) Allow(context.Context, string) (bool, error) { return true, nil }
+
+// allowAllResendThrottle is the no-op verification-resend throttle used when no
+// Redis DSN is configured — only in tests, since production config always
+// supplies one.
+type allowAllResendThrottle struct{}
+
+var _ authdomain.ResendThrottle = allowAllResendThrottle{}
+
+// Allow always admits the resend.
+func (allowAllResendThrottle) Allow(context.Context, string) (bool, error) { return true, nil }

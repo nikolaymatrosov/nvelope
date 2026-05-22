@@ -128,6 +128,27 @@ type OptinSendArgs struct {
 // Kind is the stable River job kind for a double-opt-in confirmation send.
 func (OptinSendArgs) Kind() string { return "optin.send" }
 
+// VerificationSendArgs is the River job payload for sending one registration
+// email-verification message. It carries the user id — the account row lives
+// in PostgreSQL — plus the raw verification token, which is needed to build
+// the verification link and is held only as a hash at rest. The job table is
+// transient, so the raw token never persists long-term.
+type VerificationSendArgs struct {
+	UserID            string `json:"user_id"`
+	VerificationToken string `json:"verification_token"`
+}
+
+// Kind is the stable River job kind for a registration email-verification send.
+func (VerificationSendArgs) Kind() string { return "auth.verification_send" }
+
+// VerificationCleanupArgs is the River job payload for the verification-token
+// cleanup sweep — it carries no data; the worker prunes every expired token
+// through a single DELETE.
+type VerificationCleanupArgs struct{}
+
+// Kind is the stable River job kind for a verification-token cleanup sweep.
+func (VerificationCleanupArgs) Kind() string { return "auth.verification_cleanup" }
+
 // Migrate installs (or updates) River's own queue tables. It is invoked from
 // cmd/migrate after the application migrations so `migrate up` provisions the
 // whole schema.
@@ -367,6 +388,32 @@ func (e *SendEnqueuer) EnqueueOptinSend(ctx context.Context, tenantID, tenantSlu
 	}, &river.InsertOpts{Queue: e.queue})
 	if err != nil {
 		return fmt.Errorf("enqueuing optin send job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueVerificationSend enqueues a registration email-verification send for
+// one user. The raw token rides the transient job payload.
+func (e *SendEnqueuer) EnqueueVerificationSend(ctx context.Context, userID, rawToken string) error {
+	_, err := e.client.Insert(ctx, VerificationSendArgs{UserID: userID, VerificationToken: rawToken},
+		&river.InsertOpts{Queue: e.queue})
+	if err != nil {
+		return fmt.Errorf("enqueuing verification send job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueVerificationCleanup enqueues a verification-token cleanup sweep. The
+// unique-job option makes a re-arm a no-op while a sweep is still pending, so a
+// slow sweep is never stacked.
+func (e *SendEnqueuer) EnqueueVerificationCleanup(ctx context.Context) error {
+	_, err := e.client.Insert(ctx, VerificationCleanupArgs{},
+		&river.InsertOpts{
+			Queue:      e.queue,
+			UniqueOpts: river.UniqueOpts{ByArgs: true},
+		})
+	if err != nil {
+		return fmt.Errorf("enqueuing verification cleanup job: %w", err)
 	}
 	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/riverqueue/river"
 
 	audienceadapters "github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
+	authadapters "github.com/nikolaymatrosov/nvelope/internal/auth/adapters"
 	billingadapters "github.com/nikolaymatrosov/nvelope/internal/billing/adapters"
 	billingcommand "github.com/nikolaymatrosov/nvelope/internal/billing/app/command"
 	billingdomain "github.com/nikolaymatrosov/nvelope/internal/billing/domain"
@@ -108,6 +109,14 @@ func main() {
 	river.AddWorker(workers, audienceadapters.NewOptinWorker(pendingSubscriptions, subscriptionPages,
 		service.NewSendingDomainResolver(sendingDomains), service.NewConfirmationMailer(messenger),
 		cfg.PublicBaseURL))
+
+	// Registration email-verification sends ride the sending queue too.
+	river.AddWorker(workers, authadapters.NewVerificationWorker(
+		authadapters.NewUsers(pool), service.NewVerificationMailer(messenger),
+		cfg.VerificationSenderDomain, cfg.VerificationSenderName, cfg.PublicBaseURL))
+	// The cleanup sweep prunes expired email-verification tokens.
+	river.AddWorker(workers, authadapters.NewVerificationCleanupWorker(
+		authadapters.NewEmailVerifications(pool)))
 	river.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
 		cfg.SendingDomainVerifyInterval, cfg.SendingDomainVerifyWindow))
 	campaignSuppression := deliverabilityadapters.NewSuppressionChecker(pool)

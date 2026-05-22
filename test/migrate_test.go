@@ -34,12 +34,12 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		require.NoError(t, dbErr)
 	}
 
-	// Apply: every migration applies and the recorded version reaches 21.
+	// Apply: every migration applies and the recorded version reaches 22.
 	m := newMigrator()
 	require.NoError(t, m.Up())
 	v, dirty, err := m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(21), v)
+	require.Equal(t, uint(22), v)
 	require.False(t, dirty)
 	closeMigrator(m)
 
@@ -58,7 +58,7 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		"plans", "tenant_subscriptions", "invoices", "invoice_line_items",
 		"payment_attempts", "usage_events", "usage_counters",
 		"subscription_pages", "pending_subscriptions",
-		"tenant_branding", "media_assets",
+		"tenant_branding", "media_assets", "email_verification_tokens",
 	} {
 		require.True(t, tableExists(t, dsn, table), "%s should exist after up", table)
 	}

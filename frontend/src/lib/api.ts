@@ -136,13 +136,25 @@ const tp = (slug: string, suffix: string) => `/t/${slug}/api${suffix}`
 export const api = {
   // ── Platform plane ─────────────────────────────────────────────────────────
   signup: (email: string, password: string, name: string) =>
-    request<PlatformAccount>("POST", "/api/platform/signup", {
-      email,
-      password,
-      name,
-    }),
+    request<{ verification: { required: boolean; email: string } }>(
+      "POST",
+      "/api/platform/signup",
+      { email, password, name },
+    ),
   login: (email: string, password: string) =>
     request("POST", "/api/platform/login", { email, password }),
+  verifyEmail: (token: string) =>
+    request<{ verification: { status: string } }>(
+      "POST",
+      "/api/platform/verify-email",
+      { token },
+    ),
+  resendVerification: (email: string) =>
+    request<{ verification: { resent: boolean } }>(
+      "POST",
+      "/api/platform/verify-email/resend",
+      { email },
+    ),
   logout: () => request("POST", "/api/platform/logout"),
   me: () => request<PlatformAccount>("GET", "/api/platform/me"),
   updateMyLocale: (locale: string) =>
