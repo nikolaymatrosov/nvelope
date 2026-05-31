@@ -30,6 +30,8 @@ import {
   RawHTML,
   applyRawHTMLEdit,
 } from "./extensions/RawHTML"
+import { SelectionDecoration } from "./extensions/SelectionDecoration"
+import { BlockStyleAttribute, pruneBlockStyles } from "./extensions/styleAttr"
 import { ImageUpload } from "./plugins/imageUpload"
 import {
   editorCssVariables,
@@ -84,6 +86,11 @@ type Props = {
   // FR-022 / FR-023 / FR-024 — see T108).
   theme?: Theme | null
   onThemeChange?: (next: Theme | null) => void
+  // Optional callback fired once the TipTap editor instance is created (and
+  // again if it is recreated). The three-pane shell uses this to share the
+  // editor with the structure outline and parameters panel via
+  // useBlockSelection — without it the editor behaves exactly as before.
+  onEditorReady?: (editor: Editor) => void
 }
 
 const EMPTY_DOC: VisualDoc = {
@@ -102,6 +109,7 @@ export function VisualEmailEditor({
   onOptOutVisual,
   theme = null,
   onThemeChange,
+  onEditorReady,
 }: Props) {
   const { t } = useTranslation(["visualEditor", "common"])
   // Resolve the effective theme. When the row carries a pinned override the
@@ -147,6 +155,8 @@ export function VisualEmailEditor({
       ImageUpload.configure({ slug }),
       MergeTag,
       RawHTML,
+      BlockStyleAttribute,
+      SelectionDecoration,
       DragHandle,
       SlashCommandExtension.configure({
         get menuApi() {
@@ -191,6 +201,12 @@ export function VisualEmailEditor({
   useEffect(() => {
     editor.setEditable(editable)
   }, [editor, editable])
+
+  // Share the editor instance with the three-pane shell (structure outline +
+  // parameters panel) once it exists. No-op when the editor is used stand-alone.
+  useEffect(() => {
+    if (onEditorReady) onEditorReady(editor)
+  }, [editor, onEditorReady])
 
   // RawHTML edit-modal state. The RawHTML node view dispatches a
   // CustomEvent on the editor's root DOM when the operator presses
@@ -368,7 +384,9 @@ function toVisualDoc(editor: Editor): VisualDoc {
   return {
     version: 1,
     type: "doc",
-    content: (raw.content ?? []) as VisualDoc["content"],
+    // Drop null/empty per-block style so an unstyled block serializes without
+    // a noisy `attrs: { style: null }` (absent ⇒ inherit; feature 017).
+    content: pruneBlockStyles(raw.content ?? []) as VisualDoc["content"],
   }
 }
 

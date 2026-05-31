@@ -349,3 +349,317 @@
 .ve-theme-controls__number-input {
   width: 100px;
 }
+
+/* ── Three-pane editor shell (feature 017) ─────────────────────────────── */
+
+.ve-three-pane {
+  height: 100%;
+  min-height: 480px;
+}
+
+.ve-three-pane__group {
+  height: 100%;
+}
+
+.ve-pane {
+  height: 100%;
+  overflow: auto;
+}
+
+.ve-pane--center {
+  min-width: 0;
+}
+
+/* Side panels (structure / parameters) */
+.ve-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 12px;
+  background: #fafafa;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.ve-panel__title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.ve-panel__empty {
+  color: #9ca3af;
+  font-size: 12px;
+  margin: 0;
+}
+
+.ve-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Selected-block affordance on the canvas (FR-008). */
+.ve-editor .ve-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Parameters panel controls (feature 017) ───────────────────────────── */
+
+.ve-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ve-panel__reset-all {
+  font-size: 11px;
+  color: #2563eb;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.ve-panel__reset-all:disabled {
+  color: #9ca3af;
+  cursor: default;
+}
+
+.ve-params-form,
+.ve-style-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ve-style-controls__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0;
+}
+
+.ve-style-controls__group legend {
+  font-size: 11px;
+  color: #6b7280;
+  padding: 0 4px;
+}
+
+.ve-style-controls__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ve-style-controls__label {
+  color: #374151;
+  flex: 0 0 auto;
+}
+
+.ve-style-controls__field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ve-style-controls__inherited,
+.ve-style-controls__readonly {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.ve-style-controls__reset {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+/* Always-present slot that holds the per-field reset button (when the field has
+   a value) to the left of the input. Reserving its width keeps the input from
+   shifting sideways as the button toggles in and out. */
+.ve-style-controls__reset-slot {
+  flex: 0 0 auto;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ve-style-controls__align {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.ve-style-controls__align button {
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid #d1d5db;
+  background: white;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.ve-style-controls__align button.is-active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+.ve-style-controls input[type="number"],
+.ve-style-controls input[type="text"],
+.ve-style-controls select,
+.ve-style-controls__field input[type="text"],
+.ve-style-controls__field select {
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  min-width: 0;
+  max-width: 140px;
+}
+
+/* ── Structure outline (feature 017, US2) ──────────────────────────────── */
+
+.ve-outline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.ve-outline__item {
+  margin: 0;
+}
+
+.ve-outline__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.ve-outline__row:hover {
+  background: #f0f0f0;
+}
+
+.ve-outline__row.is-selected {
+  background: #dbeafe;
+}
+
+.ve-outline__toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 10px;
+  width: 14px;
+  padding: 0;
+}
+
+.ve-outline__label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+}
+
+.ve-outline__type {
+  font-weight: 500;
+  color: #374151;
+  flex: 0 0 auto;
+}
+
+.ve-outline__excerpt {
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ve-outline__actions {
+  display: inline-flex;
+  gap: 2px;
+  opacity: 0;
+}
+
+.ve-outline__row:hover .ve-outline__actions {
+  opacity: 1;
+}
+
+.ve-outline__actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+/* ── Three-pane chrome: toggle bar + overlays (feature 017, US3) ────────── */
+
+.ve-three-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.ve-three-pane__bar {
+  display: flex;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.ve-three-pane__bar-btn {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+}
+
+.ve-three-pane__group {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ve-three-pane--narrow .ve-pane--center {
+  height: 100%;
+  min-height: 360px;
+}
+
+.ve-overlay-panel {
+  width: 300px;
+  max-width: 85vw;
+  overflow: auto;
+}

@@ -47,5 +47,93 @@
     "colorPrompt": "Цвет (CSS hex / rgb / название):",
     "linkPlaceholder": "https://…",
     "apply": "Применить"
+  },
+  "panel": {
+    "structureTitle": "Структура",
+    "paramsTitle": "Свойства",
+    "collapseLeft": "Свернуть панель структуры",
+    "collapseRight": "Свернуть панель свойств",
+    "expandLeft": "Показать панель структуры",
+    "expandRight": "Показать панель свойств"
+  },
+  "structure": {
+    "empty": "Документ пуст.",
+    "block": {
+      "paragraph": "Абзац",
+      "heading": "Заголовок {{level}}",
+      "bulletList": "Маркированный список",
+      "orderedList": "Нумерованный список",
+      "listItem": "Элемент списка",
+      "blockquote": "Цитата",
+      "codeBlock": "Код",
+      "image": "Изображение",
+      "button": "Кнопка",
+      "divider": "Разделитель",
+      "columns": "{{count}} колонок",
+      "column": "Колонка",
+      "rawHtml": "Необработанный HTML",
+      "unknown": "Блок"
+    },
+    "actions": {
+      "delete": "Удалить блок",
+      "duplicate": "Дублировать блок",
+      "collapse": "Свернуть",
+      "expand": "Развернуть"
+    }
+  },
+  "params": {
+    "empty": "Выберите блок, чтобы изменить его свойства.",
+    "inherited": "Наследуется",
+    "reset": "Сбросить",
+    "resetAll": "Сбросить всё к значениям по умолчанию",
+    "sections": {
+      "background": "Фон",
+      "typography": "Типографика",
+      "spacing": "Отступы",
+      "border": "Граница",
+      "layout": "Макет",
+      "content": "Содержимое"
+    },
+    "fields": {
+      "backgroundColor": "Цвет фона",
+      "color": "Цвет текста",
+      "fontFamily": "Шрифт",
+      "fontSize": "Размер шрифта",
+      "fontWeight": "Насыщенность шрифта",
+      "lineHeight": "Высота строки",
+      "textAlign": "Выравнивание",
+      "paddingTop": "Отступ сверху",
+      "paddingRight": "Отступ справа",
+      "paddingBottom": "Отступ снизу",
+      "paddingLeft": "Отступ слева",
+      "padding": "Отступы",
+      "borderRadius": "Скругление углов",
+      "borderWidth": "Толщина границы",
+      "borderStyle": "Стиль границы",
+      "borderColor": "Цвет границы",
+      "label": "Подпись",
+      "href": "URL ссылки",
+      "alt": "Альтернативный текст",
+      "width": "Ширина",
+      "level": "Уровень заголовка",
+      "thickness": "Толщина",
+      "lineColor": "Цвет линии",
+      "columnWidths": "Ширина колонок",
+      "gap": "Промежуток между колонками"
+    },
+    "weight": {
+      "normal": "Обычный",
+      "bold": "Жирный"
+    },
+    "align": {
+      "left": "По левому краю",
+      "center": "По центру",
+      "right": "По правому краю"
+    },
+    "borderStyleOption": {
+      "solid": "Сплошная",
+      "dashed": "Пунктирная",
+      "dotted": "Точечная"
+    }
   }
 }

@@ -46,6 +46,21 @@ var emailPolicy = func() *bluemonday.Policy {
 	// strips style by default. The renderer's own output uses inline styles
 	// extensively, and RawHTML blocks frequently carry them too.
 	p.AllowStyling()
+	// Per-block style (feature 017) is emitted as inline CSS. Allow exactly
+	// the property set the BlockStyle value object can produce — bluemonday's
+	// built-in handlers validate each value (colors, px lengths, the
+	// text-align / border-style enums), so an out-of-policy property
+	// (position, behavior, expression(...)) is dropped while a valid
+	// BlockStyle declaration survives. This is the authoritative save-time
+	// gate; the BFF + Go validators bound the values upstream so it rarely has
+	// to strip anything (FR-016 / SC-007).
+	p.AllowStyles(
+		"background-color", "color",
+		"font-family", "font-size", "font-weight", "line-height",
+		"text-align",
+		"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+		"border", "border-radius", "border-width", "border-style", "border-color",
+	).Globally()
 	// AllowStyling re-allows the class attribute too; we don't need to lock
 	// that further. Disallowed elements:
 	p.SkipElementsContent("script", "style", "iframe", "object",

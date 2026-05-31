@@ -119,6 +119,47 @@ func TestSanitize_EmptyInput(t *testing.T) {
 	require.Equal(t, "", out)
 }
 
+// T009 — per-block style (feature 017). Every BlockStyle-producible inline-CSS
+// property survives the sanitizer, while a hostile property is dropped.
+
+func TestSanitize_PreservesBlockStyleProperties(t *testing.T) {
+	t.Parallel()
+	in := `<td style="background-color:#1a73e8;color:#ffffff;` +
+		`font-family:Arial, Helvetica, sans-serif;font-size:16px;font-weight:700;` +
+		`line-height:1.5;text-align:center;padding-top:12px;padding-right:20px;` +
+		`padding-bottom:12px;padding-left:20px;border-radius:8px;border-width:1px;` +
+		`border-style:solid;border-color:#0b57d0;padding:4px">hi</td>`
+	out, _ := sanitizeHTML(in)
+	for _, prop := range []string{
+		"background-color", "color", "font-family", "font-size", "font-weight",
+		"line-height", "text-align", "padding-top", "padding-right",
+		"padding-bottom", "padding-left", "border-radius", "border-width",
+		"border-style", "border-color",
+	} {
+		require.Contains(t, out, prop, "BlockStyle property %q must survive", prop)
+	}
+}
+
+func TestSanitize_DropsHostileStyleProperties(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		`<td style="position:absolute;color:#fff">x</td>`,
+		`<td style="behavior:url(x.htc);color:#fff">x</td>`,
+		`<td style="width:expression(alert(1));color:#fff">x</td>`,
+		`<td style="-moz-binding:url(x);color:#fff">x</td>`,
+	}
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			t.Parallel()
+			out, _ := sanitizeHTML(c)
+			// The allow-listed declaration survives…
+			require.Contains(t, out, "color")
+			// …but the hostile property is dropped.
+			require.NotRegexp(t, `(?i)(position|behavior|expression|-moz-binding)`, out)
+		})
+	}
+}
+
 func TestRawHTMLToText(t *testing.T) {
 	t.Parallel()
 	in := `<p>hello &amp; goodbye</p><br><span>more</span>`

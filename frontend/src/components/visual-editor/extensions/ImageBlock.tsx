@@ -20,6 +20,7 @@
 
 import { Node, mergeAttributes } from "@tiptap/core"
 import { isPendingMediaRef } from "../plugins/imageUpload"
+import { blockStyleAttributeSpec } from "./styleAttr"
 
 export const IMAGEBLOCK_PICK_EVENT = "ve-imageblock-pick-request"
 
@@ -43,6 +44,7 @@ export const ImageBlock = Node.create({
       mediaRef: { default: "" },
       alt: { default: "" },
       href: { default: "" },
+      style: blockStyleAttributeSpec,
     }
   },
   parseHTML() {

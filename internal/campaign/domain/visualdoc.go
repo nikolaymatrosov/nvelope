@@ -39,27 +39,63 @@ type Marks struct {
 	Link string
 }
 
+// ── Per-block style (feature 017) ─────────────────────────────────────────
+
+// BlockStyle is the optional, email-safe set of styling attributes the
+// three-pane editor's parameters panel applies to a single block (feature
+// 017). A nil *BlockStyle, or a zero-valued field, means "inherit the
+// document theme / default" — the renderer layers any set field over the
+// theme defaults. The bounds enforced by Validate match the BFF validator in
+// frontend/src/server/validate/blocks.ts and the SPA controls; see
+// specs/017-three-pane-visual-editor/data-model.md for the canonical matrix.
+//
+// Colors are #RGB / #RRGGBB; numeric fields are pixels (line height is
+// unitless); the enum fields carry the literals below. The set is bounded so
+// it can be enforced mechanically and so the rendered inline CSS never
+// contains a property the email sanitizer would strip (FR-015/FR-016).
+type BlockStyle struct {
+	BackgroundColor string
+	Color           string
+	FontFamily      string
+	FontSize        int
+	FontWeight      int
+	LineHeight      float64
+	TextAlign       string
+	PaddingTop      int
+	PaddingRight    int
+	PaddingBottom   int
+	PaddingLeft     int
+	BorderRadius    int
+	BorderWidth     int
+	BorderStyle     string
+	BorderColor     string
+}
+
 // ── Blocks ──────────────────────────────────────────────────────────────
 
 // Paragraph is a block of prose. Children are text-and-mergetag inlines.
 type Paragraph struct {
 	Children []Inline
+	Style    *BlockStyle
 }
 
 // Heading is a block-level heading. Level is 1, 2, or 3.
 type Heading struct {
 	Level    int
 	Children []Inline
+	Style    *BlockStyle
 }
 
 // BulletList is an unordered list of items.
 type BulletList struct {
 	Items []ListItem
+	Style *BlockStyle
 }
 
 // OrderedList is an ordered list of items.
 type OrderedList struct {
 	Items []ListItem
+	Style *BlockStyle
 }
 
 // ListItem is a single item in a bulleted or ordered list. An item may
@@ -71,6 +107,7 @@ type ListItem struct {
 // Quote is a block-quote. May contain any other block type.
 type Quote struct {
 	Children []Node
+	Style    *BlockStyle
 }
 
 // Code is a fenced code block. The text is rendered verbatim — no marks
@@ -85,6 +122,7 @@ type Image struct {
 	MediaRef string
 	Alt      string
 	Href     string
+	Style    *BlockStyle
 }
 
 // Button is a call-to-action. The renderer emits a table-based clickable
@@ -92,15 +130,19 @@ type Image struct {
 type Button struct {
 	Label string
 	Href  string
+	Style *BlockStyle
 }
 
 // Divider is a horizontal rule.
-type Divider struct{}
+type Divider struct {
+	Style *BlockStyle
+}
 
 // Columns is a multi-column row. Cols carries 2, 3, or 4 sub-streams of
 // blocks — one per column.
 type Columns struct {
-	Cols [][]Node
+	Cols  [][]Node
+	Style *BlockStyle
 }
 
 // RawHTML is an opaque region of verbatim HTML. Used to host (a) pre-existing

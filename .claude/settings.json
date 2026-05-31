@@ -20,7 +20,8 @@
       "Bash(pnpm lint)",
       "Bash(go vet *)",
       "Bash(ast-index *)",
-      "Bash(trivy *)"
+      "Bash(trivy *)",
+      "Bash(.claude/scripts/test-frontend.sh:*)"
     ]
   }
 }

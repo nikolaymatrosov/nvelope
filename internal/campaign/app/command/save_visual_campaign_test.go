@@ -70,6 +70,93 @@ func TestSaveVisualCampaign_RejectsNonTenantMediaRef(t *testing.T) {
 	require.Equal(t, "<p>original body</p>", stored.BodyHTML())
 }
 
+// T030 (feature 017) — per-block style round-trips losslessly. The typed Doc
+// carrying a styled block passes the Go re-validation pass, and the raw
+// DocJSON the BFF sent is persisted verbatim (the editor reloads from these
+// bytes), so every style attribute survives the save (SC-002).
+func TestSaveVisualCampaign_PersistsStyledDocVerbatim(t *testing.T) {
+	t.Parallel()
+	const tenantID = "tenant-1"
+	campaigns := newFakeCampaignRepo()
+	stamp := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	campaignID := seedDraftCampaign(t, campaigns, tenantID, stamp)
+
+	handler := command.NewSaveVisualCampaignHandler(
+		campaigns,
+		fakeFieldsProvider{},
+		mediaPrefixValidator{prefix: "https://media.example/tenants/tenant-1/"},
+	)
+
+	doc := &domain.VisualDoc{
+		Version: 1,
+		Nodes: []domain.Node{
+			domain.Button{
+				Label: "Read more",
+				Href:  "https://example.test/x",
+				Style: &domain.BlockStyle{
+					BackgroundColor: "#1a73e8",
+					BorderRadius:    8,
+					FontWeight:      700,
+				},
+			},
+		},
+	}
+	docJSON := []byte(`{"version":1,"type":"doc","content":[` +
+		`{"type":"button","attrs":{"label":"Read more","href":"https://example.test/x",` +
+		`"style":{"backgroundColor":"#1a73e8","borderRadius":8,"fontWeight":700}}}]}`)
+
+	_, err := handler.Handle(context.Background(), command.SaveVisualCampaign{
+		TenantID:          tenantID,
+		CampaignID:        campaignID,
+		Subject:           "Styled",
+		Doc:               doc,
+		BodyHTML:          "<p>styled</p>",
+		BodyText:          "styled",
+		DocJSON:           docJSON,
+		IfUnmodifiedSince: stamp,
+	})
+	require.NoError(t, err, "a valid styled doc must save")
+
+	stored := campaigns.byID[campaignID]
+	require.JSONEq(t, string(docJSON), string(stored.BodyDocJSON()),
+		"the styled structured document must round-trip verbatim")
+}
+
+// T030 companion — an out-of-bounds style is refused by the Go re-validation
+// pass (defense in depth), mirroring the BFF validator.
+func TestSaveVisualCampaign_RejectsInvalidStyle(t *testing.T) {
+	t.Parallel()
+	const tenantID = "tenant-1"
+	campaigns := newFakeCampaignRepo()
+	stamp := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	campaignID := seedDraftCampaign(t, campaigns, tenantID, stamp)
+
+	handler := command.NewSaveVisualCampaignHandler(
+		campaigns, fakeFieldsProvider{}, mediaPrefixValidator{prefix: ""},
+	)
+
+	doc := &domain.VisualDoc{
+		Version: 1,
+		Nodes: []domain.Node{
+			domain.Paragraph{
+				Children: []domain.Inline{domain.Text{Text: "x"}},
+				Style:    &domain.BlockStyle{BorderRadius: 999},
+			},
+		},
+	}
+
+	_, err := handler.Handle(context.Background(), command.SaveVisualCampaign{
+		TenantID:          tenantID,
+		CampaignID:        campaignID,
+		Subject:           "Bad style",
+		Doc:               doc,
+		BodyHTML:          "<p>x</p>",
+		BodyText:          "x",
+		IfUnmodifiedSince: stamp,
+	})
+	require.ErrorIs(t, err, domain.ErrInvalidStyle)
+}
+
 // FR-021 happy-path companion: when the mediaRef is under the tenant
 // prefix, the same handler accepts the save.
 func TestSaveVisualCampaign_AcceptsTenantMediaRef(t *testing.T) {

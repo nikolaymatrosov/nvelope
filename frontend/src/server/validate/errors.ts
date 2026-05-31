@@ -6,6 +6,7 @@ export type ValidatorErrorKind =
   | "invalid_doc"
   | "unknown_placeholder"
   | "invalid_media_ref"
+  | "invalid_style"
 
 export class ValidatorError extends Error {
   readonly kind: ValidatorErrorKind

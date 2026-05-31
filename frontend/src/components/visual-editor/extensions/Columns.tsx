@@ -6,6 +6,7 @@
 // requires (per FR-015 and research.md § R4).
 
 import { Node, mergeAttributes } from "@tiptap/core"
+import { blockStyleAttributeSpec } from "./styleAttr"
 
 export type ColumnsCount = 2 | 3 | 4
 
@@ -14,6 +15,9 @@ export const Column = Node.create({
   group: "columnContent",
   content: "block+",
   isolating: true,
+  addAttributes() {
+    return { style: blockStyleAttributeSpec }
+  },
   parseHTML() {
     return [{ tag: "div[data-type=\"column\"]" }]
   },
@@ -48,6 +52,7 @@ export const Columns = Node.create<{ defaultCount: ColumnsCount }>({
         },
         renderHTML: (attrs) => ({ "data-count": String(attrs.count) }),
       },
+      style: blockStyleAttributeSpec,
     }
   },
   parseHTML() {

@@ -1474,6 +1474,69 @@ export default interface Resources {
       "noMatches": "No matches.",
       "title": "Insert merge tag"
     },
+    "panel": {
+      "collapseLeft": "Collapse structure panel",
+      "collapseRight": "Collapse properties panel",
+      "expandLeft": "Show structure panel",
+      "expandRight": "Show properties panel",
+      "paramsTitle": "Properties",
+      "structureTitle": "Structure"
+    },
+    "params": {
+      "align": {
+        "center": "Center",
+        "left": "Left",
+        "right": "Right"
+      },
+      "borderStyleOption": {
+        "dashed": "Dashed",
+        "dotted": "Dotted",
+        "solid": "Solid"
+      },
+      "empty": "Select a block to edit its properties.",
+      "fields": {
+        "alt": "Alt text",
+        "backgroundColor": "Background color",
+        "borderColor": "Border color",
+        "borderRadius": "Corner radius",
+        "borderStyle": "Border style",
+        "borderWidth": "Border width",
+        "color": "Text color",
+        "columnWidths": "Column widths",
+        "fontFamily": "Font",
+        "fontSize": "Font size",
+        "fontWeight": "Font weight",
+        "gap": "Column gap",
+        "href": "Link URL",
+        "label": "Label",
+        "level": "Heading level",
+        "lineColor": "Line color",
+        "lineHeight": "Line height",
+        "padding": "Padding",
+        "paddingBottom": "Padding bottom",
+        "paddingLeft": "Padding left",
+        "paddingRight": "Padding right",
+        "paddingTop": "Padding top",
+        "textAlign": "Alignment",
+        "thickness": "Thickness",
+        "width": "Width"
+      },
+      "inherited": "Inherited",
+      "reset": "Reset",
+      "resetAll": "Reset all to default",
+      "sections": {
+        "background": "Background",
+        "border": "Border",
+        "content": "Content",
+        "layout": "Layout",
+        "spacing": "Spacing",
+        "typography": "Typography"
+      },
+      "weight": {
+        "bold": "Bold",
+        "normal": "Normal"
+      }
+    },
     "preview": {
       "desktop": "Desktop ({{width}}px)",
       "error": "Preview failed: {{message}}",
@@ -1486,6 +1549,31 @@ export default interface Resources {
       "editorAriaLabel": "Raw HTML editor",
       "save": "Save HTML",
       "title": "Edit raw HTML block"
+    },
+    "structure": {
+      "actions": {
+        "collapse": "Collapse",
+        "delete": "Delete block",
+        "duplicate": "Duplicate block",
+        "expand": "Expand"
+      },
+      "block": {
+        "blockquote": "Quote",
+        "bulletList": "Bulleted list",
+        "button": "Button",
+        "codeBlock": "Code",
+        "column": "Column",
+        "columns": "{{count}} columns",
+        "divider": "Divider",
+        "heading": "Heading {{level}}",
+        "image": "Image",
+        "listItem": "List item",
+        "orderedList": "Numbered list",
+        "paragraph": "Paragraph",
+        "rawHtml": "Raw HTML",
+        "unknown": "Block"
+      },
+      "empty": "The document is empty."
     },
     "theme": {
       "buttonColor": "Button color",

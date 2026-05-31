@@ -4,14 +4,80 @@
 
 import { AllowedCampaignMergeTags } from "./campaign-keys"
 import { ValidatorError } from "./errors"
+import { ALLOWED_FONT_FAMILIES } from "./fonts"
 import { validateLink } from "./link"
 import type {
+  BlockStyle,
   ColumnBlock,
   Inline,
   ListItemBlock,
   Mark,
   VisualBlock,
 } from "../render/types"
+
+const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+
+// validateStyle enforces the per-block BlockStyle bounds (feature 017),
+// mirroring internal/campaign/domain/visualdoc_validate.go::validateStyle. A
+// missing style or an absent field means "inherit" and is skipped; any set
+// field outside its bound throws an `invalid_style` error naming the field.
+// Per-field applicability per block type is enforced by the editor's controls
+// (only the applicable controls render); both validators check value bounds.
+export function validateStyle(style: BlockStyle | undefined): void {
+  if (!style) return
+  for (const [name, val] of [
+    ["backgroundColor", style.backgroundColor],
+    ["color", style.color],
+    ["borderColor", style.borderColor],
+  ] as const) {
+    if (val !== undefined && !HEX_COLOR_RE.test(val)) {
+      throw new ValidatorError("invalid_style", `${name} must be a #RGB or #RRGGBB color`)
+    }
+  }
+  if (style.fontFamily !== undefined && !ALLOWED_FONT_FAMILIES.has(style.fontFamily)) {
+    throw new ValidatorError("invalid_style", "fontFamily is not in the allow-list")
+  }
+  if (style.fontSize !== undefined && (style.fontSize < 8 || style.fontSize > 72)) {
+    throw new ValidatorError("invalid_style", "fontSize must be between 8 and 72")
+  }
+  // Read through `number` so a runtime JSON value the type system never
+  // anticipated (e.g. 500) is still rejected.
+  const fontWeight = style.fontWeight as number | undefined
+  if (fontWeight !== undefined && fontWeight !== 400 && fontWeight !== 700) {
+    throw new ValidatorError("invalid_style", "fontWeight must be 400 or 700")
+  }
+  if (style.lineHeight !== undefined && (style.lineHeight < 1 || style.lineHeight > 3)) {
+    throw new ValidatorError("invalid_style", "lineHeight must be between 1.0 and 3.0")
+  }
+  if (
+    style.textAlign !== undefined &&
+    !["left", "center", "right"].includes(style.textAlign)
+  ) {
+    throw new ValidatorError("invalid_style", "textAlign must be left, center, or right")
+  }
+  for (const [name, val] of [
+    ["paddingTop", style.paddingTop],
+    ["paddingRight", style.paddingRight],
+    ["paddingBottom", style.paddingBottom],
+    ["paddingLeft", style.paddingLeft],
+  ] as const) {
+    if (val !== undefined && (val < 0 || val > 64)) {
+      throw new ValidatorError("invalid_style", `${name} must be between 0 and 64`)
+    }
+  }
+  if (style.borderRadius !== undefined && (style.borderRadius < 0 || style.borderRadius > 48)) {
+    throw new ValidatorError("invalid_style", "borderRadius must be between 0 and 48")
+  }
+  if (style.borderWidth !== undefined && (style.borderWidth < 0 || style.borderWidth > 8)) {
+    throw new ValidatorError("invalid_style", "borderWidth must be between 0 and 8")
+  }
+  if (
+    style.borderStyle !== undefined &&
+    !["solid", "dashed", "dotted"].includes(style.borderStyle)
+  ) {
+    throw new ValidatorError("invalid_style", "borderStyle must be solid, dashed, or dotted")
+  }
+}
 
 export type ValidateBlocksContext = {
   // knownSlugs is the union of built-in subscriber pseudo-rows and the
@@ -31,19 +97,23 @@ export type ValidateBlocksContext = {
 export function validateBlock(block: VisualBlock, ctx: ValidateBlocksContext): void {
   switch (block.type) {
     case "paragraph":
+      validateStyle(block.attrs?.style)
       block.content.forEach((i) => validateInline(i, ctx))
       return
     case "heading":
       if (block.attrs.level < 1 || block.attrs.level > 3) {
         throw new ValidatorError("invalid_doc", "heading level must be 1, 2, or 3")
       }
+      validateStyle(block.attrs.style)
       block.content.forEach((i) => validateInline(i, ctx))
       return
     case "bulletList":
     case "orderedList":
+      validateStyle(block.attrs?.style)
       block.content.forEach((it) => validateListItem(it, ctx))
       return
     case "blockquote":
+      validateStyle(block.attrs?.style)
       block.content.forEach((c) => validateBlock(c, ctx))
       return
     case "codeBlock":
@@ -51,6 +121,7 @@ export function validateBlock(block: VisualBlock, ctx: ValidateBlocksContext): v
       // by the Go-side authoritative pass.
       return
     case "image":
+      validateStyle(block.attrs.style)
       if (!block.attrs.mediaRef) {
         throw new ValidatorError("invalid_media_ref", "image mediaRef is required")
       }
@@ -63,14 +134,17 @@ export function validateBlock(block: VisualBlock, ctx: ValidateBlocksContext): v
       if (block.attrs.href) validateLink(block.attrs.href)
       return
     case "button":
+      validateStyle(block.attrs.style)
       if (!block.attrs.label.trim()) {
         throw new ValidatorError("invalid_doc", "button label is required")
       }
       validateLink(block.attrs.href)
       return
     case "divider":
+      validateStyle(block.attrs?.style)
       return
     case "columns": {
+      validateStyle(block.attrs.style)
       const n = block.content.length
       if (n < 2 || n > 4) {
         throw new ValidatorError("invalid_doc", "columns must have 2, 3, or 4 columns")
@@ -107,6 +181,7 @@ function validateListItem(item: ListItemBlock, ctx: ValidateBlocksContext): void
 }
 
 function validateColumn(col: ColumnBlock, ctx: ValidateBlocksContext): void {
+  validateStyle(col.attrs?.style)
   col.content.forEach((c) => validateBlock(c, ctx))
 }
 

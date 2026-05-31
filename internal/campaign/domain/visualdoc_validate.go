@@ -2,6 +2,7 @@ package domain
 
 import (
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -51,25 +52,40 @@ func Validate(d *VisualDoc, ctx ValidateContext) error {
 func validateNode(n Node, ctx ValidateContext) error {
 	switch v := n.(type) {
 	case Paragraph:
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		return validateInlines(v.Children, ctx)
 	case Heading:
 		if v.Level < 1 || v.Level > 3 {
 			return ErrVisualDocInvalid.WithMessage("heading level must be 1, 2, or 3")
 		}
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		return validateInlines(v.Children, ctx)
 	case BulletList:
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		for i, it := range v.Items {
 			if err := validateListItem(it, ctx); err != nil {
 				return wrapPath(err, "items", i)
 			}
 		}
 	case OrderedList:
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		for i, it := range v.Items {
 			if err := validateListItem(it, ctx); err != nil {
 				return wrapPath(err, "items", i)
 			}
 		}
 	case Quote:
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		for i, child := range v.Children {
 			if err := validateNode(child, ctx); err != nil {
 				return wrapPath(err, "children", i)
@@ -78,6 +94,9 @@ func validateNode(n Node, ctx ValidateContext) error {
 	case Code:
 		// Code blocks carry verbatim text; no further checks beyond size.
 	case Image:
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		if v.MediaRef == "" {
 			return ErrInvalidMediaRef
 		}
@@ -90,6 +109,9 @@ func validateNode(n Node, ctx ValidateContext) error {
 			}
 		}
 	case Button:
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		if strings.TrimSpace(v.Label) == "" {
 			return ErrVisualDocInvalid.WithMessage("button label is required")
 		}
@@ -97,8 +119,13 @@ func validateNode(n Node, ctx ValidateContext) error {
 			return err
 		}
 	case Divider:
-		// Always valid.
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 	case Columns:
+		if err := validateStyle(v.Style); err != nil {
+			return err
+		}
 		if n := len(v.Cols); n < 2 || n > 4 {
 			return ErrVisualDocInvalid.WithMessage("columns must have 2, 3, or 4 columns")
 		}
@@ -170,6 +197,87 @@ func validateMergeTag(m MergeTag, ctx ValidateContext) error {
 		}
 	default:
 		return ErrInvalidPlaceholder.WithMessage("merge tag namespace must be 'subscriber' or 'campaign'")
+	}
+	return nil
+}
+
+// AllowedFontFamilies is the platform's curated set of email-safe font-family
+// stacks the per-block style picker offers (feature 017). It is mirrored in
+// frontend/src/server/validate/fonts.ts; the drift-catcher test fonts.test.ts
+// parses this map literal and asserts the two stay in sync.
+var AllowedFontFamilies = map[string]bool{
+	"Arial, Helvetica, sans-serif":          true,
+	"Verdana, Geneva, sans-serif":           true,
+	"Tahoma, Geneva, sans-serif":            true,
+	"'Trebuchet MS', Helvetica, sans-serif": true,
+	"Georgia, 'Times New Roman', serif":     true,
+	"'Times New Roman', Times, serif":       true,
+	"'Courier New', Courier, monospace":     true,
+	"Inter, Arial, sans-serif":              true,
+}
+
+// hexColorRE matches the #RGB / #RRGGBB color form the per-block style picker
+// produces. Mirrors the regex in the BFF validator.
+var hexColorRE = regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
+
+// validateStyle enforces the BlockStyle bounds (feature 017). A nil style or a
+// zero-valued field means "inherit" and is skipped; any set field outside its
+// bound returns ErrInvalidStyle naming the offending field. This is the Go
+// mirror of frontend/src/server/validate/blocks.ts; the BFF runs first for fast
+// feedback, Go re-checks as the authoritative pass (defense in depth).
+func validateStyle(s *BlockStyle) error {
+	if s == nil {
+		return nil
+	}
+	for _, c := range []struct{ name, val string }{
+		{"backgroundColor", s.BackgroundColor},
+		{"color", s.Color},
+		{"borderColor", s.BorderColor},
+	} {
+		if c.val != "" && !hexColorRE.MatchString(c.val) {
+			return ErrInvalidStyle.WithMessage(c.name + " must be a #RGB or #RRGGBB color")
+		}
+	}
+	if s.FontFamily != "" && !AllowedFontFamilies[s.FontFamily] {
+		return ErrInvalidStyle.WithMessage("fontFamily is not in the allow-list")
+	}
+	if s.FontSize != 0 && (s.FontSize < 8 || s.FontSize > 72) {
+		return ErrInvalidStyle.WithMessage("fontSize must be between 8 and 72")
+	}
+	if s.FontWeight != 0 && s.FontWeight != 400 && s.FontWeight != 700 {
+		return ErrInvalidStyle.WithMessage("fontWeight must be 400 or 700")
+	}
+	if s.LineHeight != 0 && (s.LineHeight < 1.0 || s.LineHeight > 3.0) {
+		return ErrInvalidStyle.WithMessage("lineHeight must be between 1.0 and 3.0")
+	}
+	switch s.TextAlign {
+	case "", "left", "center", "right":
+	default:
+		return ErrInvalidStyle.WithMessage("textAlign must be left, center, or right")
+	}
+	for _, p := range []struct {
+		name string
+		v    int
+	}{
+		{"paddingTop", s.PaddingTop},
+		{"paddingRight", s.PaddingRight},
+		{"paddingBottom", s.PaddingBottom},
+		{"paddingLeft", s.PaddingLeft},
+	} {
+		if p.v < 0 || p.v > 64 {
+			return ErrInvalidStyle.WithMessage(p.name + " must be between 0 and 64")
+		}
+	}
+	if s.BorderRadius < 0 || s.BorderRadius > 48 {
+		return ErrInvalidStyle.WithMessage("borderRadius must be between 0 and 48")
+	}
+	if s.BorderWidth < 0 || s.BorderWidth > 8 {
+		return ErrInvalidStyle.WithMessage("borderWidth must be between 0 and 8")
+	}
+	switch s.BorderStyle {
+	case "", "solid", "dashed", "dotted":
+	default:
+		return ErrInvalidStyle.WithMessage("borderStyle must be solid, dashed, or dotted")
 	}
 	return nil
 }

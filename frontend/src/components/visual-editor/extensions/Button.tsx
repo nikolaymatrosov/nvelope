@@ -3,6 +3,7 @@
 // the canonical `<a role="button">` (or VML for Outlook) at save time.
 
 import { Node, mergeAttributes } from "@tiptap/core"
+import { blockStyleAttributeSpec } from "./styleAttr"
 
 export const Button = Node.create({
   name: "button",
@@ -14,6 +15,7 @@ export const Button = Node.create({
     return {
       label: { default: "Button" },
       href: { default: "" },
+      style: blockStyleAttributeSpec,
     }
   },
   parseHTML() {

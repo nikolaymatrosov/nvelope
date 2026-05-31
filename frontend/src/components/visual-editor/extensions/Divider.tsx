@@ -1,6 +1,7 @@
 // Divider block — atom node, serializes to `{ type: "divider" }`.
 
 import { Node, mergeAttributes } from "@tiptap/core"
+import { blockStyleAttributeSpec } from "./styleAttr"
 
 export const Divider = Node.create({
   name: "divider",
@@ -8,6 +9,9 @@ export const Divider = Node.create({
   atom: true,
   draggable: true,
   selectable: true,
+  addAttributes() {
+    return { style: blockStyleAttributeSpec }
+  },
   parseHTML() {
     return [{ tag: "hr[data-type=\"divider\"]" }]
   },

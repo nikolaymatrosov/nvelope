@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { VisualEmailEditor } from "@/components/visual-editor/VisualEmailEditor"
+import { ThreePaneEditor } from "@/components/visual-editor/ThreePaneEditor"
 import {
   Dialog,
   DialogContent,
@@ -620,7 +620,7 @@ function CampaignEditor({
                   <Label htmlFor="campaign-visual-editor">
                     {t("detail.content.bodyLabel")}
                   </Label>
-                  <VisualEmailEditor
+                  <ThreePaneEditor
                     slug={slug}
                     value={bodyDoc}
                     onChange={setBodyDoc}

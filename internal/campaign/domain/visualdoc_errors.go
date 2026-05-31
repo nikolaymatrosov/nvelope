@@ -31,6 +31,15 @@ var (
 	ErrInvalidMediaRef = apperr.NewIncorrectInput("invalid_media_ref",
 		"the image must reference a tenant media-library asset")
 
+	// ErrInvalidStyle is returned when a block's per-block style (feature 017)
+	// carries an out-of-range, malformed, or unsupported value — a color that
+	// is not #RGB/#RRGGBB, a numeric outside its bound, an unknown enum value,
+	// or a font family outside the platform allow-list. Callers attach the
+	// offending field via apperr.WithMessage. Mirrors the BFF validator's
+	// "invalid_style" kind.
+	ErrInvalidStyle = apperr.NewIncorrectInput("invalid_style",
+		"the block style is invalid")
+
 	// ErrSanitizationStripped is informational — used by the renderer to
 	// flag that the sanitizer removed content the operator may want to be
 	// aware of. The renderer returns it as a warning, not a save-blocking

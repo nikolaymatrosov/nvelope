@@ -22,6 +22,7 @@ import {
 } from "react-email"
 
 import type {
+  BlockStyle,
   ButtonBlock,
   CodeBlock as CodeBlockNode,
   ColumnsBlock,
@@ -35,6 +36,32 @@ import type {
   Theme,
   VisualBlock,
 } from "./types"
+
+// mapBlockStyle translates the email-safe BlockStyle value object (feature 017)
+// into a React inline-style object. Only set fields are emitted, so callers can
+// spread the result *after* the theme defaults to get
+// "theme default → per-block override" semantics (FR-014/FR-019). Pixel fields
+// gain a "px" unit; line-height stays unitless.
+export function mapBlockStyle(style?: BlockStyle): React.CSSProperties {
+  const s: React.CSSProperties = {}
+  if (!style) return s
+  if (style.backgroundColor) s.backgroundColor = style.backgroundColor
+  if (style.color) s.color = style.color
+  if (style.fontFamily) s.fontFamily = style.fontFamily
+  if (style.fontSize != null) s.fontSize = `${style.fontSize}px`
+  if (style.fontWeight != null) s.fontWeight = style.fontWeight
+  if (style.lineHeight != null) s.lineHeight = style.lineHeight
+  if (style.textAlign) s.textAlign = style.textAlign
+  if (style.paddingTop != null) s.paddingTop = `${style.paddingTop}px`
+  if (style.paddingRight != null) s.paddingRight = `${style.paddingRight}px`
+  if (style.paddingBottom != null) s.paddingBottom = `${style.paddingBottom}px`
+  if (style.paddingLeft != null) s.paddingLeft = `${style.paddingLeft}px`
+  if (style.borderRadius != null) s.borderRadius = `${style.borderRadius}px`
+  if (style.borderWidth != null) s.borderWidth = `${style.borderWidth}px`
+  if (style.borderStyle) s.borderStyle = style.borderStyle
+  if (style.borderColor) s.borderColor = style.borderColor
+  return s
+}
 
 // inlineStyleForMarks composes the React inline-style object that
 // non-structural marks (color) need; structural marks (bold/italic/etc.) use
@@ -106,7 +133,11 @@ function renderInlines(inlines: Array<Inline>): Array<React.ReactElement> {
 // ── Block renderers ────────────────────────────────────────────────────────
 
 function ParagraphView({ block, theme }: { block: ParagraphBlock; theme: Theme }) {
-  return <REText style={{ color: theme.textColor }}>{renderInlines(block.content)}</REText>
+  return (
+    <REText style={{ color: theme.textColor, ...mapBlockStyle(block.attrs?.style) }}>
+      {renderInlines(block.content)}
+    </REText>
+  )
 }
 
 function HeadingView({ block, theme }: { block: HeadingBlock; theme: Theme }) {
@@ -115,7 +146,7 @@ function HeadingView({ block, theme }: { block: HeadingBlock; theme: Theme }) {
   // types onto react-email's strict `as` union ("h1" | "h2" | … | "h6").
   const tag = (["h1", "h2", "h3"] as const)[block.attrs.level - 1] ?? "h1"
   return (
-    <REHeading as={tag} style={{ color: theme.textColor }}>
+    <REHeading as={tag} style={{ color: theme.textColor, ...mapBlockStyle(block.attrs.style) }}>
       {renderInlines(block.content)}
     </REHeading>
   )
@@ -125,11 +156,22 @@ function BulletListView({
   block,
   theme,
 }: {
-  block: { type: "bulletList"; content: Array<{ type: "listItem"; content: Array<VisualBlock> }> }
+  block: {
+    type: "bulletList"
+    attrs?: { style?: BlockStyle }
+    content: Array<{ type: "listItem"; content: Array<VisualBlock> }>
+  }
   theme: Theme
 }) {
   return (
-    <ul style={{ color: theme.textColor, paddingLeft: "20px", margin: "8px 0" }}>
+    <ul
+      style={{
+        color: theme.textColor,
+        paddingLeft: "20px",
+        margin: "8px 0",
+        ...mapBlockStyle(block.attrs?.style),
+      }}
+    >
       {block.content.map((item, i) => (
         <li key={i}>
           {item.content.map((child, j) => (
@@ -145,11 +187,22 @@ function OrderedListView({
   block,
   theme,
 }: {
-  block: { type: "orderedList"; content: Array<{ type: "listItem"; content: Array<VisualBlock> }> }
+  block: {
+    type: "orderedList"
+    attrs?: { style?: BlockStyle }
+    content: Array<{ type: "listItem"; content: Array<VisualBlock> }>
+  }
   theme: Theme
 }) {
   return (
-    <ol style={{ color: theme.textColor, paddingLeft: "20px", margin: "8px 0" }}>
+    <ol
+      style={{
+        color: theme.textColor,
+        paddingLeft: "20px",
+        margin: "8px 0",
+        ...mapBlockStyle(block.attrs?.style),
+      }}
+    >
       {block.content.map((item, i) => (
         <li key={i}>
           {item.content.map((child, j) => (
@@ -165,7 +218,7 @@ function BlockquoteView({
   block,
   theme,
 }: {
-  block: { type: "blockquote"; content: Array<VisualBlock> }
+  block: { type: "blockquote"; attrs?: { style?: BlockStyle }; content: Array<VisualBlock> }
   theme: Theme
 }) {
   return (
@@ -175,6 +228,7 @@ function BlockquoteView({
         paddingLeft: "12px",
         borderLeft: "4px solid #cccccc",
         color: theme.textColor,
+        ...mapBlockStyle(block.attrs?.style),
       }}
     >
       {block.content.map((child, i) => (
@@ -209,14 +263,20 @@ function CodeBlockView({ block }: { block: CodeBlockNode; theme: Theme }) {
 }
 
 function ImageView({ block }: { block: ImageBlock; theme: Theme }) {
-  const img = <REImg src={block.attrs.mediaRef} alt={block.attrs.alt} />
-  if (block.attrs.href) {
-    return <RELink href={block.attrs.href}>{img}</RELink>
+  // Image style applies to the <img> box itself (border radius / border). The
+  // textAlign field, when set, positions the image within a wrapping block.
+  const style = block.attrs.style
+  const { textAlign, ...boxStyle } = mapBlockStyle(style)
+  const img = <REImg src={block.attrs.mediaRef} alt={block.attrs.alt} style={boxStyle} />
+  const linked = block.attrs.href ? <RELink href={block.attrs.href}>{img}</RELink> : img
+  if (textAlign) {
+    return <div style={{ textAlign }}>{linked}</div>
   }
-  return img
+  return linked
 }
 
 function ButtonView({ block, theme }: { block: ButtonBlock; theme: Theme }) {
+  // Theme button colors are the base; per-block style overrides them.
   return (
     <REButton
       href={block.attrs.href}
@@ -227,6 +287,7 @@ function ButtonView({ block, theme }: { block: ButtonBlock; theme: Theme }) {
         borderRadius: "4px",
         textDecoration: "none",
         display: "inline-block",
+        ...mapBlockStyle(block.attrs.style),
       }}
     >
       {block.attrs.label}
@@ -234,17 +295,31 @@ function ButtonView({ block, theme }: { block: ButtonBlock; theme: Theme }) {
   )
 }
 
-function DividerView({ block: _block }: { block: DividerBlock; theme: Theme }) {
-  return <REHr />
+function DividerView({ block }: { block: DividerBlock; theme: Theme }) {
+  const style = block.attrs?.style
+  if (!style) return <REHr />
+  // The divider's "line" is the rule's top border; borderColor/Width/Style map
+  // onto it, and padding becomes spacing above/below.
+  const s = mapBlockStyle(style)
+  const hr: React.CSSProperties = {
+    borderTopWidth: s.borderWidth,
+    borderTopStyle: s.borderStyle,
+    borderTopColor: s.borderColor,
+    paddingTop: s.paddingTop,
+    paddingBottom: s.paddingBottom,
+  }
+  return <REHr style={hr} />
 }
 
 function ColumnsView({ block, theme }: { block: ColumnsBlock; theme: Theme }) {
   // Equal-width columns. react-email's <Row>/<Column> already emits MSO
-  // conditional comments so Outlook desktop renders the table correctly.
+  // conditional comments so Outlook desktop renders the table correctly. The
+  // container style applies to the row; each column carries its own style on
+  // the cell so backgrounds/padding survive in Outlook (FR-015).
   return (
-    <RERow>
+    <RERow style={mapBlockStyle(block.attrs.style)}>
       {block.content.map((col, i) => (
-        <REColumn key={i}>
+        <REColumn key={i} style={mapBlockStyle(col.attrs?.style)}>
           {col.content.map((child, j) => (
             <BlockView key={j} block={child} theme={theme} />
           ))}

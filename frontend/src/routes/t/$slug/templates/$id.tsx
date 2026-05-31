@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { VisualEmailEditor } from "@/components/visual-editor/VisualEmailEditor"
+import { ThreePaneEditor } from "@/components/visual-editor/ThreePaneEditor"
 import {
   Card,
   CardContent,
@@ -363,7 +363,7 @@ function EditTemplateCard({
               <Label htmlFor="template-visual-editor">
                 {t("detail.bodyLabel")}
               </Label>
-              <VisualEmailEditor
+              <ThreePaneEditor
                 slug={slug}
                 value={bodyDoc}
                 onChange={setBodyDoc}
