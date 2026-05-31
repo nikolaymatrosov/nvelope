@@ -6,11 +6,8 @@ import { renderWithClient } from "@/test/render"
 
 import { api } from "@/lib/api"
 
-const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
-
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (opts: unknown) => opts,
-  useNavigate: () => navigate,
   Link: ({ children, to, ...rest }: { children: unknown; to?: unknown }) => (
     <a href={typeof to === "string" ? to : "#"} {...rest}>
       {children as never}
@@ -38,11 +35,11 @@ function fill() {
 }
 
 describe("Signup", () => {
-  it("registers an account and routes to workspace creation", async () => {
+  it("registers an account and shows the check-your-inbox screen", async () => {
     vi.mocked(api.signup).mockResolvedValue({
-      status: 200,
+      status: 201,
       ok: true,
-      data: { user: { id: "u1", name: "Ann Lee", email: "ann@example.com", locale: null }, tenants: [] },
+      data: { verification: { required: true, email: "ann@example.com" } },
     })
     renderWithClient(<Signup />)
     fill()
@@ -55,14 +52,15 @@ describe("Signup", () => {
         "Ann Lee",
       ),
     )
-    await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith({ to: "/tenants/new" }),
-    )
+    // No session is issued — the user is told to verify their email instead of
+    // being routed into the app.
+    expect(await screen.findByText(/check your inbox/i)).toBeDefined()
+    expect(await screen.findByText(/ann@example.com/i)).toBeDefined()
   })
 
   it("surfaces a duplicate-email error without creating a second account", async () => {
     vi.mocked(api.signup).mockRejectedValue(
-      new ApiError(409, "duplicate_email", "exists", "/api/platform/signup"),
+      new ApiError(409, "email_taken", "exists", "/api/platform/signup"),
     )
     renderWithClient(<Signup />)
     fill()
@@ -71,6 +69,6 @@ describe("Signup", () => {
     expect(
       await screen.findByText(/an account with this email already exists/i),
     ).toBeDefined()
-    expect(navigate).not.toHaveBeenCalled()
+    expect(screen.queryByText(/check your inbox/i)).toBeNull()
   })
 })

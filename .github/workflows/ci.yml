@@ -57,8 +57,18 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Storybook stories run as browser tests under `pnpm test` via the
+      # Vitest browser project; Chromium must be present.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: i18n types drift check
         run: pnpm i18n:types && git diff --exit-code src/i18n/resources.d.ts src/i18n/i18next.d.ts
+
+      # Hard gate: the embedded verification email artifacts must match the
+      # react-email templates they are rendered from.
+      - name: Email templates drift check
+        run: pnpm emails:build && git diff --exit-code ../internal/auth/adapters/emails
 
       - name: Typecheck
         run: pnpm typecheck
@@ -76,3 +86,8 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # Smoke gate: a broken story or Storybook config fails the build even if
+      # the story tests happened to pass.
+      - name: Build Storybook
+        run: pnpm build-storybook

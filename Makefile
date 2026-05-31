@@ -72,6 +72,8 @@ ci:
 	cd frontend && pnpm install --frozen-lockfile \
 		&& pnpm i18n:types \
 		&& git diff --exit-code src/i18n/resources.d.ts src/i18n/i18next.d.ts \
+		&& pnpm emails:build \
+		&& git diff --exit-code ../internal/auth/adapters/emails \
 		&& pnpm typecheck \
 		&& pnpm lint \
 		&& pnpm i18n:lint \

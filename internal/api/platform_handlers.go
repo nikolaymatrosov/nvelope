@@ -31,10 +31,59 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "signup", err)
 		return
 	}
-	s.setSessionCookie(w, result.Token)
-	locale := s.resolveAuthLocale(w, r, result.UserID, "")
+	// No session is issued — the account must verify its email address first.
+	// The request's locale preference is still adopted onto the new account so
+	// the verification email can be localized.
+	s.resolveAuthLocale(w, r, result.UserID, "")
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"user": userPayload(result.UserID, result.UserEmail, result.UserName, locale),
+		"verification": map[string]any{"required": true, "email": result.UserEmail},
+	})
+}
+
+// handleVerifyEmail completes email verification when the recipient opens the
+// link from their verification email. It is public — the account has no
+// session until it is verified.
+func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	result, err := s.auth.Commands.VerifyEmail.Handle(r.Context(),
+		authcommand.VerifyEmail{Token: req.Token})
+	if err != nil {
+		s.fail(w, "verify email", err)
+		return
+	}
+	status := "verified"
+	if result.AlreadyVerified {
+		status = "already_verified"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"verification": map[string]any{"status": status},
+	})
+}
+
+// handleResendVerification re-sends the verification email for an unverified
+// account. It is public and enumeration-safe: the response is identical
+// whether or not the address belongs to an account.
+func (s *Server) handleResendVerification(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	if err := s.auth.Commands.ResendEmailVerification.Handle(r.Context(),
+		authcommand.ResendEmailVerification{Email: req.Email}); err != nil {
+		s.fail(w, "resend verification", err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"verification": map[string]any{"resent": true},
 	})
 }
 

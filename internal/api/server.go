@@ -83,6 +83,8 @@ func (s *Server) Handler() http.Handler {
 	r.Route("/api/platform", func(r chi.Router) {
 		r.Post("/signup", s.handleSignup)
 		r.Post("/login", s.handleLogin)
+		r.Post("/verify-email", s.handleVerifyEmail)
+		r.Post("/verify-email/resend", s.handleResendVerification)
 		r.Get("/invitations/{token}", s.handleGetInvitation)
 		r.Post("/invitations/{token}/accept", s.handleAcceptInvitation)
 

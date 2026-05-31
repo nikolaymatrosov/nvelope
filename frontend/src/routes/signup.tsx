@@ -1,11 +1,10 @@
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
+import { Link, createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
-import { errorMessage, isConflict } from "@/lib/errors"
-import { queryClient } from "@/lib/query"
+import { ApiError, errorMessage, isConflict } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -21,21 +20,25 @@ import { FormField, compose, fieldError, rules } from "@/components/common/form-
 export const Route = createFileRoute("/signup")({ component: Signup })
 
 export function Signup() {
-  const navigate = useNavigate()
   const { t } = useTranslation("auth")
   const [formError, setFormError] = useState("")
   const [emailTaken, setEmailTaken] = useState(false)
+  const [sentTo, setSentTo] = useState("")
 
   const signup = useMutation({
     mutationFn: (v: { name: string; email: string; password: string }) =>
       api.signup(v.email.trim(), v.password, v.name.trim()),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["me"] })
-      await navigate({ to: "/tenants/new" })
+    onSuccess: (res) => {
+      // No session is issued — the account must verify its email first.
+      setSentTo(res.data.verification.email)
     },
     onError: (e) => {
       if (isConflict(e)) {
         setEmailTaken(true)
+        return
+      }
+      if (e instanceof ApiError && e.slug === "email_domain_not_allowed") {
+        setFormError(t("signup.emailDomainNotAllowed"))
         return
       }
       setFormError(errorMessage(e))
@@ -50,6 +53,34 @@ export function Signup() {
       await signup.mutateAsync(value).catch(() => {})
     },
   })
+
+  if (sentTo) {
+    return (
+      <main className="grid min-h-svh place-items-center p-6">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>{t("signup.checkInboxTitle")}</CardTitle>
+            <CardDescription>
+              {t("signup.checkInboxDescription", { email: sentTo })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {t("signup.checkInboxHint")}
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Link
+              className="text-sm text-primary underline-offset-4 hover:underline"
+              to="/login"
+            >
+              {t("signup.backToLogin")}
+            </Link>
+          </CardFooter>
+        </Card>
+      </main>
+    )
+  }
 
   return (
     <main className="grid min-h-svh place-items-center p-6">

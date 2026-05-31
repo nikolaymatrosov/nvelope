@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/nikolaymatrosov/nvelope/internal/auth/domain"
 )
@@ -30,7 +31,7 @@ func (f *fakeUsers) Create(_ context.Context, u *domain.User, passwordHash strin
 	}
 	f.nextID++
 	id := "user-" + strconv.Itoa(f.nextID)
-	stored := domain.HydrateUser(id, u.Email().String(), u.Name(), u.Locale().String())
+	stored := domain.HydrateUser(id, u.Email().String(), u.Name(), u.Locale().String(), nil)
 	f.byID[id] = stored
 	f.hashes[u.Email().String()] = passwordHash
 	return stored, nil
@@ -57,6 +58,29 @@ func (f *fakeUsers) CreateWithSession(ctx context.Context, u *domain.User, passw
 		return nil, err
 	}
 	return created, nil
+}
+
+func (f *fakeUsers) CreateWithVerification(ctx context.Context, u *domain.User, passwordHash string,
+	issueVerification func(userID string) (*domain.EmailVerification, string, error)) (*domain.User, error) {
+	created, err := f.Create(ctx, u, passwordHash)
+	if err != nil {
+		return nil, err
+	}
+	if _, _, err := issueVerification(created.ID()); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+func (f *fakeUsers) MarkEmailVerified(_ context.Context, userID string, now time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.byID[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.MarkEmailVerified(now)
+	return nil
 }
 
 func (f *fakeUsers) GetByID(_ context.Context, id string) (*domain.User, error) {
@@ -120,6 +144,84 @@ func (f *fakeSessions) RevokeByTokenHash(_ context.Context, tokenHash string) er
 	defer f.mu.Unlock()
 	f.revoked[tokenHash] = true
 	return nil
+}
+
+// fakeVerificationEnqueuer is an in-memory domain.VerificationEnqueuer that
+// records every enqueued verification-email send.
+type fakeVerificationEnqueuer struct {
+	mu    sync.Mutex
+	calls []verificationSend
+}
+
+type verificationSend struct {
+	userID string
+	token  string
+}
+
+func newFakeVerificationEnqueuer() *fakeVerificationEnqueuer {
+	return &fakeVerificationEnqueuer{}
+}
+
+func (f *fakeVerificationEnqueuer) EnqueueVerificationSend(_ context.Context, userID, rawToken string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, verificationSend{userID: userID, token: rawToken})
+	return nil
+}
+
+// fakeEmailVerifications is an in-memory domain.EmailVerificationRepository.
+type fakeEmailVerifications struct {
+	mu       sync.Mutex
+	byHash   map[string]*domain.EmailVerification
+	consumed map[string]bool
+}
+
+func newFakeEmailVerifications() *fakeEmailVerifications {
+	return &fakeEmailVerifications{
+		byHash:   map[string]*domain.EmailVerification{},
+		consumed: map[string]bool{},
+	}
+}
+
+func (f *fakeEmailVerifications) Issue(_ context.Context, v *domain.EmailVerification,
+	tokenHash string) (*domain.EmailVerification, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for h, existing := range f.byHash {
+		if existing.UserID() == v.UserID() && !f.consumed[existing.ID()] {
+			delete(f.byHash, h)
+		}
+	}
+	f.byHash[tokenHash] = v
+	return v, nil
+}
+
+func (f *fakeEmailVerifications) GetByTokenHash(_ context.Context, tokenHash string) (
+	*domain.EmailVerification, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	v, ok := f.byHash[tokenHash]
+	if !ok {
+		return nil, domain.ErrVerificationLinkInvalid
+	}
+	return v, nil
+}
+
+func (f *fakeEmailVerifications) Consume(_ context.Context, verificationID string, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.consumed[verificationID] = true
+	return nil
+}
+
+// fakeResendThrottle is an in-memory domain.ResendThrottle that admits or
+// denies every call based on a fixed flag.
+type fakeResendThrottle struct {
+	allow bool
+}
+
+func (f fakeResendThrottle) Allow(context.Context, string) (bool, error) {
+	return f.allow, nil
 }
 
 // stubHasher is a deterministic, non-cryptographic PasswordHasher for tests.

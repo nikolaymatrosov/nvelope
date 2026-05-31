@@ -35,6 +35,8 @@ var statusForSlug = map[string]int{
 	// A declined payment is a distinct, well-known HTTP status — neither a
 	// generic 422 nor a 500.
 	"payment_failed": http.StatusPaymentRequired,
+	// A throttled verification-email resend is a 429, not a generic 422.
+	"verification_resend_throttled": http.StatusTooManyRequests,
 }
 
 // fail is the single place a domain error becomes an HTTP response. A typed

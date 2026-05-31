@@ -17,7 +17,7 @@ func tokenFromAcceptURL(url string) string {
 
 // --- User Story 1: sign up and create a workspace ---------------------------
 
-func TestSignupCreatesAccountAndSession(t *testing.T) {
+func TestSignupCreatesUnverifiedAccount(t *testing.T) {
 	ts := newTestServer(t)
 	email := dbtest.RandString() + "@example.com"
 
@@ -25,12 +25,47 @@ func TestSignupCreatesAccountAndSession(t *testing.T) {
 		"email": email, "password": "a-good-password", "name": "Ada Lovelace",
 	})
 	require.Equal(t, http.StatusCreated, status)
-	require.Equal(t, email, body["user"].(map[string]any)["email"])
+	verification := body["verification"].(map[string]any)
+	require.Equal(t, true, verification["required"])
+	require.Equal(t, email, verification["email"])
 
-	// The session cookie set by signup now authenticates /me.
-	status, body = ts.request(http.MethodGet, "/api/platform/me", nil)
-	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, email, body["user"].(map[string]any)["email"])
+	// No session is issued — /me is unauthenticated until the email is verified.
+	status, _ = ts.request(http.MethodGet, "/api/platform/me", nil)
+	require.Equal(t, http.StatusUnauthorized, status)
+
+	// Sign-in is refused while the account is unverified.
+	status, body = ts.request(http.MethodPost, "/api/platform/login", map[string]string{
+		"email": email, "password": "a-good-password",
+	})
+	require.Equal(t, http.StatusForbidden, status)
+	require.Equal(t, "email_not_verified", body["error"])
+}
+
+func TestVerifyEmailRejectsUnknownToken(t *testing.T) {
+	ts := newTestServer(t)
+	status, body := ts.request(http.MethodPost, "/api/platform/verify-email", map[string]string{
+		"token": "no-such-token",
+	})
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+	require.Equal(t, "verification_link_invalid", body["error"])
+}
+
+func TestResendVerificationIsEnumerationSafe(t *testing.T) {
+	ts := newTestServer(t)
+	email := dbtest.RandString() + "@example.com"
+	status, _ := ts.request(http.MethodPost, "/api/platform/signup", map[string]string{
+		"email": email, "password": "a-good-password", "name": "Ada",
+	})
+	require.Equal(t, http.StatusCreated, status)
+
+	// A resend for the real (unverified) address and for an address with no
+	// account both return the same accepted response.
+	for _, addr := range []string{email, "nobody-" + dbtest.RandString() + "@example.com"} {
+		status, body := ts.request(http.MethodPost, "/api/platform/verify-email/resend",
+			map[string]string{"email": addr})
+		require.Equal(t, http.StatusAccepted, status)
+		require.Equal(t, true, body["verification"].(map[string]any)["resent"])
+	}
 }
 
 func TestSignupRejectsDuplicateEmail(t *testing.T) {
@@ -65,6 +100,7 @@ func TestLoginSucceedsAndFails(t *testing.T) {
 		"email": email, "password": "a-good-password", "name": "Ada",
 	})
 	require.Equal(t, http.StatusCreated, status)
+	ts.markVerified(email)
 
 	anon := ts.newClient()
 
@@ -276,6 +312,10 @@ func TestAcceptInvitationByExistingUser(t *testing.T) {
 	status, _ = ts.do(invitee, http.MethodPost, "/api/platform/signup",
 		map[string]string{"email": inviteeEmail, "password": "a-good-password", "name": "Grace"})
 	require.Equal(t, http.StatusCreated, status)
+	ts.markVerified(inviteeEmail)
+	status, _ = ts.do(invitee, http.MethodPost, "/api/platform/login",
+		map[string]string{"email": inviteeEmail, "password": "a-good-password"})
+	require.Equal(t, http.StatusOK, status)
 
 	status, _ = ts.do(invitee, http.MethodPost,
 		"/api/platform/invitations/"+token+"/accept", nil)

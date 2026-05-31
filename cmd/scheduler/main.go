@@ -54,16 +54,20 @@ func main() {
 		defer billingTicker.Stop()
 		rollupTicker := time.NewTicker(cfg.UsageRollupInterval)
 		defer rollupTicker.Stop()
+		cleanupTicker := time.NewTicker(cfg.VerificationCleanupInterval)
+		defer cleanupTicker.Stop()
 		logger.Info("scheduler running",
 			"domain_verify_interval", cfg.SendingDomainVerifyInterval,
 			"analytics_refresh_interval", cfg.AnalyticsRefreshInterval,
 			"billing_sweep_interval", cfg.BillingSweepInterval,
-			"usage_rollup_interval", cfg.UsageRollupInterval)
+			"usage_rollup_interval", cfg.UsageRollupInterval,
+			"verification_cleanup_interval", cfg.VerificationCleanupInterval)
 
 		sweepPendingDomains(ctx, pool, enqueuer, logger)
 		enqueueAnalyticsRefresh(ctx, pool, enqueuer, logger)
 		enqueueBillingSweep(ctx, enqueuer, logger)
 		enqueueUsageRollup(ctx, pool, enqueuer, logger)
+		enqueueVerificationCleanup(ctx, enqueuer, logger)
 		for {
 			select {
 			case <-ctx.Done():
@@ -76,6 +80,8 @@ func main() {
 				enqueueBillingSweep(ctx, enqueuer, logger)
 			case <-rollupTicker.C:
 				enqueueUsageRollup(ctx, pool, enqueuer, logger)
+			case <-cleanupTicker.C:
+				enqueueVerificationCleanup(ctx, enqueuer, logger)
 			}
 		}
 	})
@@ -167,6 +173,15 @@ func enqueueAnalyticsRefresh(ctx context.Context, pool *pgxpool.Pool,
 func enqueueBillingSweep(ctx context.Context, enqueuer *jobs.SendEnqueuer, logger *slog.Logger) {
 	if err := enqueuer.EnqueueBillingSweep(ctx); err != nil {
 		logger.Error("enqueuing billing sweep", "error", err)
+	}
+}
+
+// enqueueVerificationCleanup enqueues one verification-token cleanup sweep. The
+// unique-job option keyed on the args makes a re-arm a no-op while a sweep is
+// still pending, so a slow sweep is never stacked.
+func enqueueVerificationCleanup(ctx context.Context, enqueuer *jobs.SendEnqueuer, logger *slog.Logger) {
+	if err := enqueuer.EnqueueVerificationCleanup(ctx); err != nil {
+		logger.Error("enqueuing verification cleanup", "error", err)
 	}
 }
 

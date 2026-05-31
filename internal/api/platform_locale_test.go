@@ -104,18 +104,20 @@ func TestSignupAdoptsLocaleCookie(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	client := withLocaleCookie(ts, "ru")
+	email := dbtest.RandString() + "@example.com"
 
-	status, body := ts.do(client, http.MethodPost, "/api/platform/signup",
-		map[string]string{
-			"email":    dbtest.RandString() + "@example.com",
-			"password": "a-good-password",
-			"name":     "New User",
-		})
+	status, _ := ts.do(client, http.MethodPost, "/api/platform/signup",
+		map[string]string{"email": email, "password": "a-good-password", "name": "New User"})
 	require.Equal(t, http.StatusCreated, status)
 
-	// FR-008: a brand-new account adopts the signed-out visitor's choice.
-	require.Equal(t, "ru", body["user"].(map[string]any)["locale"])
-	status, body = ts.do(client, http.MethodGet, "/api/platform/me", nil)
+	// FR-008: a brand-new account adopts the signed-out visitor's choice — the
+	// nv_locale cookie is mirrored back even though signup issues no session.
+	require.Equal(t, "ru", localeCookieValue(ts, client))
+
+	// The choice persisted on the account: verify, sign in, and read it back.
+	ts.markVerified(email)
+	status, body := ts.do(client, http.MethodPost, "/api/platform/login",
+		map[string]string{"email": email, "password": "a-good-password"})
 	require.Equal(t, http.StatusOK, status)
 	require.Equal(t, "ru", body["user"].(map[string]any)["locale"])
 }
@@ -124,15 +126,17 @@ func TestSignupIgnoresUnsupportedLocaleCookie(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	client := withLocaleCookie(ts, "de")
+	email := dbtest.RandString() + "@example.com"
 
-	status, body := ts.do(client, http.MethodPost, "/api/platform/signup",
-		map[string]string{
-			"email":    dbtest.RandString() + "@example.com",
-			"password": "a-good-password",
-			"name":     "New User",
-		})
+	status, _ := ts.do(client, http.MethodPost, "/api/platform/signup",
+		map[string]string{"email": email, "password": "a-good-password", "name": "New User"})
 	require.Equal(t, http.StatusCreated, status)
+
 	// An unsupported cookie value is not adopted.
+	ts.markVerified(email)
+	status, body := ts.do(client, http.MethodPost, "/api/platform/login",
+		map[string]string{"email": email, "password": "a-good-password"})
+	require.Equal(t, http.StatusOK, status)
 	require.Nil(t, body["user"].(map[string]any)["locale"])
 }
 
@@ -140,11 +144,15 @@ func TestLoginKeepsExistingPreferenceOverCookie(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 
-	// User A signs up and explicitly chooses Russian.
+	// User A signs up, verifies, signs in, and explicitly chooses Russian.
 	email := dbtest.RandString() + "@example.com"
 	status, _ := ts.request(http.MethodPost, "/api/platform/signup",
 		map[string]string{"email": email, "password": "a-good-password", "name": "A"})
 	require.Equal(t, http.StatusCreated, status)
+	ts.markVerified(email)
+	status, _ = ts.request(http.MethodPost, "/api/platform/login",
+		map[string]string{"email": email, "password": "a-good-password"})
+	require.Equal(t, http.StatusOK, status)
 	status, _ = ts.request(http.MethodPut, "/api/platform/me",
 		map[string]string{"locale": "ru"})
 	require.Equal(t, http.StatusOK, status)

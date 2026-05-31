@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/knadh/koanf/parsers/dotenv"
@@ -160,6 +161,28 @@ type Config struct {
 	OptinConfirmationTTL time.Duration
 	// MediaMaxBytes is the largest media file a tenant may upload.
 	MediaMaxBytes int64
+
+	// VerificationSenderDomain is the service domain registration
+	// verification emails are sent from, e.g. nvelope.ru. Required — the
+	// verification email cannot be addressed without it.
+	VerificationSenderDomain string
+	// VerificationSenderName is the display name on the verification email's
+	// From header.
+	VerificationSenderName string
+	// EmailVerificationTTL is how long a registration email-verification link
+	// stays valid.
+	EmailVerificationTTL time.Duration
+	// RegistrationAllowedDomains is the allowlist of email domains permitted to
+	// register. An empty list means registration is unrestricted.
+	RegistrationAllowedDomains []string
+	// VerificationResendLimit is how many verification-email resends one
+	// account may request per VerificationResendWindow.
+	VerificationResendLimit int
+	// VerificationResendWindow is the sliding window for VerificationResendLimit.
+	VerificationResendWindow time.Duration
+	// VerificationCleanupInterval is how often the scheduler enqueues a sweep
+	// that prunes expired email-verification tokens.
+	VerificationCleanupInterval time.Duration
 }
 
 // Load reads configuration from the environment, optionally layered over the
@@ -221,6 +244,11 @@ func Load(envFilePath string) (Config, error) {
 
 		PublicBaseURL: k.String(envPrefix + "PUBLIC_BASE_URL"),
 		MediaMaxBytes: k.Int64(envPrefix + "MEDIA_MAX_BYTES"),
+
+		VerificationSenderDomain:   k.String(envPrefix + "VERIFICATION_SENDER_DOMAIN"),
+		VerificationSenderName:     k.String(envPrefix + "VERIFICATION_SENDER_NAME"),
+		RegistrationAllowedDomains: splitCSV(k.String(envPrefix + "REGISTRATION_ALLOWED_DOMAINS")),
+		VerificationResendLimit:    k.Int(envPrefix + "VERIFICATION_RESEND_LIMIT"),
 	}
 
 	for _, d := range []struct {
@@ -239,6 +267,9 @@ func Load(envFilePath string) (Config, error) {
 		{"USAGE_ROLLUP_INTERVAL", &cfg.UsageRollupInterval},
 		{"DUNNING_RETRY_INTERVAL", &cfg.DunningRetryInterval},
 		{"OPTIN_CONFIRMATION_TTL", &cfg.OptinConfirmationTTL},
+		{"EMAIL_VERIFICATION_TTL", &cfg.EmailVerificationTTL},
+		{"VERIFICATION_RESEND_WINDOW", &cfg.VerificationResendWindow},
+		{"VERIFICATION_CLEANUP_INTERVAL", &cfg.VerificationCleanupInterval},
 	} {
 		raw := k.String(envPrefix + d.name)
 		if raw == "" {
@@ -344,6 +375,37 @@ func (c *Config) applyDefaults() {
 	if c.MediaMaxBytes == 0 {
 		c.MediaMaxBytes = 10 << 20
 	}
+	if c.VerificationSenderName == "" {
+		c.VerificationSenderName = "nvelope"
+	}
+	if c.EmailVerificationTTL == 0 {
+		c.EmailVerificationTTL = 24 * time.Hour
+	}
+	if c.VerificationResendLimit == 0 {
+		c.VerificationResendLimit = 5
+	}
+	if c.VerificationResendWindow == 0 {
+		c.VerificationResendWindow = time.Hour
+	}
+	if c.VerificationCleanupInterval == 0 {
+		c.VerificationCleanupInterval = 24 * time.Hour
+	}
+}
+
+// splitCSV parses a comma-separated environment value into a trimmed list with
+// empty entries dropped. An empty or blank value yields a nil slice.
+func splitCSV(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Validate reports whether the configuration is usable. The returned error,
@@ -450,6 +512,21 @@ func (c Config) Validate() error {
 	}
 	if c.MediaMaxBytes <= 0 {
 		errs = append(errs, errors.New("NVELOPE_MEDIA_MAX_BYTES must be a positive integer"))
+	}
+	if c.VerificationSenderDomain == "" {
+		errs = append(errs, errors.New("NVELOPE_VERIFICATION_SENDER_DOMAIN is required"))
+	}
+	if c.EmailVerificationTTL <= 0 {
+		errs = append(errs, errors.New("NVELOPE_EMAIL_VERIFICATION_TTL must be a positive duration"))
+	}
+	if c.VerificationResendLimit <= 0 {
+		errs = append(errs, errors.New("NVELOPE_VERIFICATION_RESEND_LIMIT must be a positive integer"))
+	}
+	if c.VerificationResendWindow <= 0 {
+		errs = append(errs, errors.New("NVELOPE_VERIFICATION_RESEND_WINDOW must be a positive duration"))
+	}
+	if c.VerificationCleanupInterval <= 0 {
+		errs = append(errs, errors.New("NVELOPE_VERIFICATION_CLEANUP_INTERVAL must be a positive duration"))
 	}
 	return errors.Join(errs...)
 }

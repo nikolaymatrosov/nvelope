@@ -22,4 +22,29 @@ var (
 	// ErrInvalidCredentials is returned by the login flow for an unknown email
 	// or a wrong password — identical for both, to resist account enumeration.
 	ErrInvalidCredentials = apperr.NewAuthorization("invalid_credentials", "invalid email or password")
+
+	// ErrEmailDomainNotAllowed is returned when a registration's email domain
+	// is not on the configured allowlist.
+	ErrEmailDomainNotAllowed = apperr.NewIncorrectInput(
+		"email_domain_not_allowed", "registration from this email domain is not allowed")
+
+	// ErrEmailNotVerified is returned by the login flow when the password is
+	// correct but the account has not yet verified its email address. It is
+	// returned only after the password check, so it never leaks account
+	// existence.
+	ErrEmailNotVerified = apperr.NewForbidden(
+		"email_not_verified", "verify your email address before signing in")
+
+	// ErrVerificationLinkInvalid is returned when an email-verification link is
+	// unknown or expired. It deliberately does not distinguish the two, so a
+	// verification response cannot be used to probe for accounts.
+	ErrVerificationLinkInvalid = apperr.NewIncorrectInput(
+		"verification_link_invalid", "this verification link is invalid or has expired")
+
+	// ErrVerificationResendThrottled is returned when an account has requested
+	// too many verification-email resends in a short period. internal/api maps
+	// its slug to HTTP 429.
+	ErrVerificationResendThrottled = apperr.NewIncorrectInput(
+		"verification_resend_throttled",
+		"too many verification emails requested — please wait before trying again")
 )

@@ -6,6 +6,19 @@
         "shadcn@latest",
         "mcp"
       ]
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ],
+      "env": {}
+    },
+    "storybook": {
+      "type": "http",
+      "url": "http://localhost:6006/mcp"
     }
   }
 }

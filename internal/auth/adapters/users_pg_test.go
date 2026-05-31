@@ -2,7 +2,9 @@ package adapters_test
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -112,6 +114,72 @@ func TestUsersUpdateLocale(t *testing.T) {
 	reloaded, err = repo.GetByID(ctx, created.ID())
 	require.NoError(t, err)
 	require.Equal(t, "en", reloaded.Locale().String())
+}
+
+func TestUsersCreateWithVerification(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewUsers(pool)
+	verifications := adapters.NewEmailVerifications(pool)
+	ctx := context.Background()
+
+	u, addr := newUser(t, "Ada")
+	created, err := repo.CreateWithVerification(ctx, u, "hashed-password",
+		func(userID string) (*domain.EmailVerification, string, error) {
+			v, err := domain.NewEmailVerification(userID, time.Hour)
+			return v, "token-hash-" + userID, err
+		})
+	require.NoError(t, err)
+	require.NotEmpty(t, created.ID(), "the database assigns an id")
+	require.Equal(t, addr, created.Email().String())
+	require.False(t, created.IsEmailVerified(), "a freshly created account is unverified")
+
+	// The first verification challenge was inserted in the same transaction.
+	got, err := verifications.GetByTokenHash(ctx, "token-hash-"+created.ID())
+	require.NoError(t, err)
+	require.Equal(t, created.ID(), got.UserID())
+}
+
+func TestUsersCreateWithVerificationRollsBackOnError(t *testing.T) {
+	t.Parallel()
+	repo := adapters.NewUsers(dbtest.AppPool(t))
+	ctx := context.Background()
+
+	u, addr := newUser(t, "Ada")
+	wantErr := errors.New("token generation failed")
+	_, err := repo.CreateWithVerification(ctx, u, "hash",
+		func(string) (*domain.EmailVerification, string, error) {
+			return nil, "", wantErr
+		})
+	require.ErrorIs(t, err, wantErr)
+
+	// The user insert was rolled back with the failed token issuance.
+	_, err = repo.LookupByEmail(ctx, addr)
+	require.ErrorIs(t, err, domain.ErrUserNotFound)
+}
+
+func TestUsersMarkEmailVerified(t *testing.T) {
+	t.Parallel()
+	repo := adapters.NewUsers(dbtest.AppPool(t))
+	ctx := context.Background()
+
+	u, _ := newUser(t, "Ada")
+	created, err := repo.Create(ctx, u, "hash")
+	require.NoError(t, err)
+	require.False(t, created.IsEmailVerified())
+
+	verifiedAt := time.Now()
+	require.NoError(t, repo.MarkEmailVerified(ctx, created.ID(), verifiedAt))
+
+	reloaded, err := repo.GetByID(ctx, created.ID())
+	require.NoError(t, err)
+	require.True(t, reloaded.IsEmailVerified(), "the account is now verified")
+
+	// Marking again is an idempotent no-op — the original instant stands.
+	require.NoError(t, repo.MarkEmailVerified(ctx, created.ID(), verifiedAt.Add(time.Hour)))
+	again, err := repo.GetByID(ctx, created.ID())
+	require.NoError(t, err)
+	require.WithinDuration(t, *reloaded.EmailVerifiedAt(), *again.EmailVerifiedAt(), time.Second)
 }
 
 func TestUsersUpdateLocaleUnknownUser(t *testing.T) {
