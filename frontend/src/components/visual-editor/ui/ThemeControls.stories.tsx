@@ -21,7 +21,6 @@ function Harness({ initial }: { initial: Theme | null }) {
 }
 
 const meta = {
-  title: "Visual Editor/ThemeControls",
   component: ThemeControls,
   // The component's props are all required; supply defaults at the meta level
   // so each story can drive rendering through its stateful Harness without

@@ -2,7 +2,6 @@ import { Alert, AlertDescription, AlertTitle } from "./alert"
 import type { Meta, StoryObj } from "@storybook/react-vite"
 
 const meta = {
-  title: "UI/Alert",
   component: Alert,
 } satisfies Meta<typeof Alert>
 

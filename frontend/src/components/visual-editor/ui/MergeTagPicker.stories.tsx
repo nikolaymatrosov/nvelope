@@ -35,7 +35,6 @@ function Harness() {
 }
 
 const meta = {
-  title: "Visual Editor/MergeTagPicker",
   component: MergeTagPicker,
   decorators: [withSeededQuery],
   // slug + editor are required props; supply them at the meta level so each

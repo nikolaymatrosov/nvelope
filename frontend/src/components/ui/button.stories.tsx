@@ -3,7 +3,6 @@ import { Button } from "./button"
 import type { Meta, StoryObj } from "@storybook/react-vite"
 
 const meta = {
-  title: "UI/Button",
   component: Button,
   args: { children: "Button", onClick: fn() },
   argTypes: {
