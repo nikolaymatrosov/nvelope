@@ -1,0 +1,7 @@
+# Full CI gate before pushing: the pre-commit hook only runs the fast linters
+# + frontend typecheck/i18n, so the slow, comprehensive suite (backend
+# build/test/arch, frontend drift checks, test, build, Storybook) runs here.
+# Mirrors .github/workflows/ci.yml so a clean push predicts a green pipeline.
+# Set HUSKY=0 to skip in an emergency.
+echo "[pre-push] running full CI (make ci) — backend + frontend..."
+make ci || exit 1

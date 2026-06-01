@@ -9,6 +9,7 @@
 import { useEffect, useReducer, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { Editor } from "@tiptap/core"
+import type { TFunction } from "i18next"
 import type { Node as PMNode } from "@tiptap/pm/model"
 import type { BlockSelection } from "../hooks/useBlockSelection"
 
@@ -122,7 +123,7 @@ export function StructureOutline({ editor, selection }: Props) {
   )
 }
 
-function labelFor(entry: OutlineEntry, t: (k: string, opts?: Record<string, unknown>) => string): string {
+function labelFor(entry: OutlineEntry, t: TFunction<"visualEditor">): string {
   switch (entry.type) {
     case "heading":
       return t("structure.block.heading", { level: entry.level ?? 1 })
@@ -160,7 +161,7 @@ function OutlineNode({
   selection: BlockSelection
   collapsed: Set<number>
   setCollapsed: React.Dispatch<React.SetStateAction<Set<number>>>
-  t: (k: string, opts?: Record<string, unknown>) => string
+  t: TFunction<"visualEditor">
 }) {
   const isContainer = entry.children.length > 0
   const isCollapsed = collapsed.has(entry.pos)

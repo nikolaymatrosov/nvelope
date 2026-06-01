@@ -18,7 +18,7 @@ const Cell = ({ label }: { label: string }) => (
 export const Horizontal: Story = {
   render: () => (
     <div className="h-48 w-96 rounded-lg border">
-      <ResizablePanelGroup direction="horizontal">
+      <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={40}>
           <Cell label="Left" />
         </ResizablePanel>
@@ -34,7 +34,7 @@ export const Horizontal: Story = {
 export const Vertical: Story = {
   render: () => (
     <div className="h-64 w-96 rounded-lg border">
-      <ResizablePanelGroup direction="vertical">
+      <ResizablePanelGroup orientation="vertical">
         <ResizablePanel defaultSize={50}>
           <Cell label="Top" />
         </ResizablePanel>
@@ -51,7 +51,7 @@ export const Vertical: Story = {
 export const WithHandle: Story = {
   render: () => (
     <div className="h-48 w-96 rounded-lg border">
-      <ResizablePanelGroup direction="horizontal">
+      <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={33}>
           <Cell label="Sidebar" />
         </ResizablePanel>

@@ -7,9 +7,10 @@ export default defineConfig({
   locales: ["en", "ru"],
   extract: {
     input: ["src/**/*.{ts,tsx}"],
-    // Test files assert on literal copy — they are not UI surfaces and must
-    // not be linted for hardcoded strings.
-    ignore: ["src/**/*.test.{ts,tsx}"],
+    // Test files and Storybook stories carry literal assertion/demo copy —
+    // they are dev-only surfaces, not shipped UI, and must not be linted for
+    // hardcoded strings.
+    ignore: ["src/**/*.test.{ts,tsx}", "src/**/*.stories.{ts,tsx}"],
     output: "src/locales/{{language}}/{{namespace}}.json",
     defaultNS: "common",
     primaryLanguage: "en",

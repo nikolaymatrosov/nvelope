@@ -1,5 +1,6 @@
 .PHONY: build run-api run-worker run-scheduler test test-db-clean lint lint-arch \
-        verify ci tidy migrate-up migrate-down migrate-version migrate-create \
+        verify ci ci-backend ci-frontend tidy migrate-up migrate-down \
+        migrate-version migrate-create \
         k8s-images k8s-tls k8s-deploy k8s-delete
 
 GO      ?= go
@@ -62,13 +63,25 @@ verify: lint-arch
 	$(GO) test ./...
 
 # ci reproduces .github/workflows/ci.yml locally, step for step and in the
-# same order, so a green `make ci` predicts a green pipeline. The i18n
-# key-lint is advisory (mirrors the workflow's continue-on-error).
-ci:
+# same order, so a green `make ci` predicts a green pipeline. It is split into
+# ci-backend and ci-frontend (mirroring the workflow's two jobs) and recombined
+# here; run either half on its own when you only touched one side.
+ci: ci-backend ci-frontend
+
+# ci-backend mirrors the `backend` workflow job.
+ci-backend:
 	$(GO) build ./...
 	$(GO) test ./...
 	$(MAKE) lint-arch
 	golangci-lint run
+
+# ci-frontend mirrors the `frontend` workflow job, step for step and in order.
+# Every `&&`-chained step is a hard gate, exactly like the workflow (the i18n
+# type/email drift checks, i18n key-lint, and the Storybook smoke build all fail
+# the build). Playwright's Chromium must be present for the browser story tests
+# under `pnpm test`; install it via `cd frontend && pnpm exec playwright install
+# chromium` if `pnpm test` reports a missing browser.
+ci-frontend:
 	cd frontend && pnpm install --frozen-lockfile \
 		&& pnpm i18n:types \
 		&& git diff --exit-code src/i18n/resources.d.ts src/i18n/i18next.d.ts \
@@ -78,7 +91,8 @@ ci:
 		&& pnpm lint \
 		&& pnpm i18n:lint \
 		&& pnpm test \
-		&& pnpm build
+		&& pnpm build \
+		&& pnpm build-storybook
 
 tidy:
 	$(GO) mod tidy

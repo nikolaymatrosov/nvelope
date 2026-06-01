@@ -20,6 +20,10 @@ import {
 import i18n from "@/i18n/emails"
 import { DEFAULT_LOCALE } from "@/i18n/config"
 
+// The product name is a proper noun, identical across locales, so the logo's
+// alt text is not translatable copy.
+const BRAND_NAME = "nvelope"
+
 interface VerifyEmailProps {
   name: string
   verifyUrl: string
@@ -55,7 +59,7 @@ export const VerifyEmail = ({ name, verifyUrl, locale }: VerifyEmailProps) => {
                 <Section className="mb-8">
                   <Img
                     src="https://storage.yandexcloud.net/nvelope/nvelope.png"
-                    alt="nvelope"
+                    alt={BRAND_NAME}
                     height={40}
                     className="mx-auto block"
                   />

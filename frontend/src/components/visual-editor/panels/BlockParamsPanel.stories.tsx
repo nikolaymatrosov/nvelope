@@ -2,7 +2,6 @@ import { useState } from "react"
 import { expect, userEvent, within } from "storybook/test"
 import { BlockParamsPanel } from "./BlockParamsPanel"
 import type { BlockSelection } from "../hooks/useBlockSelection"
-import type { BlockStyle } from "@/lib/api-types"
 import type { Meta, StoryObj } from "@storybook/react-vite"
 
 // Stateful harness that mimics the shared selection model: it holds a fake
@@ -34,6 +33,17 @@ function Harness({
 
 const meta = {
   component: BlockParamsPanel,
+  // The stories supply their own selection via render; these args only satisfy
+  // the required-prop type (see VisualEmailEditor.stories).
+  args: {
+    selection: {
+      selectedPos: null,
+      selectedNode: null,
+      selectBlock: () => {},
+      updateSelectedAttrs: () => {},
+      clear: () => {},
+    },
+  },
 } satisfies Meta<typeof BlockParamsPanel>
 
 export default meta

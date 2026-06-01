@@ -45,6 +45,9 @@ function Harness() {
 
 const meta = {
   component: ThreePaneEditor,
+  // The stories drive the component through <Harness/> in their own render;
+  // these args only satisfy the required-prop type (see VisualEmailEditor.stories).
+  args: { slug: SLUG, value: sampleDoc, onChange: () => {} },
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (

@@ -16,6 +16,7 @@ import { useBlockSelection } from "./hooks/useBlockSelection"
 import { BlockParamsPanel } from "./panels/BlockParamsPanel"
 import { StructureOutline } from "./panels/StructureOutline"
 import type { Editor } from "@tiptap/core"
+import type { TFunction } from "i18next"
 import type { ComponentProps, ReactNode } from "react"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -65,7 +66,7 @@ type LayoutProps = {
   left: ReactNode
   right: ReactNode
   canvas: ReactNode
-  t: (key: string) => string
+  t: TFunction<"visualEditor">
 }
 
 // WideLayout: three resizable, individually-collapsible panels with persisted

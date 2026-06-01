@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react"
 import { expect, within } from "storybook/test"
 import { EditorContent, useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
@@ -47,6 +46,18 @@ function Harness() {
 
 const meta = {
   component: StructureOutline,
+  // The stories mount a real editor via <Harness/> in their own render; these
+  // args only satisfy the required-prop type (see VisualEmailEditor.stories).
+  args: {
+    editor: null as unknown as Editor,
+    selection: {
+      selectedPos: null,
+      selectedNode: null,
+      selectBlock: () => {},
+      updateSelectedAttrs: () => {},
+      clear: () => {},
+    },
+  },
 } satisfies Meta<typeof StructureOutline>
 
 export default meta

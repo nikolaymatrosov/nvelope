@@ -15,6 +15,7 @@ import { TextParams } from "./params/TextParams"
 import type { ParamFormProps } from "./params/StyleControls"
 import type { BlockSelection } from "../hooks/useBlockSelection"
 import type { BlockStyle } from "@/lib/api-types"
+import type { TFunction } from "i18next"
 
 type Props = {
   selection: BlockSelection
@@ -63,7 +64,7 @@ function PanelBody({
 }: {
   selection: BlockSelection
   disabled: boolean
-  t: (k: string) => string
+  t: TFunction<"visualEditor">
 }) {
   const node = selection.selectedNode
   if (node == null) {

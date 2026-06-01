@@ -8,4 +8,8 @@ fi
 if echo "$staged" | grep -qE '^frontend/.*\.(ts|tsx|js|jsx)$'; then
 	echo "[pre-commit] frontend lint (eslint)..."
 	(cd frontend && pnpm lint) || exit 1
+	echo "[pre-commit] frontend typecheck (tsc)..."
+	(cd frontend && pnpm typecheck) || exit 1
+	echo "[pre-commit] frontend i18n key lint..."
+	(cd frontend && pnpm i18n:lint) || exit 1
 fi

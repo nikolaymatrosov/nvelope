@@ -303,7 +303,10 @@ function DividerView({ block }: { block: DividerBlock; theme: Theme }) {
   const s = mapBlockStyle(style)
   const hr: React.CSSProperties = {
     borderTopWidth: s.borderWidth,
-    borderTopStyle: s.borderStyle,
+    // Read the style keyword from the narrow BlockStyle union: the mapped
+    // CSSProperties.borderStyle is the wider shorthand type, which TS won't
+    // narrow to the single-keyword borderTopStyle.
+    borderTopStyle: style.borderStyle,
     borderTopColor: s.borderColor,
     paddingTop: s.paddingTop,
     paddingBottom: s.paddingBottom,

@@ -21,7 +21,7 @@ function selectionFor(node: FakeNode | null): BlockSelection & { updateSelectedA
     // The panel only reads node.type.name and node.attrs.
     selectedNode: node as unknown as BlockSelection["selectedNode"],
     selectBlock: vi.fn(),
-    updateSelectedAttrs: vi.fn(),
+    updateSelectedAttrs: vi.fn<(attrs: Record<string, unknown>) => void>(),
     clear: vi.fn(),
   }
 }
@@ -94,7 +94,7 @@ describe("BlockParamsPanel", () => {
 
   it("constrains numeric controls to their email-safe bounds", () => {
     render(<BlockParamsPanel selection={selectionFor(buttonNode())} />)
-    const radius = screen.getByTestId("ve-param-borderRadius")
+    const radius = screen.getByTestId("ve-param-borderRadius") as unknown as HTMLInputElement
     expect(radius.type).toBe("number")
     expect(radius.min).toBe("0")
     expect(radius.max).toBe("48")

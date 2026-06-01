@@ -7,6 +7,7 @@
 
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import type { BlockStyle } from "@/lib/api-types"
 import { ALLOWED_FONT_FAMILIES, fontLabel } from "@/server/validate/fonts"
 
@@ -97,7 +98,7 @@ type FieldProps = {
   value: BlockStyle
   onChange: (patch: Partial<BlockStyle>) => void
   disabled: boolean
-  t: (key: string) => string
+  t: TFunction<"visualEditor">
 }
 
 function Field({ field, value, onChange, disabled, t }: FieldProps) {
@@ -192,7 +193,7 @@ function Field({ field, value, onChange, disabled, t }: FieldProps) {
   }
 }
 
-function ResetButton({ onReset, disabled, t }: { onReset: () => void; disabled: boolean; t: (k: string) => string }) {
+function ResetButton({ onReset, disabled, t }: { onReset: () => void; disabled: boolean; t: TFunction<"visualEditor"> }) {
   return (
     <button
       type="button"
@@ -220,7 +221,7 @@ function ColorField({
   value?: string
   onChange: (v: string | undefined) => void
   disabled: boolean
-  t: (k: string) => string
+  t: TFunction<"visualEditor">
 }) {
   const set = value !== undefined
   return (
@@ -264,7 +265,7 @@ function NumberField({
   step?: number
   onChange: (v: number | undefined) => void
   disabled: boolean
-  t: (k: string) => string
+  t: TFunction<"visualEditor">
 }) {
   // While the field is focused we mirror the user's literal keystrokes via a
   // local draft so a multi-digit entry can be typed one digit at a time —
@@ -330,7 +331,7 @@ function SelectField({
   options: ReadonlyArray<{ value: string; label: string }>
   onChange: (v: string | undefined) => void
   disabled: boolean
-  t: (k: string) => string
+  t: TFunction<"visualEditor">
 }) {
   return (
     <label className="ve-style-controls__row">
@@ -363,7 +364,7 @@ function AlignField({
   value?: "left" | "center" | "right"
   onChange: (v: "left" | "center" | "right" | undefined) => void
   disabled: boolean
-  t: (k: string) => string
+  t: TFunction<"visualEditor">
 }) {
   const options: Array<"left" | "center" | "right"> = ["left", "center", "right"]
   return (
@@ -397,14 +398,16 @@ function PaddingGroup({
   value: BlockStyle
   onChange: (patch: Partial<BlockStyle>) => void
   disabled: boolean
-  t: (k: string) => string
+  t: TFunction<"visualEditor">
 }) {
-  const sides: Array<["paddingTop" | "paddingRight" | "paddingBottom" | "paddingLeft", string]> = [
+  // `as const` keeps the label entries as literal translation keys so the
+  // strongly-typed t() accepts them (a widened `string` would not).
+  const sides = [
     ["paddingTop", "params.fields.paddingTop"],
     ["paddingRight", "params.fields.paddingRight"],
     ["paddingBottom", "params.fields.paddingBottom"],
     ["paddingLeft", "params.fields.paddingLeft"],
-  ]
+  ] as const
   return (
     <fieldset className="ve-style-controls__group">
       <legend>{t("params.fields.padding")}</legend>
@@ -434,7 +437,7 @@ function BorderGroup({
   value: BlockStyle
   onChange: (patch: Partial<BlockStyle>) => void
   disabled: boolean
-  t: (k: string) => string
+  t: TFunction<"visualEditor">
 }) {
   return (
     <fieldset className="ve-style-controls__group">
