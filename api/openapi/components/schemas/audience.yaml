@@ -96,7 +96,17 @@ Subscriber:
   additionalProperties: false
   properties:
     id: { type: string }
-    email: { type: string, format: email }
+    # x-go-type pins the generated field to plain string, overriding
+    # oapi-codegen's default of binding `format: email` to
+    # openapi_types.Email. That generated type validates (and silently
+    # rewrites, via net/mail.ParseAddress) the address inside its own
+    # UnmarshalJSON, which runs during the strict wrapper's body decode —
+    # before either the kin-openapi validator or the audience domain ever
+    # see the value. See internal/api/openapi_wiring.go for the matching
+    # validator-side note: both doors are deliberately closed so
+    # normalizeEmail (internal/audience/domain/subscriber.go) stays the one
+    # place email format is enforced.
+    email: { type: string, format: email, x-go-type: string }
     name: { type: string }
     state: { $ref: '#/SubscriberState' }
     attributes:
@@ -125,7 +135,9 @@ CreateSubscriberRequest:
   required: [email]
   additionalProperties: false
   properties:
-    email: { type: string, format: email }
+    # x-go-type: string — see the comment on Subscriber.email above; same
+    # reason.
+    email: { type: string, format: email, x-go-type: string }
     name: { type: string, default: "" }
     attributes:
       type: object

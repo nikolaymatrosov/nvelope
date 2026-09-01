@@ -1,8 +1,6 @@
 package api
 
 import (
-	openapitypes "github.com/oapi-codegen/runtime/types"
-
 	"github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
 	audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
 	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
@@ -67,7 +65,7 @@ func subscriberViewToAPI(v audiencequery.SubscriberView) openapitenant.Subscribe
 	}
 	return openapitenant.Subscriber{
 		Id:          v.ID,
-		Email:       openapitypes.Email(v.Email),
+		Email:       v.Email,
 		Name:        v.Name,
 		State:       openapitenant.SubscriberState(v.State),
 		Attributes:  attrs,

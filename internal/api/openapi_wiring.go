@@ -131,12 +131,25 @@ func (s *Server) openapiRequestValidator(spec *openapi3.T) openapitenant.Middlew
 			// "there is no authentication".
 			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 
-			// String-format validation (`format: email` on
+			// String-format validation (`format: email` on Subscriber.email and
 			// CreateSubscriberRequest.email) is deliberately left off, which is
 			// kin-openapi's default. A malformed address is rejected by the
 			// audience domain as a 422 with a domain error code; turning format
 			// checking on here would turn that into an anonymous 400 from the
 			// middleware and move the rule out of the domain.
+			//
+			// That is only half the story, though: oapi-codegen has its own,
+			// separate opinion about `format: email` — by default it binds the
+			// property to openapi_types.Email, whose UnmarshalJSON runs
+			// net/mail.ParseAddress and rejects (and silently rewrites) a bad
+			// address *during the strict wrapper's body decode*, before this
+			// validator or the domain ever run. Leaving this Options block alone
+			// does not close that door; `x-go-type: string` on both email
+			// properties in api/openapi/components/schemas/audience.yaml does.
+			// Both doors have to stay shut for normalizeEmail
+			// (internal/audience/domain/subscriber.go) to be the one place email
+			// format is enforced — this comment used to only describe one of
+			// them.
 		},
 
 		// The warning fires because `servers:` is non-nil and warns that Host

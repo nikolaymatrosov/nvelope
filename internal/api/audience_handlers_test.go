@@ -188,6 +188,39 @@ func TestSubscriberWireShape(t *testing.T) {
 	require.Len(t, items, 1)
 }
 
+// TestSubscriberWireShapeNormalizesEmptyCollections pins
+// subscriberViewToAPI's nil-to-empty normalization for a subscriber with
+// neither custom attributes nor list memberships: the schema declares both
+// required, and a nil Go value of either marshals to `null`, which the
+// contract forbids. Every other subscriber test in this file creates one
+// with at least one of each, so neither would catch a regression to null on
+// its own.
+func TestSubscriberWireShapeNormalizesEmptyCollections(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, created := ts.request(http.MethodPost, base+"/subscribers",
+		map[string]any{"email": "bare@example.com"})
+	require.Equal(t, http.StatusCreated, status)
+	subID, _ := created["id"].(string)
+	require.NotEmpty(t, subID)
+
+	status, body := ts.request(http.MethodGet, base+"/subscribers/"+subID, nil)
+	require.Equal(t, http.StatusOK, status)
+
+	attrs, ok := body["attributes"].(map[string]any)
+	require.True(t, ok, "attributes is {}, not null, when the subscriber has none")
+	require.Empty(t, attrs)
+
+	memberships, ok := body["memberships"].([]any)
+	require.True(t, ok, "memberships is [], not null, when the subscriber belongs to no list")
+	require.Empty(t, memberships)
+}
+
 func TestSubscriberDuplicateEmailConflicts(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
@@ -204,12 +237,6 @@ func TestSubscriberDuplicateEmailConflicts(t *testing.T) {
 	require.Equal(t, http.StatusConflict, status)
 }
 
-// TestSubscriberInvalidEmailRejected expects 400, not 422: openapi_types.Email
-// validates the address inside its own UnmarshalJSON, so a malformed email
-// fails while the strict handler is decoding the body — before the request
-// ever reaches the kin-openapi validator. That is the same "invalid_body" 400
-// every other undecodable body gets (see strictRequestError), not a 422
-// schema violation.
 func TestSubscriberInvalidEmailRejected(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
@@ -219,7 +246,7 @@ func TestSubscriberInvalidEmailRejected(t *testing.T) {
 
 	status, _ := ts.request(http.MethodPost, "/t/"+slug+"/api/subscribers",
 		map[string]any{"email": "not-an-email"})
-	require.Equal(t, http.StatusBadRequest, status)
+	require.Equal(t, http.StatusUnprocessableEntity, status)
 }
 
 func TestSubscriberListMembership(t *testing.T) {
@@ -251,6 +278,56 @@ func TestSubscriberListMembership(t *testing.T) {
 
 	status, _ = ts.request(http.MethodDelete, base+"/subscribers/"+subID+"/lists/"+listID, nil)
 	require.Equal(t, http.StatusNoContent, status)
+}
+
+// TestAddSubscriberToListChecksBodyListIDNotPath pins the one detail
+// AddSubscriberToList gets right that its siblings (RemoveSubscriberFromList,
+// ChangeSubscription) do not need to: the list id it authorizes against comes
+// from the request body (req.Body.ListId), not the path — the path only ever
+// carries the subscriber id here. A regression that checked req.Id instead
+// would compile (both are strings) and would fail closed for the wrong
+// reason on the negative case below, but it would also wrongly *deny* the
+// positive case, since a subscriber id is never a valid list id. Both
+// assertions together are what catch that flip; either alone would not.
+func TestAddSubscriberToListChecksBodyListIDNotPath(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	member, memberEmail := ts.addMember(slug)
+	ts.enterWorkspaceOn(member, slug)
+	memberID := ts.workspaceUserID(slug, memberEmail)
+
+	_, a := ts.request(http.MethodPost, base+"/lists", map[string]any{"name": "ListA"})
+	listA := a["id"].(string)
+	_, b := ts.request(http.MethodPost, base+"/lists", map[string]any{"name": "ListB"})
+	listB := b["id"].(string)
+	_, sub := ts.request(http.MethodPost, base+"/subscribers", map[string]any{"email": "s@example.com"})
+	subID := sub["id"].(string)
+
+	// The member gets a subscribers:manage role, but only on listA.
+	_, role := ts.request(http.MethodPost, base+"/roles", map[string]any{
+		"name": "SubscriberEditor", "permissions": []string{"subscribers:manage"},
+	})
+	roleID := role["id"].(string)
+	status, _ := ts.request(http.MethodPut, base+"/users/"+memberID+"/lists/"+listA+"/role",
+		map[string]any{"role_id": roleID})
+	require.Equal(t, http.StatusNoContent, status)
+
+	// Adding to listA (the granted list, named in the body) succeeds.
+	status, _ = ts.do(member, http.MethodPost, base+"/subscribers/"+subID+"/lists",
+		map[string]any{"listId": listA})
+	require.Equal(t, http.StatusNoContent, status, "the per-list grant on listA authorizes adding to listA")
+
+	// Adding to listB (named in the body, not granted) is forbidden — even
+	// though the path parameter (the subscriber id) is identical to the call
+	// above. Checking the path instead of the body would authorize this.
+	status, _ = ts.do(member, http.MethodPost, base+"/subscribers/"+subID+"/lists",
+		map[string]any{"listId": listB})
+	require.Equal(t, http.StatusForbidden, status, "the per-list grant on listA does not widen to listB")
 }
 
 func TestSegmentQuery(t *testing.T) {
@@ -314,6 +391,50 @@ func TestSegmentQueryWireShape(t *testing.T) {
 	})
 	require.Equal(t, http.StatusOK, status)
 	require.EqualValues(t, 1, res["total"], "segment nodes are lowerCamelCase")
+}
+
+// TestSegmentQueryWireShapeNestedGroups goes one level deeper than
+// TestSegmentQueryWireShape: the outer group's one child is itself a group,
+// not a leaf. segmentNodeFromAPI recurses by calling itself on every element
+// of Children, so this is the shape that would catch a future hand-rolled,
+// non-recursive expansion (one that flattened only the first level).
+func TestSegmentQueryWireShapeNestedGroups(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	for _, email := range []string{"b@example.com", "c@example.com", "d@example.com"} {
+		status, _ := ts.request(http.MethodPost, base+"/subscribers", map[string]any{"email": email})
+		require.Equal(t, http.StatusCreated, status)
+	}
+
+	// Outer AND has one child: an inner OR group of two field leaves.
+	status, res := ts.request(http.MethodPost, base+"/subscribers/query", map[string]any{
+		"segment": map[string]any{
+			"conj": "and",
+			"children": []any{
+				map[string]any{
+					"conj": "or",
+					"children": []any{
+						map[string]any{"field": map[string]any{"field": "email", "op": "eq", "value": "b@example.com"}},
+						map[string]any{"field": map[string]any{"field": "email", "op": "eq", "value": "c@example.com"}},
+					},
+				},
+			},
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	items, ok := res["items"].([]any)
+	require.True(t, ok)
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.(map[string]any)["email"].(string)] = true
+	}
+	require.Equal(t, map[string]bool{"b@example.com": true, "c@example.com": true}, got,
+		"the inner OR group's own children round-trip: both its leaves match, and d@example.com (outside both groups) does not")
 }
 
 // TestSegmentQueryMalformedRejected drives an unknown segment field ("phone")

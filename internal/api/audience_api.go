@@ -120,7 +120,7 @@ func (s *Server) CreateSubscriber(ctx context.Context,
 	}
 	res, err := s.audience.Commands.CreateSubscriber.Handle(ctx, audiencecommand.CreateSubscriber{
 		TenantID:   ws.ID,
-		Email:      string(req.Body.Email),
+		Email:      req.Body.Email,
 		Name:       deref(req.Body.Name, ""),
 		Attributes: deref(req.Body.Attributes, nil),
 		ListIDs:    deref(req.Body.ListIds, nil),
