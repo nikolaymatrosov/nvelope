@@ -12,8 +12,13 @@ Lists:
         content:
           application/json:
             schema: { $ref: '../../components/schemas/audience.yaml#/ListPage' }
+      # Any operation carrying limit/offset can be rejected on its parameters:
+      # 400 when one cannot be bound to its Go type at all, 422 when it binds
+      # but violates the schema (limit above its maximum).
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
       '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
       '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
       '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
   post:
     operationId: createList
@@ -106,8 +111,11 @@ Subscribers:
         content:
           application/json:
             schema: { $ref: '../../components/schemas/audience.yaml#/SubscriberPage' }
+      # As on listLists: q/limit/offset make a parameter rejection reachable.
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
       '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
       '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
       '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
   post:
     operationId: createSubscriber

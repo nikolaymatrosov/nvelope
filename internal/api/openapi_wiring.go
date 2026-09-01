@@ -43,14 +43,73 @@ func (s *Server) mountGeneratedTenantAPI(r chi.Router) {
 	})
 
 	openapitenant.HandlerWithOptions(strict, openapitenant.ChiServerOptions{
-		BaseRouter:  r,
-		Middlewares: []openapitenant.MiddlewareFunc{s.openapiRequestValidator(spec)},
-		ErrorHandlerFunc: func(w http.ResponseWriter, req *http.Request, err error) {
-			// Raised by the generated wrapper when a path or query parameter
-			// cannot be bound to its Go type at all.
-			writeProblem(w, req, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		},
+		BaseRouter:       r,
+		Middlewares:      []openapitenant.MiddlewareFunc{s.openapiRequestValidator(spec)},
+		ErrorHandlerFunc: s.parameterBindingError,
 	})
+}
+
+// parameterBindingError renders a failure the generated wrapper raises while
+// binding path and query parameters into their Go types.
+//
+// This runs *before* the request validator, not after: oapi-codegen's wrapper
+// binds every parameter and only then applies ChiServerOptions.Middlewares. So
+// `?limit=abc` never reaches kin-openapi, while `?limit=99999` binds fine and
+// is rejected by it. Two code paths, one class of caller mistake.
+//
+// They therefore render identically — 422 `validation_failed` with a populated
+// errors array locating the parameter by name, the same document
+// validationErrorHandler produces for a schema violation. The split is an
+// artefact of where the binder sits, not a distinction the contract makes: a
+// value that does not match its declared type is a schema violation, and
+// kin-openapi would itself report it as one (SchemaError, keyword "type") were
+// the binder not there to pre-empt it. A client branching on `code` must not
+// have to learn that.
+//
+// Anything unclassifiable keeps the generic 400 rather than claiming a field it
+// cannot name.
+func (s *Server) parameterBindingError(w http.ResponseWriter, r *http.Request, err error) {
+	if fe, ok := parameterFieldError(err); ok {
+		writeProblem(w, r, http.StatusUnprocessableEntity, "validation_failed",
+			"the request body or parameters failed validation", []fieldError{fe})
+		return
+	}
+	writeProblem(w, r, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+}
+
+// parameterFieldError locates the offending parameter in a generated binder
+// error, reporting whether it recognised one.
+//
+// oapi-codegen declares six parameter error types but the tenant document only
+// makes two of them reachable: InvalidParamFormatError (a value that will not
+// parse) and RequiredParamError (a required parameter that is absent — today
+// only constructible for a required query parameter, since a missing path
+// parameter means the route did not match). The other four are for cookie
+// parameters, header parameters, deepObject-style JSON query parameters, and
+// repeated values, none of which this document uses; they are deliberately not
+// handled, so adding one of those features fails loudly on the generic branch
+// rather than being silently mislabelled here.
+func parameterFieldError(err error) (fieldError, bool) {
+	var invalid *openapitenant.InvalidParamFormatError
+	if errors.As(err, &invalid) {
+		// Detail carries the binder's own message rather than the wrapper's
+		// "Invalid format for parameter x: " prefix, which would only repeat
+		// Field. It echoes the caller's input and no server internals.
+		return fieldError{
+			Field: invalid.ParamName, Code: "invalid", Detail: invalid.Err.Error(),
+		}, true
+	}
+
+	var required *openapitenant.RequiredParamError
+	if errors.As(err, &required) {
+		// "required" is the JSON Schema keyword, matching the vocabulary
+		// fieldErrorsFrom takes from SchemaError.SchemaField.
+		return fieldError{
+			Field: required.ParamName, Code: "required", Detail: required.Error(),
+		}, true
+	}
+
+	return fieldError{}, false
 }
 
 // openapiRequestValidator builds the kin-openapi request-validation middleware

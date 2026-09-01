@@ -123,6 +123,15 @@ export interface components {
         UpdateListRequest: components["schemas"]["CreateListRequest"];
     };
     responses: {
+        /** @description The request was malformed. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description No authenticated workspace session. */
         Unauthorized: {
             headers: {
@@ -141,6 +150,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description The request body failed validation. */
+        UnprocessableEntity: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description An unexpected server failure. */
         InternalError: {
             headers: {
@@ -150,26 +168,8 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description The request was malformed. */
-        BadRequest: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
         /** @description The request conflicts with the resource's current state. */
         Conflict: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description The request body failed validation. */
-        UnprocessableEntity: {
             headers: {
                 [name: string]: unknown;
             };
@@ -224,8 +224,10 @@ export interface operations {
                     "application/json": components["schemas"]["ListPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };
     };

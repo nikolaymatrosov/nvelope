@@ -42,13 +42,15 @@ func (s *Server) CreateList(ctx context.Context,
 	if _, err := s.requirePerm(ctx, iamdomain.PermListsManage); err != nil {
 		return nil, err
 	}
+	// The fallbacks are the schema's own defaults; see deref's doc comment for
+	// why they are re-applied here rather than in the domain.
 	res, err := s.audience.Commands.CreateList.Handle(ctx, audiencecommand.CreateList{
 		TenantID:    ws.ID,
 		Name:        req.Body.Name,
-		Description: derefString(req.Body.Description),
-		Visibility:  string(derefVisibility(req.Body.Visibility)),
-		OptIn:       string(derefOptIn(req.Body.OptIn)),
-		Tags:        derefStrings(req.Body.Tags),
+		Description: deref(req.Body.Description, ""),
+		Visibility:  string(deref(req.Body.Visibility, openapitenant.Private)),
+		OptIn:       string(deref(req.Body.OptIn, openapitenant.Single)),
+		Tags:        deref(req.Body.Tags, nil),
 	})
 	if err != nil {
 		return nil, err
@@ -83,10 +85,10 @@ func (s *Server) UpdateList(ctx context.Context,
 		TenantID:    ws.ID,
 		ListID:      req.Id,
 		Name:        req.Body.Name,
-		Description: derefString(req.Body.Description),
-		Visibility:  string(derefVisibility(req.Body.Visibility)),
-		OptIn:       string(derefOptIn(req.Body.OptIn)),
-		Tags:        derefStrings(req.Body.Tags),
+		Description: deref(req.Body.Description, ""),
+		Visibility:  string(deref(req.Body.Visibility, openapitenant.Private)),
+		OptIn:       string(deref(req.Body.OptIn, openapitenant.Single)),
+		Tags:        deref(req.Body.Tags, nil),
 	}); err != nil {
 		return nil, err
 	}

@@ -32,10 +32,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalError'
     post:
@@ -324,6 +328,12 @@ components:
       allOf:
         - $ref: '#/components/schemas/CreateListRequest'
   responses:
+    BadRequest:
+      description: The request was malformed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Unauthorized:
       description: No authenticated workspace session.
       content:
@@ -336,26 +346,20 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+    UnprocessableEntity:
+      description: The request body failed validation.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     InternalError:
       description: An unexpected server failure.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
-    BadRequest:
-      description: The request was malformed.
-      content:
-        application/problem+json:
-          schema:
-            $ref: '#/components/schemas/Problem'
     Conflict:
       description: The request conflicts with the resource's current state.
-      content:
-        application/problem+json:
-          schema:
-            $ref: '#/components/schemas/Problem'
-    UnprocessableEntity:
-      description: The request body failed validation.
       content:
         application/problem+json:
           schema:

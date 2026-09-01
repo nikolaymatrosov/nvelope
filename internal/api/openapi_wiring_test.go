@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -96,13 +97,83 @@ func TestValidationMiddlewareRejectsUnknownField(t *testing.T) {
 
 	// additionalProperties: false is a constraint on the *object*, not on any
 	// one property, so kin-openapi reports it against the body root: an empty
-	// JSON Pointer and the "properties" keyword. A caller cannot highlight one
-	// input from this — it can only say the payload carried a field the
-	// contract does not define.
+	// JSON Pointer and the "properties" keyword. The SPA must therefore not
+	// branch on `field` to locate a 422 — an unknown-property rejection is
+	// unlocatable by construction, and all a form can say is that the payload
+	// carried a field the contract does not define.
+	//
+	// These two values are kin-openapi's, not ours: this is a characterization
+	// test. A library bump that renamed the keyword would fail it loudly here,
+	// which is the point — the wire contract would have changed under us.
 	require.Equal(t, "", doc.Errors[0].Field,
 		"an unknown property is reported against the object, not the property")
 	require.Equal(t, "properties", doc.Errors[0].Code)
 	require.NotEmpty(t, doc.Errors[0].Detail)
+}
+
+// TestGeneratedBinderRejectionLocatesTheParameter pins the taxonomy for a
+// parameter the generated wrapper cannot bind at all. The wrapper runs before
+// the request validator, so this rejection never reaches kin-openapi — but a
+// caller cannot see that and must not have to: it renders as the same
+// `validation_failed` document, with the same populated errors array, as the
+// schema violation TestGeneratedMountDoesNotEnforceDeclaredSecurity asserts.
+//
+// Before this was reconciled the two produced different codes (`invalid_request`
+// vs `validation_failed`) for one class of mistake, and the binder path carried
+// no errors array at all, so a form could not tell which parameter was bad.
+func TestGeneratedBinderRejectionLocatesTheParameter(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerForWiring(t)
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/t/acme/api/lists?limit=not-a-number", nil))
+
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	require.Equal(t, problemContentType, rec.Header().Get("Content-Type"))
+
+	var doc struct {
+		Code   string       `json:"code"`
+		Errors []fieldError `json:"errors"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&doc))
+	require.Equal(t, "validation_failed", doc.Code,
+		"the same code the validator uses for an out-of-range value")
+	require.Len(t, doc.Errors, 1)
+	require.Equal(t, "limit", doc.Errors[0].Field)
+	require.Equal(t, "invalid", doc.Errors[0].Code)
+	require.Contains(t, doc.Errors[0].Detail, "not-a-number",
+		"the detail echoes the caller's own input, not server internals")
+}
+
+// TestParameterFieldErrorClassifies covers parameterFieldError directly,
+// because two of its three branches cannot be driven over HTTP against this
+// document: RequiredParamError needs a required query parameter (the tenant
+// document has none — a missing *path* parameter means the route did not
+// match), and the fallthrough needs a binder error type the generated code
+// never constructs here.
+func TestParameterFieldErrorClassifies(t *testing.T) {
+	t.Parallel()
+
+	fe, ok := parameterFieldError(&openapitenant.InvalidParamFormatError{
+		ParamName: "offset", Err: errors.New("strconv.ParseInt: invalid syntax"),
+	})
+	require.True(t, ok)
+	require.Equal(t, "offset", fe.Field)
+	require.Equal(t, "invalid", fe.Code)
+	require.Equal(t, "strconv.ParseInt: invalid syntax", fe.Detail,
+		"the wrapper's redundant 'Invalid format for parameter x:' prefix is dropped")
+
+	fe, ok = parameterFieldError(&openapitenant.RequiredParamError{ParamName: "q"})
+	require.True(t, ok)
+	require.Equal(t, "q", fe.Field)
+	require.Equal(t, "required", fe.Code)
+	require.NotEmpty(t, fe.Detail)
+
+	// An unrecognised error keeps the generic 400 path rather than claiming a
+	// field it cannot name.
+	_, ok = parameterFieldError(errors.New("something else entirely"))
+	require.False(t, ok)
 }
 
 // TestGeneratedMountDoesNotEnforceDeclaredSecurity is the end-to-end companion
