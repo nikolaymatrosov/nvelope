@@ -130,14 +130,8 @@ func (s *Server) Handler() http.Handler {
 			// appear in both places, or chi panics on the duplicate pattern.
 			s.mountGeneratedTenantAPI(r)
 
-			// Audience — lists and subscribers (US1) are fully migrated to the
-			// generated mount above.
-
-			// Import & export (US3).
-			r.Post("/import", s.handleStartImport)
-			r.Post("/export", s.handleStartExport)
-			r.Get("/jobs/{id}", s.handleJobStatus)
-			r.Get("/jobs/{id}/download", s.handleDownloadExport)
+			// Audience — lists, subscribers, and import/export (US1, US3) are
+			// fully migrated to the generated mount above.
 
 			// RBAC — role management (US2).
 			r.Post("/roles", s.handleCreateRole)

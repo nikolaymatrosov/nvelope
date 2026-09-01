@@ -476,15 +476,16 @@ func TestSegmentDrivenExport(t *testing.T) {
 	status, body := ts.request(http.MethodPost, base+"/export", map[string]any{
 		"selection": "segment",
 		"segment": map[string]any{
-			"Attr": map[string]any{"Key": "plan", "Op": "eq", "Value": "pro"},
+			"attr": map[string]any{"key": "plan", "op": "eq", "value": "pro"},
 		},
 	})
 	require.Equal(t, http.StatusAccepted, status)
-	jobID := body["job_id"].(string)
+	jobID, ok := body["jobId"].(string)
+	require.True(t, ok, "the accepted body is {jobId}")
 
 	job := ts.waitForJobStatus(base, jobID)
-	require.Equal(t, "completed", job["Status"])
-	require.EqualValues(t, 1, job["RowCount"])
+	require.Equal(t, "completed", job["status"])
+	require.EqualValues(t, 1, job["rowCount"])
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+base+"/jobs/"+jobID+"/download", nil)
 	require.NoError(t, err)

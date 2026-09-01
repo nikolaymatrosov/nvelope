@@ -11,14 +11,22 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"io"
 
 	"github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
 	audiencecommand "github.com/nikolaymatrosov/nvelope/internal/audience/app/command"
 	audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
 	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
 )
+
+// maxUploadBytes bounds an import upload — a CSV of 50,000 subscribers is a
+// few megabytes (research.md Decision 2).
+const maxUploadBytes = 32 << 20
 
 // ListLists serves GET /lists.
 func (s *Server) ListLists(ctx context.Context,
@@ -299,4 +307,137 @@ func (s *Server) ChangeSubscription(ctx context.Context,
 		return nil, err
 	}
 	return openapitenant.ChangeSubscription204Response{}, nil
+}
+
+// StartImport serves POST /import. oapi-codegen models a multipart/form-data
+// body as a *multipart.Reader rather than decoding it into a struct, so the
+// file and the repeated listIds parts are read here directly instead of
+// through r.ParseMultipartForm. Each part is bounded by io.LimitReader the
+// same way the hand-written handler bounded r.FormFile's reader — the 32 MiB
+// cap on the file part, a much smaller one on each listIds value.
+func (s *Server) StartImport(ctx context.Context,
+	req openapitenant.StartImportRequestObject) (openapitenant.StartImportResponseObject, error) {
+	ws := tenantFromContext(ctx)
+	principal, err := s.requirePerm(ctx, iamdomain.PermSubscribersImport)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		fileName string
+		fileData []byte
+		listIDs  []string
+	)
+	for {
+		part, perr := req.Body.NextPart()
+		if errors.Is(perr, io.EOF) {
+			break
+		}
+		if perr != nil {
+			return nil, apperr.NewIncorrectInput("invalid_upload", "expected a multipart/form-data upload")
+		}
+		switch part.FormName() {
+		case "file":
+			fileName = part.FileName()
+			fileData, err = io.ReadAll(io.LimitReader(part, maxUploadBytes))
+		case "listIds":
+			var value []byte
+			value, err = io.ReadAll(io.LimitReader(part, 1<<12))
+			if err == nil {
+				listIDs = append(listIDs, string(value))
+			}
+		}
+		closeErr := part.Close()
+		if err != nil {
+			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+	}
+	if len(fileData) == 0 {
+		return nil, apperr.NewIncorrectInput("missing_file", "a CSV or ZIP file is required")
+	}
+
+	res, err := s.audience.Commands.StartImport.Handle(ctx, audiencecommand.StartImport{
+		TenantID: ws.ID, RequestedBy: principal.ActorID(), FileName: fileName,
+		FileBytes: fileData, TargetListIDs: listIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return openapitenant.StartImport202JSONResponse{JobId: res.JobID}, nil
+}
+
+// StartExport serves POST /export.
+func (s *Server) StartExport(ctx context.Context,
+	req openapitenant.StartExportRequestObject) (openapitenant.StartExportResponseObject, error) {
+	ws := tenantFromContext(ctx)
+	principal, err := s.requirePerm(ctx, iamdomain.PermSubscribersExport)
+	if err != nil {
+		return nil, err
+	}
+	var segment *audiencedomain.Segment
+	if req.Body.Segment != nil {
+		seg, serr := audiencedomain.NewSegment(segmentNodeFromAPI(*req.Body.Segment))
+		if serr != nil {
+			return nil, serr
+		}
+		segment = seg
+	}
+	res, err := s.audience.Commands.StartExport.Handle(ctx, audiencecommand.StartExport{
+		TenantID: ws.ID, RequestedBy: principal.ActorID(),
+		Selection: string(req.Body.Selection), ListID: deref(req.Body.ListId, ""), Segment: segment,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return openapitenant.StartExport202JSONResponse{JobId: res.JobID}, nil
+}
+
+// GetJobStatus serves GET /jobs/{id}. It is readable by anyone who may import
+// or export — the job list is shared between both flows — which is an OR that
+// requirePerm cannot express, so the check is inlined here rather than routed
+// through it, mirroring what the hand-written handler did.
+func (s *Server) GetJobStatus(ctx context.Context,
+	req openapitenant.GetJobStatusRequestObject) (openapitenant.GetJobStatusResponseObject, error) {
+	ws := tenantFromContext(ctx)
+	p, ok := principalFromContext(ctx)
+	if !ok {
+		return nil, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
+	}
+	if !p.Can(iamdomain.PermSubscribersImport) && !p.Can(iamdomain.PermSubscribersExport) {
+		return nil, iamdomain.Forbidden(iamdomain.PermSubscribersImport)
+	}
+	view, err := s.audience.Queries.GetJobStatus.Handle(ctx, audiencequery.GetJobStatus{
+		TenantID: ws.ID, JobID: req.Id,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return openapitenant.GetJobStatus200JSONResponse(jobStatusToAPI(view)), nil
+}
+
+// DownloadExport serves GET /jobs/{id}/download. The generated response
+// object carries the body reader, its length, and the Content-Disposition
+// header directly, so the strict server writes the non-JSON text/csv response
+// without ever touching an http.ResponseWriter.
+func (s *Server) DownloadExport(ctx context.Context,
+	req openapitenant.DownloadExportRequestObject) (openapitenant.DownloadExportResponseObject, error) {
+	ws := tenantFromContext(ctx)
+	if _, err := s.requirePerm(ctx, iamdomain.PermSubscribersExport); err != nil {
+		return nil, err
+	}
+	res, err := s.audience.Queries.ExportFile.Handle(ctx, audiencequery.ExportFile{
+		TenantID: ws.ID, JobID: req.Id,
+	})
+	if err != nil {
+		return nil, err
+	}
+	disposition := `attachment; filename="` + res.FileName + `"`
+	return openapitenant.DownloadExport200TextcsvResponse{
+		Body:          bytes.NewReader(res.Data),
+		ContentLength: int64(len(res.Data)),
+		Headers:       openapitenant.DownloadExport200ResponseHeaders{ContentDisposition: &disposition},
+	}, nil
 }

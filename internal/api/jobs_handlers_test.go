@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	audienceadapters "github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
+	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
@@ -52,7 +53,7 @@ func (ts *testServer) uploadCSV(path, fileName string, content []byte,
 	_, err = fw.Write(content)
 	require.NoError(ts.t, err)
 	for _, id := range listIDs {
-		require.NoError(ts.t, mw.WriteField("list_ids", id))
+		require.NoError(ts.t, mw.WriteField("listIds", id))
 	}
 	require.NoError(ts.t, mw.Close())
 
@@ -71,22 +72,50 @@ func (ts *testServer) uploadCSV(path, fileName string, content []byte,
 	return resp.StatusCode, decoded
 }
 
-// waitForJobStatus polls GET /jobs/{id} until the job is completed or failed.
+// waitForJobStatus polls GET /jobs/{id} until the job is completed or
+// failed. The response is the job itself, unwrapped — not {"job": {...}}.
 func (ts *testServer) waitForJobStatus(base, jobID string) map[string]any {
 	ts.t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		status, body := ts.request(http.MethodGet, base+"/jobs/"+jobID, nil)
 		require.Equal(ts.t, http.StatusOK, status)
-		job, _ := body["job"].(map[string]any)
-		state, _ := job["Status"].(string)
+		state, ok := body["status"].(string)
+		require.True(ts.t, ok, "job status should be a string")
 		if state == "completed" || state == "failed" {
-			return job
+			return body
 		}
 		time.Sleep(150 * time.Millisecond)
 	}
 	ts.t.Fatalf("job %s did not finish", jobID)
 	return nil
+}
+
+// TestJobWireShape pins the migrated contract: StartExport's 202 body is
+// {jobId}, not {job_id}, and GetJobStatus returns the job unwrapped with
+// lowerCamelCase counters rather than {"job": {...PascalCase...}}.
+func TestJobWireShape(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, body := ts.request(http.MethodPost, base+"/export",
+		map[string]any{"selection": string(audiencedomain.ExportAll)})
+	require.Equal(t, http.StatusAccepted, status)
+	jobID, ok := body["jobId"].(string)
+	require.True(t, ok, "the accepted body is {jobId}, not {job_id}")
+	require.NotEmpty(t, jobID)
+
+	status, body = ts.request(http.MethodGet, base+"/jobs/"+jobID, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, jobID, body["id"], "the job is unwrapped, not {job:...}")
+	require.NotContains(t, body, "job")
+	require.Contains(t, body, "createdCount")
+	require.Contains(t, body, "failures")
+	require.NotContains(t, body, "CreatedCount")
 }
 
 func TestImportCSVEndpoint(t *testing.T) {
@@ -105,13 +134,14 @@ func TestImportCSVEndpoint(t *testing.T) {
 	csv := []byte("email,name\nnew@example.com,New\nexisting@example.com,Updated\nbad,Invalid\n")
 	status, body := ts.uploadCSV(base+"/import", "subs.csv", csv, nil)
 	require.Equal(t, http.StatusAccepted, status)
-	jobID := body["job_id"].(string)
+	jobID, ok := body["jobId"].(string)
+	require.True(t, ok, "the accepted body is {jobId}")
 
 	job := ts.waitForJobStatus(base, jobID)
-	require.Equal(t, "completed", job["Status"])
-	require.EqualValues(t, 1, job["CreatedCount"])
-	require.EqualValues(t, 1, job["UpdatedCount"])
-	require.EqualValues(t, 1, job["FailedCount"])
+	require.Equal(t, "completed", job["status"])
+	require.EqualValues(t, 1, job["createdCount"])
+	require.EqualValues(t, 1, job["updatedCount"])
+	require.EqualValues(t, 1, job["failedCount"])
 }
 
 func TestImportZIPEndpoint(t *testing.T) {
@@ -132,10 +162,12 @@ func TestImportZIPEndpoint(t *testing.T) {
 
 	status, body := ts.uploadCSV(base+"/import", "upload.zip", zipBuf.Bytes(), nil)
 	require.Equal(t, http.StatusAccepted, status)
+	jobID, ok := body["jobId"].(string)
+	require.True(t, ok, "the accepted body is {jobId}")
 
-	job := ts.waitForJobStatus(base, body["job_id"].(string))
-	require.Equal(t, "completed", job["Status"])
-	require.EqualValues(t, 1, job["CreatedCount"])
+	job := ts.waitForJobStatus(base, jobID)
+	require.Equal(t, "completed", job["status"])
+	require.EqualValues(t, 1, job["createdCount"])
 }
 
 func TestExportEndpoint(t *testing.T) {
@@ -151,13 +183,15 @@ func TestExportEndpoint(t *testing.T) {
 		require.Equal(t, http.StatusCreated, status)
 	}
 
-	status, body := ts.request(http.MethodPost, base+"/export", map[string]any{"selection": "all"})
+	status, body := ts.request(http.MethodPost, base+"/export",
+		map[string]any{"selection": string(audiencedomain.ExportAll)})
 	require.Equal(t, http.StatusAccepted, status)
-	jobID := body["job_id"].(string)
+	jobID, ok := body["jobId"].(string)
+	require.True(t, ok, "the accepted body is {jobId}")
 
 	job := ts.waitForJobStatus(base, jobID)
-	require.Equal(t, "completed", job["Status"])
-	require.EqualValues(t, 2, job["RowCount"])
+	require.Equal(t, "completed", job["status"])
+	require.EqualValues(t, 2, job["rowCount"])
 
 	// The generated CSV is downloadable and contains the exported rows.
 	req, err := http.NewRequest(http.MethodGet, ts.URL+base+"/jobs/"+jobID+"/download", nil)

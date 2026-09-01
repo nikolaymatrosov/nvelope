@@ -413,6 +413,130 @@ paths:
           $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalError'
+  /import:
+    post:
+      operationId: startImport
+      summary: Start a subscriber import from an uploaded CSV or ZIP.
+      tags:
+        - audience
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: A CSV or ZIP file, at most 32 MiB.
+                listIds:
+                  type: array
+                  description: Lists to add every imported subscriber to.
+                  items:
+                    type: string
+      responses:
+        '202':
+          description: The import job was enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /export:
+    post:
+      operationId: startExport
+      summary: Start a subscriber export.
+      tags:
+        - audience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartExportRequest'
+      responses:
+        '202':
+          description: The export job was enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /jobs/{id}:
+    get:
+      operationId: getJobStatus
+      summary: Fetch an import or export job's progress.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: The job's status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /jobs/{id}/download:
+    get:
+      operationId: downloadExport
+      summary: Download a completed export's CSV.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: The generated CSV.
+          headers:
+            Content-Disposition:
+              description: attachment; filename="..."
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     WorkspaceSession:
@@ -822,6 +946,90 @@ components:
       properties:
         status:
           $ref: '#/components/schemas/SubscriptionStatus'
+    JobAccepted:
+      type: object
+      required:
+        - jobId
+      additionalProperties: false
+      properties:
+        jobId:
+          type: string
+    StartExportRequest:
+      type: object
+      required:
+        - selection
+      additionalProperties: false
+      properties:
+        selection:
+          type: string
+          description: Which subscribers to export.
+          enum:
+            - all
+            - list
+            - segment
+        listId:
+          type: string
+        segment:
+          $ref: '#/components/schemas/SegmentNode'
+    RowFailure:
+      type: object
+      required:
+        - row
+        - reason
+      additionalProperties: false
+      properties:
+        row:
+          type: integer
+        reason:
+          type: string
+    JobStatus:
+      type: object
+      required:
+        - id
+        - kind
+        - status
+        - fileName
+        - createdCount
+        - updatedCount
+        - failedCount
+        - rowCount
+        - failures
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          description: Whether this is an import or an export job.
+          enum:
+            - import
+            - export
+        status:
+          type: string
+          description: The job's lifecycle status.
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+        fileName:
+          type: string
+        createdCount:
+          type: integer
+          description: Rows that created a new subscriber.
+        updatedCount:
+          type: integer
+          description: Rows that updated an existing subscriber.
+        failedCount:
+          type: integer
+          description: Rows skipped because they failed validation.
+        rowCount:
+          type: integer
+          description: Total rows exported. Only meaningful for an export job.
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/RowFailure'
   responses:
     BadRequest:
       description: The request was malformed.

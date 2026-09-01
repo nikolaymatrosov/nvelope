@@ -147,6 +147,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a subscriber import from an uploaded CSV or ZIP. */
+        post: operations["startImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a subscriber export. */
+        post: operations["startExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch an import or export job's progress. */
+        get: operations["getJobStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a completed export's CSV. */
+        get: operations["downloadExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -327,6 +395,45 @@ export interface components {
         };
         ChangeSubscriptionRequest: {
             status: components["schemas"]["SubscriptionStatus"];
+        };
+        JobAccepted: {
+            jobId: string;
+        };
+        StartExportRequest: {
+            /**
+             * @description Which subscribers to export.
+             * @enum {string}
+             */
+            selection: "all" | "list" | "segment";
+            listId?: string;
+            segment?: components["schemas"]["SegmentNode"];
+        };
+        RowFailure: {
+            row: number;
+            reason: string;
+        };
+        JobStatus: {
+            id: string;
+            /**
+             * @description Whether this is an import or an export job.
+             * @enum {string}
+             */
+            kind: "import" | "export";
+            /**
+             * @description The job's lifecycle status.
+             * @enum {string}
+             */
+            status: "pending" | "running" | "completed" | "failed";
+            fileName: string;
+            /** @description Rows that created a new subscriber. */
+            createdCount: number;
+            /** @description Rows that updated an existing subscriber. */
+            updatedCount: number;
+            /** @description Rows skipped because they failed validation. */
+            failedCount: number;
+            /** @description Total rows exported. Only meaningful for an export job. */
+            rowCount: number;
+            failures: components["schemas"]["RowFailure"][];
         };
     };
     responses: {
@@ -850,6 +957,129 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description A CSV or ZIP file, at most 32 MiB.
+                     */
+                    file: string;
+                    /** @description Lists to add every imported subscriber to. */
+                    listIds?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description The import job was enqueued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartExportRequest"];
+            };
+        };
+        responses: {
+            /** @description The export job was enqueued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getJobStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job's status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    downloadExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The generated CSV. */
+            200: {
+                headers: {
+                    /** @description attachment; filename="..." */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };

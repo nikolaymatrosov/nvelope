@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path"
@@ -20,7 +22,50 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for JobStatusKind.
+const (
+	Export JobStatusKind = "export"
+	Import JobStatusKind = "import"
+)
+
+// Valid indicates whether the value is a known member of the JobStatusKind enum.
+func (e JobStatusKind) Valid() bool {
+	switch e {
+	case Export:
+		return true
+	case Import:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for JobStatusStatus.
+const (
+	Completed JobStatusStatus = "completed"
+	Failed    JobStatusStatus = "failed"
+	Pending   JobStatusStatus = "pending"
+	Running   JobStatusStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the JobStatusStatus enum.
+func (e JobStatusStatus) Valid() bool {
+	switch e {
+	case Completed:
+		return true
+	case Failed:
+		return true
+	case Pending:
+		return true
+	case Running:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for ListOptIn.
 const (
@@ -106,6 +151,27 @@ func (e SegmentOp) Valid() bool {
 	case Lte:
 		return true
 	case Neq:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartExportRequestSelection.
+const (
+	StartExportRequestSelectionAll     StartExportRequestSelection = "all"
+	StartExportRequestSelectionList    StartExportRequestSelection = "list"
+	StartExportRequestSelectionSegment StartExportRequestSelection = "segment"
+)
+
+// Valid indicates whether the value is a known member of the StartExportRequestSelection enum.
+func (e StartExportRequestSelection) Valid() bool {
+	switch e {
+	case StartExportRequestSelectionAll:
+		return true
+	case StartExportRequestSelectionList:
+		return true
+	case StartExportRequestSelectionSegment:
 		return true
 	default:
 		return false
@@ -221,6 +287,41 @@ type FieldError struct {
 	Field string `json:"field"`
 }
 
+// JobAccepted defines model for JobAccepted.
+type JobAccepted struct {
+	JobId string `json:"jobId"`
+}
+
+// JobStatus defines model for JobStatus.
+type JobStatus struct {
+	// CreatedCount Rows that created a new subscriber.
+	CreatedCount int `json:"createdCount"`
+
+	// FailedCount Rows skipped because they failed validation.
+	FailedCount int          `json:"failedCount"`
+	Failures    []RowFailure `json:"failures"`
+	FileName    string       `json:"fileName"`
+	Id          string       `json:"id"`
+
+	// Kind Whether this is an import or an export job.
+	Kind JobStatusKind `json:"kind"`
+
+	// RowCount Total rows exported. Only meaningful for an export job.
+	RowCount int `json:"rowCount"`
+
+	// Status The job's lifecycle status.
+	Status JobStatusStatus `json:"status"`
+
+	// UpdatedCount Rows that updated an existing subscriber.
+	UpdatedCount int `json:"updatedCount"`
+}
+
+// JobStatusKind Whether this is an import or an export job.
+type JobStatusKind string
+
+// JobStatusStatus The job's lifecycle status.
+type JobStatusStatus string
+
 // List A subscriber list.
 type List struct {
 	CreatedAt   time.Time `json:"createdAt"`
@@ -295,6 +396,12 @@ type Problem struct {
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
+// RowFailure defines model for RowFailure.
+type RowFailure struct {
+	Reason string `json:"reason"`
+	Row    int    `json:"row"`
+}
+
 // SegmentCountResponse defines model for SegmentCountResponse.
 type SegmentCountResponse struct {
 	Total int `json:"total"`
@@ -325,6 +432,20 @@ type SegmentQueryRequest struct {
 	// Segment One node of a segment condition tree: either a group of children joined by a conjunction, or exactly one leaf condition.
 	Segment SegmentNode `json:"segment"`
 }
+
+// StartExportRequest defines model for StartExportRequest.
+type StartExportRequest struct {
+	ListId *string `json:"listId,omitempty"`
+
+	// Segment One node of a segment condition tree: either a group of children joined by a conjunction, or exactly one leaf condition.
+	Segment *SegmentNode `json:"segment,omitempty"`
+
+	// Selection Which subscribers to export.
+	Selection StartExportRequestSelection `json:"selection"`
+}
+
+// StartExportRequestSelection Which subscribers to export.
+type StartExportRequestSelection string
 
 // Subscriber defines model for Subscriber.
 type Subscriber struct {
@@ -397,6 +518,15 @@ type Unauthorized = Problem
 // UnprocessableEntity An RFC 9457 problem detail. Some problems carry context-specific extension members beyond the fields listed here (for example a stale-row 409 conflict's currentUpdatedAt); the server's custom marshaling flattens those onto this same top-level object rather than nesting them, so additional keys are always possible and should not fail validation.
 type UnprocessableEntity = Problem
 
+// StartImportMultipartBody defines parameters for StartImport.
+type StartImportMultipartBody struct {
+	// File A CSV or ZIP file, at most 32 MiB.
+	File openapi_types.File `json:"file"`
+
+	// ListIds Lists to add every imported subscriber to.
+	ListIds *[]string `json:"listIds,omitempty"`
+}
+
 // ListListsParams defines parameters for ListLists.
 type ListListsParams struct {
 	// Limit Maximum rows to return. Zero or absent means the server default.
@@ -426,6 +556,12 @@ type QuerySubscribersParams struct {
 	// Offset Rows to skip.
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// StartExportJSONRequestBody defines body for StartExport for application/json ContentType.
+type StartExportJSONRequestBody = StartExportRequest
+
+// StartImportMultipartRequestBody defines body for StartImport for multipart/form-data ContentType.
+type StartImportMultipartRequestBody StartImportMultipartBody
 
 // CreateListJSONRequestBody defines body for CreateList for application/json ContentType.
 type CreateListJSONRequestBody = CreateListRequest
@@ -618,6 +754,18 @@ func (a Problem) MarshalJSON() ([]byte, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// StartExport Start a subscriber export.
+	// (POST /export)
+	StartExport(w http.ResponseWriter, r *http.Request)
+	// StartImport Start a subscriber import from an uploaded CSV or ZIP.
+	// (POST /import)
+	StartImport(w http.ResponseWriter, r *http.Request)
+	// GetJobStatus Fetch an import or export job's progress.
+	// (GET /jobs/{id})
+	GetJobStatus(w http.ResponseWriter, r *http.Request, id IdParam)
+	// DownloadExport Download a completed export's CSV.
+	// (GET /jobs/{id}/download)
+	DownloadExport(w http.ResponseWriter, r *http.Request, id IdParam)
 	// ListLists List the workspace's subscriber lists.
 	// (GET /lists)
 	ListLists(w http.ResponseWriter, r *http.Request, params ListListsParams)
@@ -668,6 +816,30 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// StartExport Start a subscriber export.
+// (POST /export)
+func (_ Unimplemented) StartExport(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartImport Start a subscriber import from an uploaded CSV or ZIP.
+// (POST /import)
+func (_ Unimplemented) StartImport(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetJobStatus Fetch an import or export job's progress.
+// (GET /jobs/{id})
+func (_ Unimplemented) GetJobStatus(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DownloadExport Download a completed export's CSV.
+// (GET /jobs/{id}/download)
+func (_ Unimplemented) DownloadExport(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // ListLists List the workspace's subscriber lists.
 // (GET /lists)
@@ -767,6 +939,86 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// StartExport operation middleware
+func (siw *ServerInterfaceWrapper) StartExport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartExport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartImport operation middleware
+func (siw *ServerInterfaceWrapper) StartImport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartImport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetJobStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetJobStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetJobStatus(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadExport operation middleware
+func (siw *ServerInterfaceWrapper) DownloadExport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadExport(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListLists operation middleware
 func (siw *ServerInterfaceWrapper) ListLists(w http.ResponseWriter, r *http.Request) {
@@ -1371,6 +1623,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/subscribers/{id}/lists/{listId}", wrapper.ChangeSubscription)
 	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/import", wrapper.StartImport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/export", wrapper.StartExport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/jobs/{id}", wrapper.GetJobStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/jobs/{id}/download", wrapper.DownloadExport)
+	})
 
 	return r
 }
@@ -1388,6 +1652,412 @@ type NotFoundApplicationProblemPlusJSONResponse Problem
 type UnauthorizedApplicationProblemPlusJSONResponse Problem
 
 type UnprocessableEntityApplicationProblemPlusJSONResponse Problem
+
+type StartExportRequestObject struct {
+	Body *StartExportJSONRequestBody
+}
+
+type StartExportResponseObject interface {
+	VisitStartExportResponse(w http.ResponseWriter) error
+}
+
+type StartExport202JSONResponse JobAccepted
+
+func (response StartExport202JSONResponse) VisitStartExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartExport400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response StartExport400ApplicationProblemPlusJSONResponse) VisitStartExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartExport401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response StartExport401ApplicationProblemPlusJSONResponse) VisitStartExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartExport403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response StartExport403ApplicationProblemPlusJSONResponse) VisitStartExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartExport422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response StartExport422ApplicationProblemPlusJSONResponse) VisitStartExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartExport500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response StartExport500ApplicationProblemPlusJSONResponse) VisitStartExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartImportRequestObject struct {
+	Body *multipart.Reader
+}
+
+type StartImportResponseObject interface {
+	VisitStartImportResponse(w http.ResponseWriter) error
+}
+
+type StartImport202JSONResponse JobAccepted
+
+func (response StartImport202JSONResponse) VisitStartImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartImport400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response StartImport400ApplicationProblemPlusJSONResponse) VisitStartImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartImport401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response StartImport401ApplicationProblemPlusJSONResponse) VisitStartImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartImport403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response StartImport403ApplicationProblemPlusJSONResponse) VisitStartImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartImport422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response StartImport422ApplicationProblemPlusJSONResponse) VisitStartImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartImport500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response StartImport500ApplicationProblemPlusJSONResponse) VisitStartImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobStatusRequestObject struct {
+	Id IdParam `json:"id"`
+}
+
+type GetJobStatusResponseObject interface {
+	VisitGetJobStatusResponse(w http.ResponseWriter) error
+}
+
+type GetJobStatus200JSONResponse JobStatus
+
+func (response GetJobStatus200JSONResponse) VisitGetJobStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobStatus401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetJobStatus401ApplicationProblemPlusJSONResponse) VisitGetJobStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobStatus403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetJobStatus403ApplicationProblemPlusJSONResponse) VisitGetJobStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobStatus404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetJobStatus404ApplicationProblemPlusJSONResponse) VisitGetJobStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobStatus500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetJobStatus500ApplicationProblemPlusJSONResponse) VisitGetJobStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadExportRequestObject struct {
+	Id IdParam `json:"id"`
+}
+
+type DownloadExportResponseObject interface {
+	VisitDownloadExportResponse(w http.ResponseWriter) error
+}
+
+type DownloadExport200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type DownloadExport200TextcsvResponse struct {
+	Body          io.Reader
+	Headers       DownloadExport200ResponseHeaders
+	ContentLength int64
+}
+
+func (response DownloadExport200TextcsvResponse) VisitDownloadExportResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadExport401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DownloadExport401ApplicationProblemPlusJSONResponse) VisitDownloadExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadExport403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response DownloadExport403ApplicationProblemPlusJSONResponse) VisitDownloadExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadExport404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response DownloadExport404ApplicationProblemPlusJSONResponse) VisitDownloadExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadExport409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response DownloadExport409ApplicationProblemPlusJSONResponse) VisitDownloadExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadExport500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response DownloadExport500ApplicationProblemPlusJSONResponse) VisitDownloadExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListListsRequestObject struct {
 	Params ListListsParams
@@ -2918,6 +3588,18 @@ func (response ChangeSubscription500ApplicationProblemPlusJSONResponse) VisitCha
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// StartExport Start a subscriber export.
+	// (POST /export)
+	StartExport(ctx context.Context, request StartExportRequestObject) (StartExportResponseObject, error)
+	// StartImport Start a subscriber import from an uploaded CSV or ZIP.
+	// (POST /import)
+	StartImport(ctx context.Context, request StartImportRequestObject) (StartImportResponseObject, error)
+	// GetJobStatus Fetch an import or export job's progress.
+	// (GET /jobs/{id})
+	GetJobStatus(ctx context.Context, request GetJobStatusRequestObject) (GetJobStatusResponseObject, error)
+	// DownloadExport Download a completed export's CSV.
+	// (GET /jobs/{id}/download)
+	DownloadExport(ctx context.Context, request DownloadExportRequestObject) (DownloadExportResponseObject, error)
 	// ListLists List the workspace's subscriber lists.
 	// (GET /lists)
 	ListLists(ctx context.Context, request ListListsRequestObject) (ListListsResponseObject, error)
@@ -3002,6 +3684,120 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// StartExport operation middleware
+func (sh *strictHandler) StartExport(w http.ResponseWriter, r *http.Request) {
+	var request StartExportRequestObject
+
+	var body StartExportJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartExport(ctx, request.(StartExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartExportResponseObject); ok {
+		if err := validResponse.VisitStartExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartImport operation middleware
+func (sh *strictHandler) StartImport(w http.ResponseWriter, r *http.Request) {
+	var request StartImportRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartImport(ctx, request.(StartImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartImportResponseObject); ok {
+		if err := validResponse.VisitStartImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetJobStatus operation middleware
+func (sh *strictHandler) GetJobStatus(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request GetJobStatusRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetJobStatus(ctx, request.(GetJobStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetJobStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetJobStatusResponseObject); ok {
+		if err := validResponse.VisitGetJobStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadExport operation middleware
+func (sh *strictHandler) DownloadExport(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request DownloadExportRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadExport(ctx, request.(DownloadExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadExportResponseObject); ok {
+		if err := validResponse.VisitDownloadExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListLists operation middleware
@@ -3451,60 +4247,71 @@ func (sh *strictHandler) ChangeSubscription(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"usI9GNM8F/Luzcsxovbj6v8DAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

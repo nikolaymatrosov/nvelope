@@ -28,15 +28,14 @@ components:
 # A path is listed here if and only if a generated handler serves it: every
 # entry under `paths:` becomes a method on StrictServerInterface that *Server
 # must implement, and a chi route that must not also be registered by hand in
-# Handler(). The audience operations below are fully specified in
-# paths/tenant/audience.yaml but stay parked until their handlers exist —
-# uncomment each group in the task that implements it.
+# Handler(). Every audience operation in paths/tenant/audience.yaml is listed
+# below — the migration is complete, and *Server implements
+# StrictServerInterface with no stubs.
 paths:
   /lists:
     $ref: './paths/tenant/audience.yaml#/Lists'
   /lists/{id}:
     $ref: './paths/tenant/audience.yaml#/ListById'
-  # Uncommented per context as each migrates:
   /subscribers:
     $ref: './paths/tenant/audience.yaml#/Subscribers'
   /subscribers/query:
@@ -49,11 +48,11 @@ paths:
     $ref: './paths/tenant/audience.yaml#/SubscriberLists'
   /subscribers/{id}/lists/{listId}:
     $ref: './paths/tenant/audience.yaml#/SubscriberListById'
-  # /import:
-  #   $ref: './paths/tenant/audience.yaml#/Import'
-  # /export:
-  #   $ref: './paths/tenant/audience.yaml#/Export'
-  # /jobs/{id}:
-  #   $ref: './paths/tenant/audience.yaml#/JobById'
-  # /jobs/{id}/download:
-  #   $ref: './paths/tenant/audience.yaml#/JobDownload'
+  /import:
+    $ref: './paths/tenant/audience.yaml#/Import'
+  /export:
+    $ref: './paths/tenant/audience.yaml#/Export'
+  /jobs/{id}:
+    $ref: './paths/tenant/audience.yaml#/JobById'
+  /jobs/{id}/download:
+    $ref: './paths/tenant/audience.yaml#/JobDownload'

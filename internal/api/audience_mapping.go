@@ -97,6 +97,28 @@ func subscriberPageToAPI(page audiencequery.SubscriberPage) openapitenant.Subscr
 // child in Children is converted by the same function. The domain, not this
 // function, is what pins "exactly one leaf" and "a known conjunction" — see
 // validateNode in internal/audience/domain/segment.go.
+// jobStatusToAPI projects an import/export job's read model onto the wire
+// type. Failures is normalised to a non-nil slice for the same reason Tags and
+// Attributes are elsewhere in this file: the schema declares it required, and
+// a nil Go slice marshals to `null`.
+func jobStatusToAPI(v audiencequery.JobStatusView) openapitenant.JobStatus {
+	failures := make([]openapitenant.RowFailure, 0, len(v.Failures))
+	for _, f := range v.Failures {
+		failures = append(failures, openapitenant.RowFailure{Row: f.Row, Reason: f.Reason})
+	}
+	return openapitenant.JobStatus{
+		Id:           v.ID,
+		Kind:         openapitenant.JobStatusKind(v.Kind),
+		Status:       openapitenant.JobStatusStatus(v.Status),
+		FileName:     v.FileName,
+		CreatedCount: v.CreatedCount,
+		UpdatedCount: v.UpdatedCount,
+		FailedCount:  v.FailedCount,
+		RowCount:     v.RowCount,
+		Failures:     failures,
+	}
+}
+
 func segmentNodeFromAPI(n openapitenant.SegmentNode) audiencedomain.Node {
 	out := audiencedomain.Node{}
 	if n.Conj != nil {
