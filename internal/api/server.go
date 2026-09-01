@@ -124,6 +124,12 @@ func (s *Server) Handler() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.authz)
 
+			// Generated, spec-first operations. Every route registered here is
+			// described by api/openapi/tenant.yaml and validated against it.
+			// Routes below this line are still hand-written; a route may not
+			// appear in both places, or chi panics on the duplicate pattern.
+			s.mountGeneratedTenantAPI(r)
+
 			// Audience — lists and subscribers (US1).
 			r.Post("/lists", s.handleCreateList)
 			r.Get("/lists", s.handleListLists)

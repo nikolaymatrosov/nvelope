@@ -7,6 +7,7 @@ import (
 
 	iamquery "github.com/nikolaymatrosov/nvelope/internal/iam/app/query"
 	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
 )
 
 // workspaceCookie is the name of the tenant-plane workspace session cookie. It
@@ -99,4 +100,36 @@ func (s *Server) requireListPermission(w http.ResponseWriter, r *http.Request,
 		return iamdomain.Principal{}, false
 	}
 	return p, true
+}
+
+// requirePerm is the context-based counterpart to requirePermission, for the
+// generated strict handlers — which have no ResponseWriter and communicate
+// failure by returning an error. The returned errors are typed apperrs, so the
+// strict handler's error routing renders them through the same fail() path as
+// every other domain error.
+func (s *Server) requirePerm(ctx context.Context,
+	required iamdomain.Permission) (iamdomain.Principal, error) {
+	p, ok := principalFromContext(ctx)
+	if !ok {
+		return iamdomain.Principal{}, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
+	}
+	if !p.Can(required) {
+		return iamdomain.Principal{}, iamdomain.Forbidden(required)
+	}
+	return p, nil
+}
+
+// requireListPerm checks a permission targeting a specific list, honouring
+// per-list role grants. It is the context-based counterpart to
+// requireListPermission.
+func (s *Server) requireListPerm(ctx context.Context,
+	required iamdomain.Permission, listID string) (iamdomain.Principal, error) {
+	p, ok := principalFromContext(ctx)
+	if !ok {
+		return iamdomain.Principal{}, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
+	}
+	if !p.CanOnList(required, listID) {
+		return iamdomain.Principal{}, iamdomain.Forbidden(required)
+	}
+	return p, nil
 }

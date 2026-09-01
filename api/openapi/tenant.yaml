@@ -25,28 +25,35 @@ components:
         The tenant-plane workspace session cookie (distinct from the
         control-plane session cookie). Every operation in this document
         requires it.
-paths:
-  /lists:
-    $ref: './paths/tenant/audience.yaml#/Lists'
-  /lists/{id}:
-    $ref: './paths/tenant/audience.yaml#/ListById'
-  /subscribers:
-    $ref: './paths/tenant/audience.yaml#/Subscribers'
-  /subscribers/query:
-    $ref: './paths/tenant/audience.yaml#/SubscribersQuery'
-  /subscribers/query/count:
-    $ref: './paths/tenant/audience.yaml#/SubscribersQueryCount'
-  /subscribers/{id}:
-    $ref: './paths/tenant/audience.yaml#/SubscriberById'
-  /subscribers/{id}/lists:
-    $ref: './paths/tenant/audience.yaml#/SubscriberLists'
-  /subscribers/{id}/lists/{listId}:
-    $ref: './paths/tenant/audience.yaml#/SubscriberListById'
-  /import:
-    $ref: './paths/tenant/audience.yaml#/Import'
-  /export:
-    $ref: './paths/tenant/audience.yaml#/Export'
-  /jobs/{id}:
-    $ref: './paths/tenant/audience.yaml#/JobById'
-  /jobs/{id}/download:
-    $ref: './paths/tenant/audience.yaml#/JobDownload'
+# A path is listed here if and only if a generated handler serves it: every
+# entry under `paths:` becomes a method on StrictServerInterface that *Server
+# must implement, and a chi route that must not also be registered by hand in
+# Handler(). The audience operations below are fully specified in
+# paths/tenant/audience.yaml but stay parked until their handlers exist —
+# uncomment each group in the task that implements it.
+paths: {}
+  # Uncommented per context as each migrates:
+  # /lists:
+  #   $ref: './paths/tenant/audience.yaml#/Lists'
+  # /lists/{id}:
+  #   $ref: './paths/tenant/audience.yaml#/ListById'
+  # /subscribers:
+  #   $ref: './paths/tenant/audience.yaml#/Subscribers'
+  # /subscribers/query:
+  #   $ref: './paths/tenant/audience.yaml#/SubscribersQuery'
+  # /subscribers/query/count:
+  #   $ref: './paths/tenant/audience.yaml#/SubscribersQueryCount'
+  # /subscribers/{id}:
+  #   $ref: './paths/tenant/audience.yaml#/SubscriberById'
+  # /subscribers/{id}/lists:
+  #   $ref: './paths/tenant/audience.yaml#/SubscriberLists'
+  # /subscribers/{id}/lists/{listId}:
+  #   $ref: './paths/tenant/audience.yaml#/SubscriberListById'
+  # /import:
+  #   $ref: './paths/tenant/audience.yaml#/Import'
+  # /export:
+  #   $ref: './paths/tenant/audience.yaml#/Export'
+  # /jobs/{id}:
+  #   $ref: './paths/tenant/audience.yaml#/JobById'
+  # /jobs/{id}/download:
+  #   $ref: './paths/tenant/audience.yaml#/JobDownload'
