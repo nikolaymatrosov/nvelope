@@ -132,8 +132,7 @@ func TestSubscriberCRUD(t *testing.T) {
 
 	status, body = ts.request(http.MethodGet, base+"/subscribers/"+subID, nil)
 	require.Equal(t, http.StatusOK, status)
-	sub, _ := body["subscriber"].(map[string]any)
-	require.Equal(t, "pat@example.com", sub["Email"])
+	require.Equal(t, "pat@example.com", body["email"], "a single subscriber is unwrapped and lowerCamelCase")
 
 	status, _ = ts.request(http.MethodPut, base+"/subscribers/"+subID, map[string]any{
 		"name": "Patricia", "state": "disabled",
@@ -142,6 +141,51 @@ func TestSubscriberCRUD(t *testing.T) {
 
 	status, _ = ts.request(http.MethodDelete, base+"/subscribers/"+subID, nil)
 	require.Equal(t, http.StatusNoContent, status)
+}
+
+// TestSubscriberWireShape pins the contract shape the generated subscriber
+// operations serve: the search page is an {items,total} envelope, a single
+// subscriber comes back unwrapped, and memberships are lowerCamelCase. None of
+// that was true of the hand-written handlers, which wrote {"subscribers":...}
+// and serialized the untagged query view (and its PascalCase ListID) directly.
+func TestSubscriberWireShape(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, list := ts.request(http.MethodPost, base+"/lists", map[string]any{"name": "L"})
+	require.Equal(t, http.StatusCreated, status)
+	listID, _ := list["id"].(string)
+	require.NotEmpty(t, listID)
+
+	status, created := ts.request(http.MethodPost, base+"/subscribers", map[string]any{
+		"email": "a@example.com", "name": "A",
+		"attributes": map[string]any{"city": "Belgrade"},
+		"listIds":    []string{listID},
+	})
+	require.Equal(t, http.StatusCreated, status)
+	subID, _ := created["id"].(string)
+	require.NotEmpty(t, subID)
+
+	status, one := ts.request(http.MethodGet, base+"/subscribers/"+subID, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "a@example.com", one["email"], "single objects are unwrapped")
+	require.NotContains(t, one, "subscriber")
+	memberships, ok := one["memberships"].([]any)
+	require.True(t, ok)
+	require.Len(t, memberships, 1)
+	m, _ := memberships[0].(map[string]any)
+	require.Equal(t, listID, m["listId"], "memberships are lowerCamelCase")
+	require.Equal(t, "unconfirmed", m["status"])
+
+	status, page := ts.request(http.MethodGet, base+"/subscribers?q=a&limit=10&offset=0", nil)
+	require.Equal(t, http.StatusOK, status)
+	items, ok := page["items"].([]any)
+	require.True(t, ok, "search envelope is {items,total}, not {subscribers,total}")
+	require.Len(t, items, 1)
 }
 
 func TestSubscriberDuplicateEmailConflicts(t *testing.T) {
@@ -160,6 +204,12 @@ func TestSubscriberDuplicateEmailConflicts(t *testing.T) {
 	require.Equal(t, http.StatusConflict, status)
 }
 
+// TestSubscriberInvalidEmailRejected expects 400, not 422: openapi_types.Email
+// validates the address inside its own UnmarshalJSON, so a malformed email
+// fails while the strict handler is decoding the body — before the request
+// ever reaches the kin-openapi validator. That is the same "invalid_body" 400
+// every other undecodable body gets (see strictRequestError), not a 422
+// schema violation.
 func TestSubscriberInvalidEmailRejected(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
@@ -169,7 +219,7 @@ func TestSubscriberInvalidEmailRejected(t *testing.T) {
 
 	status, _ := ts.request(http.MethodPost, "/t/"+slug+"/api/subscribers",
 		map[string]any{"email": "not-an-email"})
-	require.Equal(t, http.StatusUnprocessableEntity, status)
+	require.Equal(t, http.StatusBadRequest, status)
 }
 
 func TestSubscriberListMembership(t *testing.T) {
@@ -187,7 +237,7 @@ func TestSubscriberListMembership(t *testing.T) {
 	subID := subBody["id"].(string)
 
 	status, _ := ts.request(http.MethodPost, base+"/subscribers/"+subID+"/lists",
-		map[string]any{"list_id": listID})
+		map[string]any{"listId": listID})
 	require.Equal(t, http.StatusNoContent, status)
 
 	status, _ = ts.request(http.MethodPut, base+"/subscribers/"+subID+"/lists/"+listID,
@@ -196,8 +246,7 @@ func TestSubscriberListMembership(t *testing.T) {
 
 	status, body := ts.request(http.MethodGet, base+"/subscribers/"+subID, nil)
 	require.Equal(t, http.StatusOK, status)
-	sub := body["subscriber"].(map[string]any)
-	memberships, _ := sub["Memberships"].([]any)
+	memberships, _ := body["memberships"].([]any)
 	require.Len(t, memberships, 1)
 
 	status, _ = ts.request(http.MethodDelete, base+"/subscribers/"+subID+"/lists/"+listID, nil)
@@ -222,21 +271,56 @@ func TestSegmentQuery(t *testing.T) {
 
 	query := map[string]any{
 		"segment": map[string]any{
-			"Attr": map[string]any{"Key": "plan", "Op": "eq", "Value": "pro"},
+			"attr": map[string]any{"key": "plan", "op": "eq", "value": "pro"},
 		},
 	}
 	status, body := ts.request(http.MethodPost, base+"/subscribers/query", query)
 	require.Equal(t, http.StatusOK, status)
 	require.EqualValues(t, 1, body["total"])
-	subs, _ := body["subscribers"].([]any)
+	subs, _ := body["items"].([]any)
 	require.Len(t, subs, 1)
-	require.Equal(t, "pro@example.com", subs[0].(map[string]any)["Email"])
+	require.Equal(t, "pro@example.com", subs[0].(map[string]any)["email"])
 
 	status, body = ts.request(http.MethodPost, base+"/subscribers/query/count", query)
 	require.Equal(t, http.StatusOK, status)
 	require.EqualValues(t, 1, body["total"])
 }
 
+// TestSegmentQueryWireShape pins the same shape as TestSubscriberWireShape for
+// the segment-query path: the count envelope is {total}, and a lowerCamelCase
+// segment tree round-trips through segmentNodeFromAPI and the domain's own
+// validation.
+func TestSegmentQueryWireShape(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, _ := ts.request(http.MethodPost, base+"/subscribers",
+		map[string]any{"email": "b@example.com", "name": "B"})
+	require.Equal(t, http.StatusCreated, status)
+
+	status, res := ts.request(http.MethodPost, base+"/subscribers/query/count", map[string]any{
+		"segment": map[string]any{
+			"conj": "and",
+			"children": []any{
+				map[string]any{
+					"field": map[string]any{"field": "email", "op": "contains", "value": "b@"},
+				},
+			},
+		},
+	})
+	require.Equal(t, http.StatusOK, status)
+	require.EqualValues(t, 1, res["total"], "segment nodes are lowerCamelCase")
+}
+
+// TestSegmentQueryMalformedRejected drives an unknown segment field ("phone")
+// through NewSegment's own validation (internal/audience/domain/segment.go),
+// not the wire-format check — the body is well-formed lowerCamelCase JSON, so
+// the 422 below is segmentNodeFromAPI round-tripping into a domain.Node that
+// the domain itself then rejects.
 func TestSegmentQueryMalformedRejected(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
@@ -246,7 +330,7 @@ func TestSegmentQueryMalformedRejected(t *testing.T) {
 
 	status, _ := ts.request(http.MethodPost, "/t/"+slug+"/api/subscribers/query", map[string]any{
 		"segment": map[string]any{
-			"Field": map[string]any{"Field": "phone", "Op": "eq", "Value": "x"},
+			"field": map[string]any{"field": "phone", "op": "eq", "value": "x"},
 		},
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)

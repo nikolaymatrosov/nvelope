@@ -20,6 +20,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ListOptIn.
@@ -58,6 +59,124 @@ func (e ListVisibility) Valid() bool {
 	}
 }
 
+// Defines values for SegmentNodeConj.
+const (
+	And SegmentNodeConj = "and"
+	Or  SegmentNodeConj = "or"
+)
+
+// Valid indicates whether the value is a known member of the SegmentNodeConj enum.
+func (e SegmentNodeConj) Valid() bool {
+	switch e {
+	case And:
+		return true
+	case Or:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SegmentOp.
+const (
+	Contains SegmentOp = "contains"
+	Eq       SegmentOp = "eq"
+	Exists   SegmentOp = "exists"
+	Gt       SegmentOp = "gt"
+	Gte      SegmentOp = "gte"
+	Lt       SegmentOp = "lt"
+	Lte      SegmentOp = "lte"
+	Neq      SegmentOp = "neq"
+)
+
+// Valid indicates whether the value is a known member of the SegmentOp enum.
+func (e SegmentOp) Valid() bool {
+	switch e {
+	case Contains:
+		return true
+	case Eq:
+		return true
+	case Exists:
+		return true
+	case Gt:
+		return true
+	case Gte:
+		return true
+	case Lt:
+		return true
+	case Lte:
+		return true
+	case Neq:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriberState.
+const (
+	Blocklisted SubscriberState = "blocklisted"
+	Disabled    SubscriberState = "disabled"
+	Enabled     SubscriberState = "enabled"
+)
+
+// Valid indicates whether the value is a known member of the SubscriberState enum.
+func (e SubscriberState) Valid() bool {
+	switch e {
+	case Blocklisted:
+		return true
+	case Disabled:
+		return true
+	case Enabled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionStatus.
+const (
+	Confirmed    SubscriptionStatus = "confirmed"
+	Unconfirmed  SubscriptionStatus = "unconfirmed"
+	Unsubscribed SubscriptionStatus = "unsubscribed"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionStatus enum.
+func (e SubscriptionStatus) Valid() bool {
+	switch e {
+	case Confirmed:
+		return true
+	case Unconfirmed:
+		return true
+	case Unsubscribed:
+		return true
+	default:
+		return false
+	}
+}
+
+// AddToListRequest defines model for AddToListRequest.
+type AddToListRequest struct {
+	ListId string `json:"listId"`
+}
+
+// AttrCondition Matches a custom-attribute key.
+type AttrCondition struct {
+	Key string `json:"key"`
+
+	// Op A segment comparison operator.
+	Op SegmentOp `json:"op"`
+
+	// Value The comparison value; type depends on the attribute.
+	Value interface{} `json:"value,omitempty"`
+}
+
+// ChangeSubscriptionRequest defines model for ChangeSubscriptionRequest.
+type ChangeSubscriptionRequest struct {
+	// Status A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+	Status SubscriptionStatus `json:"status"`
+}
+
 // CreateListRequest defines model for CreateListRequest.
 type CreateListRequest struct {
 	Description *string    `json:"description,omitempty"`
@@ -69,9 +188,29 @@ type CreateListRequest struct {
 	Visibility *ListVisibility `json:"visibility,omitempty"`
 }
 
+// CreateSubscriberRequest defines model for CreateSubscriberRequest.
+type CreateSubscriberRequest struct {
+	// Attributes Custom subscriber attributes, keyed by field slug.
+	Attributes *map[string]interface{} `json:"attributes,omitempty"`
+	Email      openapi_types.Email     `json:"email"`
+	ListIds    *[]string               `json:"listIds,omitempty"`
+	Name       *string                 `json:"name,omitempty"`
+}
+
 // CreatedId The identifier of a newly created resource.
 type CreatedId struct {
 	Id string `json:"id"`
+}
+
+// FieldCondition Matches a known subscriber field.
+type FieldCondition struct {
+	Field string `json:"field"`
+
+	// Op A segment comparison operator.
+	Op SegmentOp `json:"op"`
+
+	// Value The comparison value. Not required for the exists operator.
+	Value *string `json:"value,omitempty"`
 }
 
 // FieldError One request-body violation.
@@ -113,6 +252,22 @@ type ListPage struct {
 // ListVisibility Whether a list is publicly discoverable or private.
 type ListVisibility string
 
+// MemberCondition Matches by membership of a list, optionally with a status.
+type MemberCondition struct {
+	ListId string `json:"listId"`
+
+	// Status A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+	Status *SubscriptionStatus `json:"status,omitempty"`
+}
+
+// Membership A subscriber's confirmation status within one list.
+type Membership struct {
+	ListId string `json:"listId"`
+
+	// Status A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+	Status SubscriptionStatus `json:"status"`
+}
+
 // Problem An RFC 9457 problem detail. Some problems carry context-specific extension members beyond the fields listed here (for example a stale-row 409 conflict's currentUpdatedAt); the server's custom marshaling flattens those onto this same top-level object rather than nesting them, so additional keys are always possible and should not fail validation.
 type Problem struct {
 	// Code The stable machine-readable error slug. Branch on this, not on the message.
@@ -141,14 +296,83 @@ type Problem struct {
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
+// SegmentCountResponse defines model for SegmentCountResponse.
+type SegmentCountResponse struct {
+	Total int `json:"total"`
+}
+
+// SegmentNode One node of a segment condition tree: either a group of children joined by a conjunction, or exactly one leaf condition.
+type SegmentNode struct {
+	// Attr Matches a custom-attribute key.
+	Attr     *AttrCondition   `json:"attr,omitempty"`
+	Children *[]SegmentNode   `json:"children,omitempty"`
+	Conj     *SegmentNodeConj `json:"conj,omitempty"`
+
+	// Field Matches a known subscriber field.
+	Field *FieldCondition `json:"field,omitempty"`
+
+	// Member Matches by membership of a list, optionally with a status.
+	Member *MemberCondition `json:"member,omitempty"`
+}
+
+// SegmentNodeConj defines model for SegmentNode.Conj.
+type SegmentNodeConj string
+
+// SegmentOp A segment comparison operator.
+type SegmentOp string
+
+// SegmentQueryRequest defines model for SegmentQueryRequest.
+type SegmentQueryRequest struct {
+	// Segment One node of a segment condition tree: either a group of children joined by a conjunction, or exactly one leaf condition.
+	Segment SegmentNode `json:"segment"`
+}
+
+// Subscriber defines model for Subscriber.
+type Subscriber struct {
+	// Attributes Custom subscriber attributes, keyed by field slug.
+	Attributes  map[string]interface{} `json:"attributes"`
+	CreatedAt   time.Time              `json:"createdAt"`
+	Email       openapi_types.Email    `json:"email"`
+	Id          string                 `json:"id"`
+	Memberships []Membership           `json:"memberships"`
+	Name        string                 `json:"name"`
+
+	// State A subscriber's lifecycle state.
+	State     SubscriberState `json:"state"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+}
+
+// SubscriberPage A page of subscribers with the total matching count.
+type SubscriberPage struct {
+	Items []Subscriber `json:"items"`
+	Total int          `json:"total"`
+}
+
+// SubscriberState A subscriber's lifecycle state.
+type SubscriberState string
+
+// SubscriptionStatus A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+type SubscriptionStatus string
+
 // UpdateListRequest defines model for UpdateListRequest.
 type UpdateListRequest = CreateListRequest
+
+// UpdateSubscriberRequest defines model for UpdateSubscriberRequest.
+type UpdateSubscriberRequest struct {
+	// Attributes Custom subscriber attributes, keyed by field slug.
+	Attributes *map[string]interface{} `json:"attributes,omitempty"`
+	Name       *string                 `json:"name,omitempty"`
+	State      *SubscriberState        `json:"state,omitempty"`
+}
 
 // IdParam defines model for IdParam.
 type IdParam = string
 
 // LimitParam defines model for LimitParam.
 type LimitParam = int
+
+// ListIdParam defines model for ListIdParam.
+type ListIdParam = string
 
 // OffsetParam defines model for OffsetParam.
 type OffsetParam = int
@@ -183,11 +407,50 @@ type ListListsParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// SearchSubscribersParams defines parameters for SearchSubscribers.
+type SearchSubscribersParams struct {
+	// Q Free-text search over email and name.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Maximum rows to return. Zero or absent means the server default.
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip.
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// QuerySubscribersParams defines parameters for QuerySubscribers.
+type QuerySubscribersParams struct {
+	// Limit Maximum rows to return. Zero or absent means the server default.
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip.
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // CreateListJSONRequestBody defines body for CreateList for application/json ContentType.
 type CreateListJSONRequestBody = CreateListRequest
 
 // UpdateListJSONRequestBody defines body for UpdateList for application/json ContentType.
 type UpdateListJSONRequestBody = UpdateListRequest
+
+// CreateSubscriberJSONRequestBody defines body for CreateSubscriber for application/json ContentType.
+type CreateSubscriberJSONRequestBody = CreateSubscriberRequest
+
+// QuerySubscribersJSONRequestBody defines body for QuerySubscribers for application/json ContentType.
+type QuerySubscribersJSONRequestBody = SegmentQueryRequest
+
+// CountSubscribersJSONRequestBody defines body for CountSubscribers for application/json ContentType.
+type CountSubscribersJSONRequestBody = SegmentQueryRequest
+
+// UpdateSubscriberJSONRequestBody defines body for UpdateSubscriber for application/json ContentType.
+type UpdateSubscriberJSONRequestBody = UpdateSubscriberRequest
+
+// AddSubscriberToListJSONRequestBody defines body for AddSubscriberToList for application/json ContentType.
+type AddSubscriberToListJSONRequestBody = AddToListRequest
+
+// ChangeSubscriptionJSONRequestBody defines body for ChangeSubscription for application/json ContentType.
+type ChangeSubscriptionJSONRequestBody = ChangeSubscriptionRequest
 
 // Getter for additional properties for Problem. Returns the specified
 // element and whether it was found
@@ -371,6 +634,36 @@ type ServerInterface interface {
 	// UpdateList Update a subscriber list.
 	// (PUT /lists/{id})
 	UpdateList(w http.ResponseWriter, r *http.Request, id IdParam)
+	// SearchSubscribers Search subscribers by free text.
+	// (GET /subscribers)
+	SearchSubscribers(w http.ResponseWriter, r *http.Request, params SearchSubscribersParams)
+	// CreateSubscriber Create a subscriber.
+	// (POST /subscribers)
+	CreateSubscriber(w http.ResponseWriter, r *http.Request)
+	// QuerySubscribers Evaluate a segment and return matching subscribers.
+	// (POST /subscribers/query)
+	QuerySubscribers(w http.ResponseWriter, r *http.Request, params QuerySubscribersParams)
+	// CountSubscribers Evaluate a segment and return only the match count.
+	// (POST /subscribers/query/count)
+	CountSubscribers(w http.ResponseWriter, r *http.Request)
+	// DeleteSubscriber Delete a subscriber.
+	// (DELETE /subscribers/{id})
+	DeleteSubscriber(w http.ResponseWriter, r *http.Request, id IdParam)
+	// GetSubscriber Fetch one subscriber.
+	// (GET /subscribers/{id})
+	GetSubscriber(w http.ResponseWriter, r *http.Request, id IdParam)
+	// UpdateSubscriber Update a subscriber.
+	// (PUT /subscribers/{id})
+	UpdateSubscriber(w http.ResponseWriter, r *http.Request, id IdParam)
+	// AddSubscriberToList Add a subscriber to a list.
+	// (POST /subscribers/{id}/lists)
+	AddSubscriberToList(w http.ResponseWriter, r *http.Request, id IdParam)
+	// RemoveSubscriberFromList Remove a subscriber from a list.
+	// (DELETE /subscribers/{id}/lists/{listId})
+	RemoveSubscriberFromList(w http.ResponseWriter, r *http.Request, id IdParam, listId ListIdParam)
+	// ChangeSubscription Change a subscriber's status on a list.
+	// (PUT /subscribers/{id}/lists/{listId})
+	ChangeSubscription(w http.ResponseWriter, r *http.Request, id IdParam, listId ListIdParam)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -404,6 +697,66 @@ func (_ Unimplemented) GetList(w http.ResponseWriter, r *http.Request, id IdPara
 // UpdateList Update a subscriber list.
 // (PUT /lists/{id})
 func (_ Unimplemented) UpdateList(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SearchSubscribers Search subscribers by free text.
+// (GET /subscribers)
+func (_ Unimplemented) SearchSubscribers(w http.ResponseWriter, r *http.Request, params SearchSubscribersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateSubscriber Create a subscriber.
+// (POST /subscribers)
+func (_ Unimplemented) CreateSubscriber(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// QuerySubscribers Evaluate a segment and return matching subscribers.
+// (POST /subscribers/query)
+func (_ Unimplemented) QuerySubscribers(w http.ResponseWriter, r *http.Request, params QuerySubscribersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CountSubscribers Evaluate a segment and return only the match count.
+// (POST /subscribers/query/count)
+func (_ Unimplemented) CountSubscribers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteSubscriber Delete a subscriber.
+// (DELETE /subscribers/{id})
+func (_ Unimplemented) DeleteSubscriber(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetSubscriber Fetch one subscriber.
+// (GET /subscribers/{id})
+func (_ Unimplemented) GetSubscriber(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateSubscriber Update a subscriber.
+// (PUT /subscribers/{id})
+func (_ Unimplemented) UpdateSubscriber(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddSubscriberToList Add a subscriber to a list.
+// (POST /subscribers/{id}/lists)
+func (_ Unimplemented) AddSubscriberToList(w http.ResponseWriter, r *http.Request, id IdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveSubscriberFromList Remove a subscriber from a list.
+// (DELETE /subscribers/{id}/lists/{listId})
+func (_ Unimplemented) RemoveSubscriberFromList(w http.ResponseWriter, r *http.Request, id IdParam, listId ListIdParam) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChangeSubscription Change a subscriber's status on a list.
+// (PUT /subscribers/{id}/lists/{listId})
+func (_ Unimplemented) ChangeSubscription(w http.ResponseWriter, r *http.Request, id IdParam, listId ListIdParam) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -554,6 +907,313 @@ func (siw *ServerInterfaceWrapper) UpdateList(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// SearchSubscribers operation middleware
+func (siw *ServerInterfaceWrapper) SearchSubscribers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchSubscribersParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchSubscribers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSubscriber operation middleware
+func (siw *ServerInterfaceWrapper) CreateSubscriber(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSubscriber(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// QuerySubscribers operation middleware
+func (siw *ServerInterfaceWrapper) QuerySubscribers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params QuerySubscribersParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QuerySubscribers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CountSubscribers operation middleware
+func (siw *ServerInterfaceWrapper) CountSubscribers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CountSubscribers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSubscriber operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSubscriber(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSubscriber(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSubscriber operation middleware
+func (siw *ServerInterfaceWrapper) GetSubscriber(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSubscriber(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSubscriber operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSubscriber(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSubscriber(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddSubscriberToList operation middleware
+func (siw *ServerInterfaceWrapper) AddSubscriberToList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddSubscriberToList(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveSubscriberFromList operation middleware
+func (siw *ServerInterfaceWrapper) RemoveSubscriberFromList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListIdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveSubscriberFromList(w, r, id, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeSubscription operation middleware
+func (siw *ServerInterfaceWrapper) ChangeSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id IdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListIdParam
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeSubscription(w, r, id, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -681,6 +1341,36 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/lists/{id}", wrapper.UpdateList)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/subscribers", wrapper.SearchSubscribers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/subscribers", wrapper.CreateSubscriber)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/subscribers/query", wrapper.QuerySubscribers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/subscribers/query/count", wrapper.CountSubscribers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/subscribers/{id}", wrapper.DeleteSubscriber)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/subscribers/{id}", wrapper.GetSubscriber)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/subscribers/{id}", wrapper.UpdateSubscriber)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/subscribers/{id}/lists", wrapper.AddSubscriberToList)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/subscribers/{id}/lists/{listId}", wrapper.RemoveSubscriberFromList)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/subscribers/{id}/lists/{listId}", wrapper.ChangeSubscription)
 	})
 
 	return r
@@ -1215,6 +1905,1018 @@ func (response UpdateList500ApplicationProblemPlusJSONResponse) VisitUpdateListR
 	return err
 }
 
+type SearchSubscribersRequestObject struct {
+	Params SearchSubscribersParams
+}
+
+type SearchSubscribersResponseObject interface {
+	VisitSearchSubscribersResponse(w http.ResponseWriter) error
+}
+
+type SearchSubscribers200JSONResponse SubscriberPage
+
+func (response SearchSubscribers200JSONResponse) VisitSearchSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSubscribers400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response SearchSubscribers400ApplicationProblemPlusJSONResponse) VisitSearchSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSubscribers401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response SearchSubscribers401ApplicationProblemPlusJSONResponse) VisitSearchSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSubscribers403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response SearchSubscribers403ApplicationProblemPlusJSONResponse) VisitSearchSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSubscribers422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response SearchSubscribers422ApplicationProblemPlusJSONResponse) VisitSearchSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSubscribers500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response SearchSubscribers500ApplicationProblemPlusJSONResponse) VisitSearchSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriberRequestObject struct {
+	Body *CreateSubscriberJSONRequestBody
+}
+
+type CreateSubscriberResponseObject interface {
+	VisitCreateSubscriberResponse(w http.ResponseWriter) error
+}
+
+type CreateSubscriber201JSONResponse CreatedId
+
+func (response CreateSubscriber201JSONResponse) VisitCreateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriber400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSubscriber400ApplicationProblemPlusJSONResponse) VisitCreateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriber401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSubscriber401ApplicationProblemPlusJSONResponse) VisitCreateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriber403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSubscriber403ApplicationProblemPlusJSONResponse) VisitCreateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriber409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSubscriber409ApplicationProblemPlusJSONResponse) VisitCreateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriber422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSubscriber422ApplicationProblemPlusJSONResponse) VisitCreateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubscriber500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response CreateSubscriber500ApplicationProblemPlusJSONResponse) VisitCreateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuerySubscribersRequestObject struct {
+	Params QuerySubscribersParams
+	Body   *QuerySubscribersJSONRequestBody
+}
+
+type QuerySubscribersResponseObject interface {
+	VisitQuerySubscribersResponse(w http.ResponseWriter) error
+}
+
+type QuerySubscribers200JSONResponse SubscriberPage
+
+func (response QuerySubscribers200JSONResponse) VisitQuerySubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuerySubscribers400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response QuerySubscribers400ApplicationProblemPlusJSONResponse) VisitQuerySubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuerySubscribers401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response QuerySubscribers401ApplicationProblemPlusJSONResponse) VisitQuerySubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuerySubscribers403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response QuerySubscribers403ApplicationProblemPlusJSONResponse) VisitQuerySubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuerySubscribers422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response QuerySubscribers422ApplicationProblemPlusJSONResponse) VisitQuerySubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuerySubscribers500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response QuerySubscribers500ApplicationProblemPlusJSONResponse) VisitQuerySubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CountSubscribersRequestObject struct {
+	Body *CountSubscribersJSONRequestBody
+}
+
+type CountSubscribersResponseObject interface {
+	VisitCountSubscribersResponse(w http.ResponseWriter) error
+}
+
+type CountSubscribers200JSONResponse SegmentCountResponse
+
+func (response CountSubscribers200JSONResponse) VisitCountSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CountSubscribers400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response CountSubscribers400ApplicationProblemPlusJSONResponse) VisitCountSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CountSubscribers401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CountSubscribers401ApplicationProblemPlusJSONResponse) VisitCountSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CountSubscribers403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CountSubscribers403ApplicationProblemPlusJSONResponse) VisitCountSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CountSubscribers422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response CountSubscribers422ApplicationProblemPlusJSONResponse) VisitCountSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CountSubscribers500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response CountSubscribers500ApplicationProblemPlusJSONResponse) VisitCountSubscribersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSubscriberRequestObject struct {
+	Id IdParam `json:"id"`
+}
+
+type DeleteSubscriberResponseObject interface {
+	VisitDeleteSubscriberResponse(w http.ResponseWriter) error
+}
+
+type DeleteSubscriber204Response struct {
+}
+
+func (response DeleteSubscriber204Response) VisitDeleteSubscriberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSubscriber401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteSubscriber401ApplicationProblemPlusJSONResponse) VisitDeleteSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSubscriber403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteSubscriber403ApplicationProblemPlusJSONResponse) VisitDeleteSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSubscriber404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteSubscriber404ApplicationProblemPlusJSONResponse) VisitDeleteSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSubscriber500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteSubscriber500ApplicationProblemPlusJSONResponse) VisitDeleteSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscriberRequestObject struct {
+	Id IdParam `json:"id"`
+}
+
+type GetSubscriberResponseObject interface {
+	VisitGetSubscriberResponse(w http.ResponseWriter) error
+}
+
+type GetSubscriber200JSONResponse Subscriber
+
+func (response GetSubscriber200JSONResponse) VisitGetSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscriber401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSubscriber401ApplicationProblemPlusJSONResponse) VisitGetSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscriber403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetSubscriber403ApplicationProblemPlusJSONResponse) VisitGetSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscriber404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetSubscriber404ApplicationProblemPlusJSONResponse) VisitGetSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubscriber500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetSubscriber500ApplicationProblemPlusJSONResponse) VisitGetSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscriberRequestObject struct {
+	Id   IdParam `json:"id"`
+	Body *UpdateSubscriberJSONRequestBody
+}
+
+type UpdateSubscriberResponseObject interface {
+	VisitUpdateSubscriberResponse(w http.ResponseWriter) error
+}
+
+type UpdateSubscriber204Response struct {
+}
+
+func (response UpdateSubscriber204Response) VisitUpdateSubscriberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UpdateSubscriber400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateSubscriber400ApplicationProblemPlusJSONResponse) VisitUpdateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscriber401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateSubscriber401ApplicationProblemPlusJSONResponse) VisitUpdateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscriber403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateSubscriber403ApplicationProblemPlusJSONResponse) VisitUpdateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscriber404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateSubscriber404ApplicationProblemPlusJSONResponse) VisitUpdateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscriber422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateSubscriber422ApplicationProblemPlusJSONResponse) VisitUpdateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSubscriber500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateSubscriber500ApplicationProblemPlusJSONResponse) VisitUpdateSubscriberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSubscriberToListRequestObject struct {
+	Id   IdParam `json:"id"`
+	Body *AddSubscriberToListJSONRequestBody
+}
+
+type AddSubscriberToListResponseObject interface {
+	VisitAddSubscriberToListResponse(w http.ResponseWriter) error
+}
+
+type AddSubscriberToList204Response struct {
+}
+
+func (response AddSubscriberToList204Response) VisitAddSubscriberToListResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AddSubscriberToList400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response AddSubscriberToList400ApplicationProblemPlusJSONResponse) VisitAddSubscriberToListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSubscriberToList401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response AddSubscriberToList401ApplicationProblemPlusJSONResponse) VisitAddSubscriberToListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSubscriberToList403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response AddSubscriberToList403ApplicationProblemPlusJSONResponse) VisitAddSubscriberToListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSubscriberToList404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response AddSubscriberToList404ApplicationProblemPlusJSONResponse) VisitAddSubscriberToListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSubscriberToList409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response AddSubscriberToList409ApplicationProblemPlusJSONResponse) VisitAddSubscriberToListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSubscriberToList500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response AddSubscriberToList500ApplicationProblemPlusJSONResponse) VisitAddSubscriberToListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSubscriberFromListRequestObject struct {
+	Id     IdParam     `json:"id"`
+	ListId ListIdParam `json:"listId"`
+}
+
+type RemoveSubscriberFromListResponseObject interface {
+	VisitRemoveSubscriberFromListResponse(w http.ResponseWriter) error
+}
+
+type RemoveSubscriberFromList204Response struct {
+}
+
+func (response RemoveSubscriberFromList204Response) VisitRemoveSubscriberFromListResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveSubscriberFromList401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response RemoveSubscriberFromList401ApplicationProblemPlusJSONResponse) VisitRemoveSubscriberFromListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSubscriberFromList403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response RemoveSubscriberFromList403ApplicationProblemPlusJSONResponse) VisitRemoveSubscriberFromListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSubscriberFromList404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response RemoveSubscriberFromList404ApplicationProblemPlusJSONResponse) VisitRemoveSubscriberFromListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSubscriberFromList500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response RemoveSubscriberFromList500ApplicationProblemPlusJSONResponse) VisitRemoveSubscriberFromListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeSubscriptionRequestObject struct {
+	Id     IdParam     `json:"id"`
+	ListId ListIdParam `json:"listId"`
+	Body   *ChangeSubscriptionJSONRequestBody
+}
+
+type ChangeSubscriptionResponseObject interface {
+	VisitChangeSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type ChangeSubscription204Response struct {
+}
+
+func (response ChangeSubscription204Response) VisitChangeSubscriptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ChangeSubscription400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeSubscription400ApplicationProblemPlusJSONResponse) VisitChangeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeSubscription401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeSubscription401ApplicationProblemPlusJSONResponse) VisitChangeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeSubscription403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeSubscription403ApplicationProblemPlusJSONResponse) VisitChangeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeSubscription404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeSubscription404ApplicationProblemPlusJSONResponse) VisitChangeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeSubscription422ApplicationProblemPlusJSONResponse struct {
+	UnprocessableEntityApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeSubscription422ApplicationProblemPlusJSONResponse) VisitChangeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeSubscription500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeSubscription500ApplicationProblemPlusJSONResponse) VisitChangeSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListLists List the workspace's subscriber lists.
@@ -1232,6 +2934,36 @@ type StrictServerInterface interface {
 	// UpdateList Update a subscriber list.
 	// (PUT /lists/{id})
 	UpdateList(ctx context.Context, request UpdateListRequestObject) (UpdateListResponseObject, error)
+	// SearchSubscribers Search subscribers by free text.
+	// (GET /subscribers)
+	SearchSubscribers(ctx context.Context, request SearchSubscribersRequestObject) (SearchSubscribersResponseObject, error)
+	// CreateSubscriber Create a subscriber.
+	// (POST /subscribers)
+	CreateSubscriber(ctx context.Context, request CreateSubscriberRequestObject) (CreateSubscriberResponseObject, error)
+	// QuerySubscribers Evaluate a segment and return matching subscribers.
+	// (POST /subscribers/query)
+	QuerySubscribers(ctx context.Context, request QuerySubscribersRequestObject) (QuerySubscribersResponseObject, error)
+	// CountSubscribers Evaluate a segment and return only the match count.
+	// (POST /subscribers/query/count)
+	CountSubscribers(ctx context.Context, request CountSubscribersRequestObject) (CountSubscribersResponseObject, error)
+	// DeleteSubscriber Delete a subscriber.
+	// (DELETE /subscribers/{id})
+	DeleteSubscriber(ctx context.Context, request DeleteSubscriberRequestObject) (DeleteSubscriberResponseObject, error)
+	// GetSubscriber Fetch one subscriber.
+	// (GET /subscribers/{id})
+	GetSubscriber(ctx context.Context, request GetSubscriberRequestObject) (GetSubscriberResponseObject, error)
+	// UpdateSubscriber Update a subscriber.
+	// (PUT /subscribers/{id})
+	UpdateSubscriber(ctx context.Context, request UpdateSubscriberRequestObject) (UpdateSubscriberResponseObject, error)
+	// AddSubscriberToList Add a subscriber to a list.
+	// (POST /subscribers/{id}/lists)
+	AddSubscriberToList(ctx context.Context, request AddSubscriberToListRequestObject) (AddSubscriberToListResponseObject, error)
+	// RemoveSubscriberFromList Remove a subscriber from a list.
+	// (DELETE /subscribers/{id}/lists/{listId})
+	RemoveSubscriberFromList(ctx context.Context, request RemoveSubscriberFromListRequestObject) (RemoveSubscriberFromListResponseObject, error)
+	// ChangeSubscription Change a subscriber's status on a list.
+	// (PUT /subscribers/{id}/lists/{listId})
+	ChangeSubscription(ctx context.Context, request ChangeSubscriptionRequestObject) (ChangeSubscriptionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1415,47 +3147,365 @@ func (sh *strictHandler) UpdateList(w http.ResponseWriter, r *http.Request, id I
 	}
 }
 
+// SearchSubscribers operation middleware
+func (sh *strictHandler) SearchSubscribers(w http.ResponseWriter, r *http.Request, params SearchSubscribersParams) {
+	var request SearchSubscribersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchSubscribers(ctx, request.(SearchSubscribersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchSubscribers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchSubscribersResponseObject); ok {
+		if err := validResponse.VisitSearchSubscribersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSubscriber operation middleware
+func (sh *strictHandler) CreateSubscriber(w http.ResponseWriter, r *http.Request) {
+	var request CreateSubscriberRequestObject
+
+	var body CreateSubscriberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSubscriber(ctx, request.(CreateSubscriberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSubscriber")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSubscriberResponseObject); ok {
+		if err := validResponse.VisitCreateSubscriberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// QuerySubscribers operation middleware
+func (sh *strictHandler) QuerySubscribers(w http.ResponseWriter, r *http.Request, params QuerySubscribersParams) {
+	var request QuerySubscribersRequestObject
+
+	request.Params = params
+
+	var body QuerySubscribersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QuerySubscribers(ctx, request.(QuerySubscribersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QuerySubscribers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QuerySubscribersResponseObject); ok {
+		if err := validResponse.VisitQuerySubscribersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CountSubscribers operation middleware
+func (sh *strictHandler) CountSubscribers(w http.ResponseWriter, r *http.Request) {
+	var request CountSubscribersRequestObject
+
+	var body CountSubscribersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CountSubscribers(ctx, request.(CountSubscribersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CountSubscribers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CountSubscribersResponseObject); ok {
+		if err := validResponse.VisitCountSubscribersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSubscriber operation middleware
+func (sh *strictHandler) DeleteSubscriber(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request DeleteSubscriberRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSubscriber(ctx, request.(DeleteSubscriberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSubscriber")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSubscriberResponseObject); ok {
+		if err := validResponse.VisitDeleteSubscriberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSubscriber operation middleware
+func (sh *strictHandler) GetSubscriber(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request GetSubscriberRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSubscriber(ctx, request.(GetSubscriberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSubscriber")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSubscriberResponseObject); ok {
+		if err := validResponse.VisitGetSubscriberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSubscriber operation middleware
+func (sh *strictHandler) UpdateSubscriber(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request UpdateSubscriberRequestObject
+
+	request.Id = id
+
+	var body UpdateSubscriberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSubscriber(ctx, request.(UpdateSubscriberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSubscriber")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSubscriberResponseObject); ok {
+		if err := validResponse.VisitUpdateSubscriberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddSubscriberToList operation middleware
+func (sh *strictHandler) AddSubscriberToList(w http.ResponseWriter, r *http.Request, id IdParam) {
+	var request AddSubscriberToListRequestObject
+
+	request.Id = id
+
+	var body AddSubscriberToListJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddSubscriberToList(ctx, request.(AddSubscriberToListRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddSubscriberToList")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddSubscriberToListResponseObject); ok {
+		if err := validResponse.VisitAddSubscriberToListResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveSubscriberFromList operation middleware
+func (sh *strictHandler) RemoveSubscriberFromList(w http.ResponseWriter, r *http.Request, id IdParam, listId ListIdParam) {
+	var request RemoveSubscriberFromListRequestObject
+
+	request.Id = id
+	request.ListId = listId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveSubscriberFromList(ctx, request.(RemoveSubscriberFromListRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveSubscriberFromList")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveSubscriberFromListResponseObject); ok {
+		if err := validResponse.VisitRemoveSubscriberFromListResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangeSubscription operation middleware
+func (sh *strictHandler) ChangeSubscription(w http.ResponseWriter, r *http.Request, id IdParam, listId ListIdParam) {
+	var request ChangeSubscriptionRequestObject
+
+	request.Id = id
+	request.ListId = listId
+
+	var body ChangeSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeSubscription(ctx, request.(ChangeSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeSubscriptionResponseObject); ok {
+		if err := validResponse.VisitChangeSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AAAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

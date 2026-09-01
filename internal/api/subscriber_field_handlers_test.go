@@ -191,8 +191,7 @@ func TestDeleteFieldKeepsSubscriberAttribute(t *testing.T) {
 	// of the registry).
 	status, body = ts.request(http.MethodGet, base+"/subscribers/"+subID, nil)
 	require.Equal(t, http.StatusOK, status)
-	sub := body["subscriber"].(map[string]any)
-	attrs, _ := sub["Attributes"].(map[string]any)
+	attrs, _ := body["attributes"].(map[string]any)
 	require.Equal(t, "DE", attrs["country"], "deleting a field definition does not erase subscriber attribute data")
 }
 

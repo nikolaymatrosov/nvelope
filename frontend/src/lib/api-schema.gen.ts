@@ -41,6 +41,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/subscribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search subscribers by free text. */
+        get: operations["searchSubscribers"];
+        put?: never;
+        /** Create a subscriber. */
+        post: operations["createSubscriber"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate a segment and return matching subscribers. */
+        post: operations["querySubscribers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/query/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate a segment and return only the match count. */
+        post: operations["countSubscribers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one subscriber. */
+        get: operations["getSubscriber"];
+        /** Update a subscriber. */
+        put: operations["updateSubscriber"];
+        post?: never;
+        /** Delete a subscriber. */
+        delete: operations["deleteSubscriber"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/{id}/lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a subscriber to a list. */
+        post: operations["addSubscriberToList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/{id}/lists/{listId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a subscriber's status on a list. */
+        put: operations["changeSubscription"];
+        post?: never;
+        /** Remove a subscriber from a list. */
+        delete: operations["removeSubscriberFromList"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -121,6 +227,107 @@ export interface components {
             id: string;
         };
         UpdateListRequest: components["schemas"]["CreateListRequest"];
+        /**
+         * @description A subscriber's lifecycle state.
+         * @enum {string}
+         */
+        SubscriberState: "enabled" | "disabled" | "blocklisted";
+        /**
+         * @description A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+         * @enum {string}
+         */
+        SubscriptionStatus: "unconfirmed" | "confirmed" | "unsubscribed";
+        /** @description A subscriber's confirmation status within one list. */
+        Membership: {
+            listId: string;
+            status: components["schemas"]["SubscriptionStatus"];
+        };
+        Subscriber: {
+            id: string;
+            /** Format: email */
+            email: string;
+            name: string;
+            state: components["schemas"]["SubscriberState"];
+            /** @description Custom subscriber attributes, keyed by field slug. */
+            attributes: {
+                [key: string]: unknown;
+            };
+            memberships: components["schemas"]["Membership"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A page of subscribers with the total matching count. */
+        SubscriberPage: {
+            items: components["schemas"]["Subscriber"][];
+            total: number;
+        };
+        CreateSubscriberRequest: {
+            /** Format: email */
+            email: string;
+            /** @default  */
+            name: string;
+            /** @description Custom subscriber attributes, keyed by field slug. */
+            attributes?: {
+                [key: string]: unknown;
+            };
+            listIds?: string[];
+        };
+        /** @description One node of a segment condition tree: either a group of children joined by a conjunction, or exactly one leaf condition. */
+        SegmentNode: {
+            /** @enum {string} */
+            conj?: "and" | "or";
+            children?: components["schemas"]["SegmentNode"][];
+            field?: components["schemas"]["FieldCondition"];
+            attr?: components["schemas"]["AttrCondition"];
+            member?: components["schemas"]["MemberCondition"];
+        };
+        /**
+         * @description A segment comparison operator.
+         * @enum {string}
+         */
+        SegmentOp: "eq" | "neq" | "exists" | "contains" | "gt" | "lt" | "gte" | "lte";
+        /** @description Matches a known subscriber field. */
+        FieldCondition: {
+            field: string;
+            op: components["schemas"]["SegmentOp"];
+            /** @description The comparison value. Not required for the exists operator. */
+            value?: string;
+        };
+        /** @description Matches a custom-attribute key. */
+        AttrCondition: {
+            key: string;
+            op: components["schemas"]["SegmentOp"];
+            /** @description The comparison value; type depends on the attribute. */
+            value?: unknown;
+        };
+        /** @description Matches by membership of a list, optionally with a status. */
+        MemberCondition: {
+            listId: string;
+            status?: components["schemas"]["SubscriptionStatus"];
+        };
+        SegmentQueryRequest: {
+            segment: components["schemas"]["SegmentNode"];
+        };
+        SegmentCountResponse: {
+            total: number;
+        };
+        UpdateSubscriberRequest: {
+            name?: string;
+            /** @description Custom subscriber attributes, keyed by field slug. */
+            attributes?: {
+                [key: string]: unknown;
+            };
+            /** @default enabled */
+            state: components["schemas"]["SubscriberState"];
+        };
+        AddToListRequest: {
+            listId: string;
+        };
+        ChangeSubscriptionRequest: {
+            status: components["schemas"]["SubscriptionStatus"];
+        };
     };
     responses: {
         /** @description The request was malformed. */
@@ -194,6 +401,8 @@ export interface components {
         OffsetParam: number;
         /** @description The resource's UUID. */
         IdParam: string;
+        /** @description The list's UUID. */
+        ListIdParam: string;
     };
     requestBodies: never;
     headers: never;
@@ -333,6 +542,305 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The list was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    searchSubscribers: {
+        parameters: {
+            query?: {
+                /** @description Free-text search over email and name. */
+                q?: string;
+                /** @description Maximum rows to return. Zero or absent means the server default. */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description Rows to skip. */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of subscribers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriberPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSubscriberRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscriber was created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedId"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    querySubscribers: {
+        parameters: {
+            query?: {
+                /** @description Maximum rows to return. Zero or absent means the server default. */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description Rows to skip. */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description A page of matching subscribers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriberPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    countSubscribers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description The number of matching subscribers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentCountResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscriber. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscriber"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSubscriberRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscriber was updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscriber was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    addSubscriberToList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToListRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscriber was added. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    changeSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+                /** @description The list's UUID. */
+                listId: components["parameters"]["ListIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscription status was changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    removeSubscriberFromList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+                /** @description The list's UUID. */
+                listId: components["parameters"]["ListIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscriber was removed. */
             204: {
                 headers: {
                     [name: string]: unknown;

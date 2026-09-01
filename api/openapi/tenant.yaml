@@ -37,18 +37,18 @@ paths:
   /lists/{id}:
     $ref: './paths/tenant/audience.yaml#/ListById'
   # Uncommented per context as each migrates:
-  # /subscribers:
-  #   $ref: './paths/tenant/audience.yaml#/Subscribers'
-  # /subscribers/query:
-  #   $ref: './paths/tenant/audience.yaml#/SubscribersQuery'
-  # /subscribers/query/count:
-  #   $ref: './paths/tenant/audience.yaml#/SubscribersQueryCount'
-  # /subscribers/{id}:
-  #   $ref: './paths/tenant/audience.yaml#/SubscriberById'
-  # /subscribers/{id}/lists:
-  #   $ref: './paths/tenant/audience.yaml#/SubscriberLists'
-  # /subscribers/{id}/lists/{listId}:
-  #   $ref: './paths/tenant/audience.yaml#/SubscriberListById'
+  /subscribers:
+    $ref: './paths/tenant/audience.yaml#/Subscribers'
+  /subscribers/query:
+    $ref: './paths/tenant/audience.yaml#/SubscribersQuery'
+  /subscribers/query/count:
+    $ref: './paths/tenant/audience.yaml#/SubscribersQueryCount'
+  /subscribers/{id}:
+    $ref: './paths/tenant/audience.yaml#/SubscriberById'
+  /subscribers/{id}/lists:
+    $ref: './paths/tenant/audience.yaml#/SubscriberLists'
+  /subscribers/{id}/lists/{listId}:
+    $ref: './paths/tenant/audience.yaml#/SubscriberListById'
   # /import:
   #   $ref: './paths/tenant/audience.yaml#/Import'
   # /export:

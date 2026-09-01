@@ -28,8 +28,7 @@ func deref[T any](p *T, fallback T) T {
 
 // pageFrom converts the generated optional limit/offset query parameters into
 // the audience context's Page value. A nil pointer means the parameter was
-// absent, which the domain reads as "server default" — the same meaning the
-// hand-written pageFromRequest gives a missing or unparseable parameter.
+// absent, which the domain reads as "server default".
 //
 // The three contexts that page (audience, campaign, iam) each declare their own
 // structurally identical Page type, and Go will not let one generic function

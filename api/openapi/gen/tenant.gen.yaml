@@ -143,6 +143,276 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /subscribers:
+    get:
+      operationId: searchSubscribers
+      summary: Search subscribers by free text.
+      tags:
+        - audience
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Free-text search over email and name.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: A page of subscribers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriberPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createSubscriber
+      summary: Create a subscriber.
+      tags:
+        - audience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriberRequest'
+      responses:
+        '201':
+          description: The subscriber was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedId'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /subscribers/query:
+    post:
+      operationId: querySubscribers
+      summary: Evaluate a segment and return matching subscribers.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SegmentQueryRequest'
+      responses:
+        '200':
+          description: A page of matching subscribers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriberPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /subscribers/query/count:
+    post:
+      operationId: countSubscribers
+      summary: Evaluate a segment and return only the match count.
+      tags:
+        - audience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SegmentQueryRequest'
+      responses:
+        '200':
+          description: The number of matching subscribers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SegmentCountResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /subscribers/{id}:
+    get:
+      operationId: getSubscriber
+      summary: Fetch one subscriber.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: The subscriber.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscriber'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: updateSubscriber
+      summary: Update a subscriber.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriberRequest'
+      responses:
+        '204':
+          description: The subscriber was updated.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteSubscriber
+      summary: Delete a subscriber.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '204':
+          description: The subscriber was deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /subscribers/{id}/lists:
+    post:
+      operationId: addSubscriberToList
+      summary: Add a subscriber to a list.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddToListRequest'
+      responses:
+        '204':
+          description: The subscriber was added.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /subscribers/{id}/lists/{listId}:
+    delete:
+      operationId: removeSubscriberFromList
+      summary: Remove a subscriber from a list.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/ListIdParam'
+      responses:
+        '204':
+          description: The subscriber was removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: changeSubscription
+      summary: Change a subscriber's status on a list.
+      tags:
+        - audience
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/ListIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeSubscriptionRequest'
+      responses:
+        '204':
+          description: The subscription status was changed.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     WorkspaceSession:
@@ -174,6 +444,13 @@ components:
       in: path
       required: true
       description: The resource's UUID.
+      schema:
+        type: string
+    ListIdParam:
+      name: listId
+      in: path
+      required: true
+      description: The list's UUID.
       schema:
         type: string
   schemas:
@@ -327,6 +604,222 @@ components:
     UpdateListRequest:
       allOf:
         - $ref: '#/components/schemas/CreateListRequest'
+    SubscriberState:
+      type: string
+      description: A subscriber's lifecycle state.
+      enum:
+        - enabled
+        - disabled
+        - blocklisted
+    SubscriptionStatus:
+      type: string
+      description: |
+        A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+      enum:
+        - unconfirmed
+        - confirmed
+        - unsubscribed
+    Membership:
+      type: object
+      description: A subscriber's confirmation status within one list.
+      required:
+        - listId
+        - status
+      additionalProperties: false
+      properties:
+        listId:
+          type: string
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+    Subscriber:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - state
+        - attributes
+        - memberships
+        - createdAt
+        - updatedAt
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/SubscriberState'
+        attributes:
+          type: object
+          description: Custom subscriber attributes, keyed by field slug.
+          additionalProperties: true
+        memberships:
+          type: array
+          items:
+            $ref: '#/components/schemas/Membership'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriberPage:
+      type: object
+      description: A page of subscribers with the total matching count.
+      required:
+        - items
+        - total
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscriber'
+        total:
+          type: integer
+    CreateSubscriberRequest:
+      type: object
+      required:
+        - email
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          default: ''
+        attributes:
+          type: object
+          description: Custom subscriber attributes, keyed by field slug.
+          additionalProperties: true
+        listIds:
+          type: array
+          items:
+            type: string
+    SegmentNode:
+      type: object
+      description: |
+        One node of a segment condition tree: either a group of children joined by a conjunction, or exactly one leaf condition.
+      additionalProperties: false
+      properties:
+        conj:
+          type: string
+          enum:
+            - and
+            - or
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/SegmentNode'
+        field:
+          $ref: '#/components/schemas/FieldCondition'
+        attr:
+          $ref: '#/components/schemas/AttrCondition'
+        member:
+          $ref: '#/components/schemas/MemberCondition'
+    SegmentOp:
+      type: string
+      description: A segment comparison operator.
+      enum:
+        - eq
+        - neq
+        - exists
+        - contains
+        - gt
+        - lt
+        - gte
+        - lte
+    FieldCondition:
+      type: object
+      description: Matches a known subscriber field.
+      required:
+        - field
+        - op
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+        op:
+          $ref: '#/components/schemas/SegmentOp'
+        value:
+          type: string
+          description: The comparison value. Not required for the exists operator.
+    AttrCondition:
+      type: object
+      description: Matches a custom-attribute key.
+      required:
+        - key
+        - op
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        op:
+          $ref: '#/components/schemas/SegmentOp'
+        value:
+          description: The comparison value; type depends on the attribute.
+    MemberCondition:
+      type: object
+      description: Matches by membership of a list, optionally with a status.
+      required:
+        - listId
+      additionalProperties: false
+      properties:
+        listId:
+          type: string
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+    SegmentQueryRequest:
+      type: object
+      required:
+        - segment
+      additionalProperties: false
+      properties:
+        segment:
+          $ref: '#/components/schemas/SegmentNode'
+    SegmentCountResponse:
+      type: object
+      required:
+        - total
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+    UpdateSubscriberRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        attributes:
+          type: object
+          description: Custom subscriber attributes, keyed by field slug.
+          additionalProperties: true
+        state:
+          allOf:
+            - $ref: '#/components/schemas/SubscriberState'
+          default: enabled
+    AddToListRequest:
+      type: object
+      required:
+        - listId
+      additionalProperties: false
+      properties:
+        listId:
+          type: string
+    ChangeSubscriptionRequest:
+      type: object
+      required:
+        - status
+      additionalProperties: false
+      properties:
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
   responses:
     BadRequest:
       description: The request was malformed.

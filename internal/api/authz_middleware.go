@@ -86,22 +86,6 @@ func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request,
 	return p, true
 }
 
-// requireListPermission checks a permission that targets a specific list,
-// honouring per-list role grants.
-func (s *Server) requireListPermission(w http.ResponseWriter, r *http.Request,
-	required iamdomain.Permission, listID string) (iamdomain.Principal, bool) {
-	p, ok := principalFromContext(r.Context())
-	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
-		return iamdomain.Principal{}, false
-	}
-	if !p.CanOnList(required, listID) {
-		s.fail(w, r, "authorize", iamdomain.Forbidden(required))
-		return iamdomain.Principal{}, false
-	}
-	return p, true
-}
-
 // requirePerm is the context-based counterpart to requirePermission, for the
 // generated strict handlers — which have no ResponseWriter and communicate
 // failure by returning an error. The returned errors are typed apperrs, so the
@@ -121,7 +105,10 @@ func (s *Server) requirePerm(ctx context.Context,
 
 // requireListPerm checks a permission targeting a specific list, honouring
 // per-list role grants. It is the context-based counterpart to
-// requireListPermission.
+// requirePermission, for a list-scoped check — every hand-written route that
+// used to call an http.ResponseWriter-based list check has migrated to a
+// generated strict handler, which has no ResponseWriter and calls this
+// instead.
 func (s *Server) requireListPerm(ctx context.Context,
 	required iamdomain.Permission, listID string) (iamdomain.Principal, error) {
 	p, ok := principalFromContext(ctx)
