@@ -31,12 +31,12 @@ components:
 # Handler(). The audience operations below are fully specified in
 # paths/tenant/audience.yaml but stay parked until their handlers exist —
 # uncomment each group in the task that implements it.
-paths: {}
+paths:
+  /lists:
+    $ref: './paths/tenant/audience.yaml#/Lists'
+  /lists/{id}:
+    $ref: './paths/tenant/audience.yaml#/ListById'
   # Uncommented per context as each migrates:
-  # /lists:
-  #   $ref: './paths/tenant/audience.yaml#/Lists'
-  # /lists/{id}:
-  #   $ref: './paths/tenant/audience.yaml#/ListById'
   # /subscribers:
   #   $ref: './paths/tenant/audience.yaml#/Subscribers'
   # /subscribers/query:

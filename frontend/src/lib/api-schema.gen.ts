@@ -3,15 +3,344 @@
  * Do not make direct changes to the file.
  */
 
-export type paths = Record<string, never>;
+export interface paths {
+    "/lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the workspace's subscriber lists. */
+        get: operations["listLists"];
+        put?: never;
+        /** Create a subscriber list. */
+        post: operations["createList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one subscriber list. */
+        get: operations["getList"];
+        /** Update a subscriber list. */
+        put: operations["updateList"];
+        post?: never;
+        /** Delete a subscriber list. */
+        delete: operations["deleteList"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+}
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
-    responses: never;
-    parameters: never;
+    schemas: {
+        /**
+         * @description Whether a list is publicly discoverable or private.
+         * @enum {string}
+         */
+        ListVisibility: "private" | "public";
+        /**
+         * @description The subscription confirmation mode for a list.
+         * @enum {string}
+         */
+        ListOptIn: "single" | "double";
+        /** @description A subscriber list. */
+        List: {
+            id: string;
+            name: string;
+            description: string;
+            visibility: components["schemas"]["ListVisibility"];
+            optIn: components["schemas"]["ListOptIn"];
+            /** @description Free-form labels attached to the list. */
+            tags: string[];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A page of subscriber lists with the total matching count. */
+        ListPage: {
+            items: components["schemas"]["List"][];
+            total: number;
+        };
+        /** @description One request-body violation. */
+        FieldError: {
+            /** @description A JSON Pointer into the submitted request body. */
+            field: string;
+            code: string;
+            detail?: string;
+        };
+        /** @description An RFC 9457 problem detail. Some problems carry context-specific extension members beyond the fields listed here (for example a stale-row 409 conflict's currentUpdatedAt); the server's custom marshaling flattens those onto this same top-level object rather than nesting them, so additional keys are always possible and should not fail validation. */
+        Problem: {
+            /**
+             * Format: uri
+             * @description A URI identifying the problem type; always the code appended to https://nvelope.dev/probs/.
+             */
+            type: string;
+            /** @description A short, human-readable summary of the problem type. */
+            title: string;
+            /** @description The HTTP status code. */
+            status: number;
+            /** @description A human-readable explanation specific to this occurrence. */
+            detail?: string;
+            /** @description The request path this problem occurred on. */
+            instance?: string;
+            /** @description The stable machine-readable error slug. Branch on this, not on the message. */
+            code: string;
+            /** @description The X-Request-Id correlating this failure across the BFF and Go tiers. */
+            requestId?: string;
+            /** @description Field-level violations, present on validation failures. */
+            errors?: components["schemas"]["FieldError"][];
+        } & {
+            [key: string]: unknown;
+        };
+        CreateListRequest: {
+            name: string;
+            /** @default  */
+            description: string;
+            /** @default private */
+            visibility: components["schemas"]["ListVisibility"];
+            /** @default single */
+            optIn: components["schemas"]["ListOptIn"];
+            /** @description Free-form labels attached to the list. */
+            tags?: string[];
+        };
+        /** @description The identifier of a newly created resource. */
+        CreatedId: {
+            id: string;
+        };
+        UpdateListRequest: components["schemas"]["CreateListRequest"];
+    };
+    responses: {
+        /** @description No authenticated workspace session. */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The caller lacks the required permission. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description An unexpected server failure. */
+        InternalError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The request was malformed. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The request conflicts with the resource's current state. */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The request body failed validation. */
+        UnprocessableEntity: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description No such resource in this workspace. */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+    };
+    parameters: {
+        /** @description Maximum rows to return. Zero or absent means the server default. */
+        LimitParam: number;
+        /** @description Rows to skip. */
+        OffsetParam: number;
+        /** @description The resource's UUID. */
+        IdParam: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    listLists: {
+        parameters: {
+            query?: {
+                /** @description Maximum rows to return. Zero or absent means the server default. */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description Rows to skip. */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of lists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateListRequest"];
+            };
+        };
+        responses: {
+            /** @description The list was created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedId"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateListRequest"];
+            };
+        };
+        responses: {
+            /** @description The list was updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+}

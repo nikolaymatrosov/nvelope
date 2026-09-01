@@ -29,11 +29,10 @@ func TestListCRUD(t *testing.T) {
 
 	status, body = ts.request(http.MethodGet, base+"/lists/"+listID, nil)
 	require.Equal(t, http.StatusOK, status)
-	list, _ := body["list"].(map[string]any)
-	require.Equal(t, "Newsletter", list["Name"])
+	require.Equal(t, "Newsletter", body["name"])
 
 	status, _ = ts.request(http.MethodPut, base+"/lists/"+listID, map[string]any{
-		"name": "Renamed", "visibility": "public", "optin": "double",
+		"name": "Renamed", "visibility": "public", "optIn": "double",
 	})
 	require.Equal(t, http.StatusNoContent, status)
 
@@ -42,6 +41,48 @@ func TestListCRUD(t *testing.T) {
 
 	status, _ = ts.request(http.MethodGet, base+"/lists/"+listID, nil)
 	require.Equal(t, http.StatusNotFound, status)
+}
+
+// TestListsWireShape pins the contract shape the generated list operations
+// serve: the page is an {items,total} envelope, a single list comes back
+// unwrapped, and every property is lowerCamelCase. None of that was true of the
+// hand-written handlers, which serialized the untagged query view directly.
+func TestListsWireShape(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, body := ts.request(http.MethodPost, base+"/lists", map[string]any{
+		"name": "Newsletter", "description": "weekly", "tags": []string{"a"},
+	})
+	require.Equal(t, http.StatusCreated, status)
+	id, ok := body["id"].(string)
+	require.True(t, ok, "the 201 body is {id}, not a wrapper")
+	require.NotEmpty(t, id)
+
+	status, body = ts.request(http.MethodGet, base+"/lists?limit=10&offset=0", nil)
+	require.Equal(t, http.StatusOK, status)
+	items, ok := body["items"].([]any)
+	require.True(t, ok, "the page envelope is {items,total}, not {lists,total}")
+	require.Len(t, items, 1)
+	require.Contains(t, body, "total")
+
+	first, _ := items[0].(map[string]any)
+	require.Equal(t, "Newsletter", first["name"], "properties are lowerCamelCase")
+	require.Equal(t, "weekly", first["description"])
+	require.Equal(t, []any{"a"}, first["tags"])
+	require.Equal(t, "private", first["visibility"], "the spec's default is applied")
+	require.Equal(t, "single", first["optIn"])
+	require.Contains(t, first, "createdAt")
+	require.NotContains(t, first, "CreatedAt", "no PascalCase leakage")
+
+	status, body = ts.request(http.MethodGet, base+"/lists/"+id, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "Newsletter", body["name"], "a single list is unwrapped")
+	require.NotContains(t, body, "list")
 }
 
 func TestListDuplicateNameConflicts(t *testing.T) {

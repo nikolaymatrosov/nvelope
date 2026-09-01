@@ -130,13 +130,8 @@ func (s *Server) Handler() http.Handler {
 			// appear in both places, or chi panics on the duplicate pattern.
 			s.mountGeneratedTenantAPI(r)
 
-			// Audience — lists and subscribers (US1).
-			r.Post("/lists", s.handleCreateList)
-			r.Get("/lists", s.handleListLists)
-			r.Get("/lists/{id}", s.handleGetList)
-			r.Put("/lists/{id}", s.handleUpdateList)
-			r.Delete("/lists/{id}", s.handleDeleteList)
-
+			// Audience — subscribers (US1). The list operations moved to the
+			// generated mount above.
 			r.Post("/subscribers", s.handleCreateSubscriber)
 			r.Get("/subscribers", s.handleSearchSubscribers)
 			r.Post("/subscribers/query", s.handleQuerySubscribers)

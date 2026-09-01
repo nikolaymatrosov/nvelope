@@ -74,7 +74,6 @@ func TestRequirePermDeniesAndGrants(t *testing.T) {
 // the rejection is rendered as a problem document with a populated errors array.
 func TestValidationMiddlewareRejectsUnknownField(t *testing.T) {
 	t.Parallel()
-	t.Skip("unskipped in Task 6, once POST /lists is in the spec and implemented")
 
 	srv := newTestServerForWiring(t)
 
@@ -85,14 +84,69 @@ func TestValidationMiddlewareRejectsUnknownField(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
-	require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
+	require.Equal(t, problemContentType, rec.Header().Get("Content-Type"))
 
-	var body map[string]any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-	require.Equal(t, "validation_failed", body["code"])
-	errs, ok := body["errors"].([]any)
-	require.True(t, ok, "errors array is present")
-	require.NotEmpty(t, errs)
+	var doc struct {
+		Code   string       `json:"code"`
+		Errors []fieldError `json:"errors"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&doc))
+	require.Equal(t, "validation_failed", doc.Code)
+	require.Len(t, doc.Errors, 1, "errors array is populated")
+
+	// additionalProperties: false is a constraint on the *object*, not on any
+	// one property, so kin-openapi reports it against the body root: an empty
+	// JSON Pointer and the "properties" keyword. A caller cannot highlight one
+	// input from this — it can only say the payload carried a field the
+	// contract does not define.
+	require.Equal(t, "", doc.Errors[0].Field,
+		"an unknown property is reported against the object, not the property")
+	require.Equal(t, "properties", doc.Errors[0].Code)
+	require.NotEmpty(t, doc.Errors[0].Detail)
+}
+
+// TestGeneratedMountDoesNotEnforceDeclaredSecurity is the end-to-end companion
+// to TestValidatorDoesNotEnforceDeclaredSecurity below. That test hand-builds a
+// router around a probe operation because when it was written the spec's paths
+// were all parked; it therefore proves the validator *factory* is configured
+// correctly, but would stay green if mountGeneratedTenantAPI stopped calling
+// that factory at all.
+//
+// POST/GET /lists are now real generated routes, so this drives the production
+// mount with no nv_workspace cookie and asserts the request is not refused for
+// a security reason.
+//
+// The discriminator is the rejection's *kind*, not its status: kin-openapi
+// validates security requirements before any parameter or body (openapi3filter
+// ValidateRequest) and, with MultiError off, returns on the first failure. A
+// `limit` over the schema's maximum is a violation only the validator can
+// report — the generated wrapper binds the parameter but never range-checks it
+// — so this 422 is reachable only once the security check has passed. A
+// regression yields 401 "unauthenticated" instead.
+func TestGeneratedMountDoesNotEnforceDeclaredSecurity(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerForWiring(t)
+
+	// No nv_workspace cookie: the security requirement tenant.yaml declares is
+	// unsatisfiable here, and must not be what decides the outcome.
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/t/acme/api/lists?limit=99999", nil))
+
+	require.NotEqual(t, http.StatusUnauthorized, rec.Code,
+		"the validator must not reject a generated route on security grounds")
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+
+	var doc struct {
+		Code   string       `json:"code"`
+		Errors []fieldError `json:"errors"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&doc))
+	require.Equal(t, "validation_failed", doc.Code,
+		"parameter validation ran, which only happens after the security check passes")
+	require.Len(t, doc.Errors, 1)
+	require.Equal(t, "limit", doc.Errors[0].Field)
+	require.Equal(t, "maximum", doc.Errors[0].Code)
 }
 
 // TestValidatorDoesNotEnforceDeclaredSecurity is the guard on the single
