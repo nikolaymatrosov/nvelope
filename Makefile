@@ -68,7 +68,10 @@ verify: lint-arch
 # here; run either half on its own when you only touched one side.
 ci: ci-backend ci-frontend
 
-# ci-backend mirrors the `backend` workflow job.
+# ci-backend mirrors the `backend` workflow job. It is no longer Go-only: the
+# `generate-check` step shells into frontend/ for redocly + openapi-typescript,
+# so pnpm and Node must be on PATH (the workflow job installs them for the same
+# reason). Run `cd frontend && pnpm install` first if it reports a missing pnpm.
 ci-backend:
 	$(GO) build ./...
 	$(MAKE) generate-check
@@ -103,7 +106,15 @@ tidy:
 # API. `generate` bundles them, lints them, and regenerates both the Go server
 # and the TypeScript types. Generated files are committed; `generate-check`
 # fails when they are stale, which is what CI enforces.
+#
+# Every path `generate` writes into must be listed in GENERATED_PATHS, or
+# generate-check goes blind to it. Add new outputs here in the same commit that
+# adds them to the recipe.
+GENERATED_PATHS := api/openapi/gen internal/api/openapitenant \
+                   frontend/src/lib/api-schema.gen.ts
+
 generate:
+	mkdir -p api/openapi/gen internal/api/openapitenant
 	cd frontend && pnpm exec redocly lint --config ../api/openapi/redocly.yaml ../api/openapi/tenant.yaml
 	cd frontend && pnpm exec redocly bundle --config ../api/openapi/redocly.yaml \
 		../api/openapi/tenant.yaml -o ../api/openapi/gen/tenant.gen.yaml
@@ -111,8 +122,19 @@ generate:
 	cd frontend && pnpm exec openapi-typescript ../api/openapi/gen/tenant.gen.yaml \
 		-o src/lib/api-schema.gen.ts
 
+# Two distinct failure modes, and `git diff` only sees the first one:
+#   1. a tracked generated file whose committed content is stale;
+#   2. a generated file that exists in the worktree but was never `git add`ed —
+#      invisible to `git diff`, so without the second check CI would go green on
+#      code that is not in the repo at all.
 generate-check: generate
-	git diff --exit-code -- api/openapi/gen internal/api/openapitenant frontend/src/lib/api-schema.gen.ts
+	git diff --exit-code -- $(GENERATED_PATHS)
+	@untracked="$$(git ls-files --others --exclude-standard -- $(GENERATED_PATHS))"; \
+	if [ -n "$$untracked" ]; then \
+		echo '[generate-check] generated but untracked (run `git add` on these):'; \
+		echo "$$untracked" | sed 's/^/  /'; \
+		exit 1; \
+	fi
 
 migrate-up:
 	$(GO) run ./cmd/migrate up

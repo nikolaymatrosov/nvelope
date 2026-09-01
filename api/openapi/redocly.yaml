@@ -1,3 +1,11 @@
+# NOTE: `redocly lint` exits 0 on warnings *and* on an unknown rule name, so a
+# typo here degrades the ruleset silently — check its output, not just its exit
+# code. (That is how the `spec:` rule, renamed `struct:` in @redocly/cli 2.x,
+# would have sat here doing nothing.)
+#
+# Standing warning: `security-defined` fires on every operation because the
+# document declares no securitySchemes yet. Task 4 closes it by declaring the
+# cookie-session scheme; until then the warning is expected, not new breakage.
 extends:
   - minimal
 rules:

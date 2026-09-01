@@ -27,12 +27,17 @@ func TestValidatorMatchesTemplatedServerBase(t *testing.T) {
 
 	validator := oapimiddleware.OapiRequestValidator(swagger)
 
+	ok := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"items":[],"total":0}`))
+	}
+
 	r := chi.NewRouter()
 	r.Route("/t/{slug}/api", func(tr chi.Router) {
-		tr.With(validator).Get("/lists", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"items":[],"total":0}`))
-		})
+		tr.With(validator).Get("/lists", ok)
+		// Mounted in the same subtree but absent from the spec, so the
+		// validator must reject it.
+		tr.With(validator).Get("/not-in-the-spec", ok)
 	})
 
 	rec := httptest.NewRecorder()
@@ -40,4 +45,13 @@ func TestValidatorMatchesTemplatedServerBase(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code,
 		"the validator resolved /t/acme/api/lists against the templated server base")
+
+	// Without this, the assertion above would look identical if the validator
+	// had never been attached, or if it passed every request through. A 404
+	// here proves the 200 above is a real match against the templated base.
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/t/acme/api/not-in-the-spec", nil))
+
+	require.Equal(t, http.StatusNotFound, rec.Code,
+		"the validator rejected a path that the router serves but the spec does not declare")
 }
