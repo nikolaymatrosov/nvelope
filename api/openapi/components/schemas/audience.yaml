@@ -1,3 +1,25 @@
+ListVisibility:
+  type: string
+  description: Whether a list is publicly discoverable or private.
+  enum: [private, public]
+
+ListOptIn:
+  type: string
+  description: The subscription confirmation mode for a list.
+  enum: [single, double]
+
+SubscriberState:
+  type: string
+  description: A subscriber's lifecycle state.
+  enum: [enabled, disabled, blocklisted]
+
+SubscriptionStatus:
+  type: string
+  description: >
+    A subscription's lifecycle status: unconfirmed (awaiting confirmation),
+    confirmed, or unsubscribed.
+  enum: [unconfirmed, confirmed, unsubscribed]
+
 List:
   type: object
   description: A subscriber list.
@@ -7,16 +29,11 @@ List:
     id: { type: string }
     name: { type: string }
     description: { type: string }
-    visibility:
-      type: string
-      description: Whether the list is publicly discoverable or private.
-      enum: [private, public]
-    optIn:
-      type: string
-      description: The subscription confirmation mode for the list.
-      enum: [single, double]
+    visibility: { $ref: '#/ListVisibility' }
+    optIn: { $ref: '#/ListOptIn' }
     tags:
       type: array
+      description: Free-form labels attached to the list.
       items: { type: string }
     createdAt: { type: string, format: date-time }
     updatedAt: { type: string, format: date-time }
@@ -40,15 +57,16 @@ CreateListRequest:
     name: { type: string, minLength: 1 }
     description: { type: string, default: "" }
     visibility:
-      type: string
-      enum: [private, public]
+      allOf:
+        - $ref: '#/ListVisibility'
       default: private
     optIn:
-      type: string
-      enum: [single, double]
+      allOf:
+        - $ref: '#/ListOptIn'
       default: single
     tags:
       type: array
+      description: Free-form labels attached to the list.
       items: { type: string }
 
 UpdateListRequest:
@@ -70,12 +88,7 @@ Membership:
   additionalProperties: false
   properties:
     listId: { type: string }
-    status:
-      type: string
-      description: >
-        The subscription's lifecycle status: unconfirmed (awaiting
-        confirmation), confirmed, or unsubscribed.
-      enum: [unconfirmed, confirmed, unsubscribed]
+    status: { $ref: '#/SubscriptionStatus' }
 
 Subscriber:
   type: object
@@ -85,10 +98,7 @@ Subscriber:
     id: { type: string }
     email: { type: string, format: email }
     name: { type: string }
-    state:
-      type: string
-      description: The subscriber's lifecycle state.
-      enum: [enabled, disabled, blocklisted]
+    state: { $ref: '#/SubscriberState' }
     attributes:
       type: object
       description: Custom subscriber attributes, keyed by field slug.
@@ -119,6 +129,7 @@ CreateSubscriberRequest:
     name: { type: string, default: "" }
     attributes:
       type: object
+      description: Custom subscriber attributes, keyed by field slug.
       additionalProperties: true
     listIds:
       type: array
@@ -131,10 +142,11 @@ UpdateSubscriberRequest:
     name: { type: string }
     attributes:
       type: object
+      description: Custom subscriber attributes, keyed by field slug.
       additionalProperties: true
     state:
-      type: string
-      enum: [enabled, disabled, blocklisted]
+      allOf:
+        - $ref: '#/SubscriberState'
       default: enabled
 
 AddToListRequest:
@@ -149,22 +161,19 @@ ChangeSubscriptionRequest:
   required: [status]
   additionalProperties: false
   properties:
-    status:
-      type: string
-      description: >
-        The subscription's lifecycle status: unconfirmed (awaiting
-        confirmation), confirmed, or unsubscribed.
-      enum: [unconfirmed, confirmed, unsubscribed]
+    status: { $ref: '#/SubscriptionStatus' }
 
 FieldCondition:
   type: object
   description: Matches a known subscriber field.
-  required: [field, op, value]
+  required: [field, op]
   additionalProperties: false
   properties:
     field: { type: string }
     op: { $ref: '#/SegmentOp' }
-    value: { type: string }
+    value:
+      type: string
+      description: The comparison value. Not required for the exists operator.
 
 AttrCondition:
   type: object
@@ -184,12 +193,7 @@ MemberCondition:
   additionalProperties: false
   properties:
     listId: { type: string }
-    status:
-      type: string
-      description: >
-        The subscription's lifecycle status: unconfirmed (awaiting
-        confirmation), confirmed, or unsubscribed.
-      enum: [unconfirmed, confirmed, unsubscribed]
+    status: { $ref: '#/SubscriptionStatus' }
 
 SegmentOp:
   type: string
@@ -262,16 +266,25 @@ JobStatus:
     id: { type: string }
     kind:
       type: string
+      description: Whether this is an import or an export job.
       enum: [import, export]
     status:
       type: string
       description: The job's lifecycle status.
       enum: [pending, running, completed, failed]
     fileName: { type: string }
-    createdCount: { type: integer }
-    updatedCount: { type: integer }
-    failedCount: { type: integer }
-    rowCount: { type: integer }
+    createdCount:
+      type: integer
+      description: Rows that created a new subscriber.
+    updatedCount:
+      type: integer
+      description: Rows that updated an existing subscriber.
+    failedCount:
+      type: integer
+      description: Rows skipped because they failed validation.
+    rowCount:
+      type: integer
+      description: Total rows exported. Only meaningful for an export job.
     failures:
       type: array
       items: { $ref: '#/RowFailure' }

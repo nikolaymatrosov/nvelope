@@ -62,6 +62,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         '500':
@@ -113,6 +115,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         '500':
@@ -133,8 +137,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
   /subscribers:
@@ -568,6 +570,18 @@ components:
       schema:
         type: string
   schemas:
+    ListVisibility:
+      type: string
+      description: Whether a list is publicly discoverable or private.
+      enum:
+        - private
+        - public
+    ListOptIn:
+      type: string
+      description: The subscription confirmation mode for a list.
+      enum:
+        - single
+        - double
     List:
       type: object
       description: A subscriber list.
@@ -589,19 +603,12 @@ components:
         description:
           type: string
         visibility:
-          type: string
-          description: Whether the list is publicly discoverable or private.
-          enum:
-            - private
-            - public
+          $ref: '#/components/schemas/ListVisibility'
         optIn:
-          type: string
-          description: The subscription confirmation mode for the list.
-          enum:
-            - single
-            - double
+          $ref: '#/components/schemas/ListOptIn'
         tags:
           type: array
+          description: Free-form labels attached to the list.
           items:
             type: string
         createdAt:
@@ -689,19 +696,16 @@ components:
           type: string
           default: ''
         visibility:
-          type: string
-          enum:
-            - private
-            - public
+          allOf:
+            - $ref: '#/components/schemas/ListVisibility'
           default: private
         optIn:
-          type: string
-          enum:
-            - single
-            - double
+          allOf:
+            - $ref: '#/components/schemas/ListOptIn'
           default: single
         tags:
           type: array
+          description: Free-form labels attached to the list.
           items:
             type: string
     CreatedId:
@@ -716,6 +720,21 @@ components:
     UpdateListRequest:
       allOf:
         - $ref: '#/components/schemas/CreateListRequest'
+    SubscriberState:
+      type: string
+      description: A subscriber's lifecycle state.
+      enum:
+        - enabled
+        - disabled
+        - blocklisted
+    SubscriptionStatus:
+      type: string
+      description: |
+        A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+      enum:
+        - unconfirmed
+        - confirmed
+        - unsubscribed
     Membership:
       type: object
       description: A subscriber's confirmation status within one list.
@@ -727,13 +746,7 @@ components:
         listId:
           type: string
         status:
-          type: string
-          description: |
-            The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-          enum:
-            - unconfirmed
-            - confirmed
-            - unsubscribed
+          $ref: '#/components/schemas/SubscriptionStatus'
     Subscriber:
       type: object
       required:
@@ -755,12 +768,7 @@ components:
         name:
           type: string
         state:
-          type: string
-          description: The subscriber's lifecycle state.
-          enum:
-            - enabled
-            - disabled
-            - blocklisted
+          $ref: '#/components/schemas/SubscriberState'
         attributes:
           type: object
           description: Custom subscriber attributes, keyed by field slug.
@@ -803,6 +811,7 @@ components:
           default: ''
         attributes:
           type: object
+          description: Custom subscriber attributes, keyed by field slug.
           additionalProperties: true
         listIds:
           type: array
@@ -847,7 +856,6 @@ components:
       required:
         - field
         - op
-        - value
       additionalProperties: false
       properties:
         field:
@@ -856,6 +864,7 @@ components:
           $ref: '#/components/schemas/SegmentOp'
         value:
           type: string
+          description: The comparison value. Not required for the exists operator.
     AttrCondition:
       type: object
       description: Matches a custom-attribute key.
@@ -880,13 +889,7 @@ components:
         listId:
           type: string
         status:
-          type: string
-          description: |
-            The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-          enum:
-            - unconfirmed
-            - confirmed
-            - unsubscribed
+          $ref: '#/components/schemas/SubscriptionStatus'
     SegmentQueryRequest:
       type: object
       required:
@@ -911,13 +914,11 @@ components:
           type: string
         attributes:
           type: object
+          description: Custom subscriber attributes, keyed by field slug.
           additionalProperties: true
         state:
-          type: string
-          enum:
-            - enabled
-            - disabled
-            - blocklisted
+          allOf:
+            - $ref: '#/components/schemas/SubscriberState'
           default: enabled
     AddToListRequest:
       type: object
@@ -934,13 +935,7 @@ components:
       additionalProperties: false
       properties:
         status:
-          type: string
-          description: |
-            The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-          enum:
-            - unconfirmed
-            - confirmed
-            - unsubscribed
+          $ref: '#/components/schemas/SubscriptionStatus'
     JobAccepted:
       type: object
       required:
@@ -995,6 +990,7 @@ components:
           type: string
         kind:
           type: string
+          description: Whether this is an import or an export job.
           enum:
             - import
             - export
@@ -1010,12 +1006,16 @@ components:
           type: string
         createdCount:
           type: integer
+          description: Rows that created a new subscriber.
         updatedCount:
           type: integer
+          description: Rows that updated an existing subscriber.
         failedCount:
           type: integer
+          description: Rows skipped because they failed validation.
         rowCount:
           type: integer
+          description: Total rows exported. Only meaningful for an export job.
         failures:
           type: array
           items:
@@ -1045,6 +1045,12 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: The request conflicts with the resource's current state.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     UnprocessableEntity:
       description: The request body failed validation.
       content:
@@ -1053,12 +1059,6 @@ components:
             $ref: '#/components/schemas/Problem'
     NotFound:
       description: No such resource in this workspace.
-      content:
-        application/problem+json:
-          schema:
-            $ref: '#/components/schemas/Problem'
-    Conflict:
-      description: The request conflicts with the resource's current state.
       content:
         application/problem+json:
           schema:

@@ -25,63 +25,6 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for ChangeSubscriptionRequestStatus.
-const (
-	ChangeSubscriptionRequestStatusConfirmed    ChangeSubscriptionRequestStatus = "confirmed"
-	ChangeSubscriptionRequestStatusUnconfirmed  ChangeSubscriptionRequestStatus = "unconfirmed"
-	ChangeSubscriptionRequestStatusUnsubscribed ChangeSubscriptionRequestStatus = "unsubscribed"
-)
-
-// Valid indicates whether the value is a known member of the ChangeSubscriptionRequestStatus enum.
-func (e ChangeSubscriptionRequestStatus) Valid() bool {
-	switch e {
-	case ChangeSubscriptionRequestStatusConfirmed:
-		return true
-	case ChangeSubscriptionRequestStatusUnconfirmed:
-		return true
-	case ChangeSubscriptionRequestStatusUnsubscribed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for CreateListRequestOptIn.
-const (
-	CreateListRequestOptInDouble CreateListRequestOptIn = "double"
-	CreateListRequestOptInSingle CreateListRequestOptIn = "single"
-)
-
-// Valid indicates whether the value is a known member of the CreateListRequestOptIn enum.
-func (e CreateListRequestOptIn) Valid() bool {
-	switch e {
-	case CreateListRequestOptInDouble:
-		return true
-	case CreateListRequestOptInSingle:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for CreateListRequestVisibility.
-const (
-	CreateListRequestVisibilityPrivate CreateListRequestVisibility = "private"
-	CreateListRequestVisibilityPublic  CreateListRequestVisibility = "public"
-)
-
-// Valid indicates whether the value is a known member of the CreateListRequestVisibility enum.
-func (e CreateListRequestVisibility) Valid() bool {
-	switch e {
-	case CreateListRequestVisibilityPrivate:
-		return true
-	case CreateListRequestVisibilityPublic:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for JobStatusKind.
 const (
 	Export JobStatusKind = "export"
@@ -126,16 +69,16 @@ func (e JobStatusStatus) Valid() bool {
 
 // Defines values for ListOptIn.
 const (
-	ListOptInDouble ListOptIn = "double"
-	ListOptInSingle ListOptIn = "single"
+	Double ListOptIn = "double"
+	Single ListOptIn = "single"
 )
 
 // Valid indicates whether the value is a known member of the ListOptIn enum.
 func (e ListOptIn) Valid() bool {
 	switch e {
-	case ListOptInDouble:
+	case Double:
 		return true
-	case ListOptInSingle:
+	case Single:
 		return true
 	default:
 		return false
@@ -144,58 +87,16 @@ func (e ListOptIn) Valid() bool {
 
 // Defines values for ListVisibility.
 const (
-	ListVisibilityPrivate ListVisibility = "private"
-	ListVisibilityPublic  ListVisibility = "public"
+	Private ListVisibility = "private"
+	Public  ListVisibility = "public"
 )
 
 // Valid indicates whether the value is a known member of the ListVisibility enum.
 func (e ListVisibility) Valid() bool {
 	switch e {
-	case ListVisibilityPrivate:
+	case Private:
 		return true
-	case ListVisibilityPublic:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for MemberConditionStatus.
-const (
-	MemberConditionStatusConfirmed    MemberConditionStatus = "confirmed"
-	MemberConditionStatusUnconfirmed  MemberConditionStatus = "unconfirmed"
-	MemberConditionStatusUnsubscribed MemberConditionStatus = "unsubscribed"
-)
-
-// Valid indicates whether the value is a known member of the MemberConditionStatus enum.
-func (e MemberConditionStatus) Valid() bool {
-	switch e {
-	case MemberConditionStatusConfirmed:
-		return true
-	case MemberConditionStatusUnconfirmed:
-		return true
-	case MemberConditionStatusUnsubscribed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for MembershipStatus.
-const (
-	MembershipStatusConfirmed    MembershipStatus = "confirmed"
-	MembershipStatusUnconfirmed  MembershipStatus = "unconfirmed"
-	MembershipStatusUnsubscribed MembershipStatus = "unsubscribed"
-)
-
-// Valid indicates whether the value is a known member of the MembershipStatus enum.
-func (e MembershipStatus) Valid() bool {
-	switch e {
-	case MembershipStatusConfirmed:
-		return true
-	case MembershipStatusUnconfirmed:
-		return true
-	case MembershipStatusUnsubscribed:
+	case Public:
 		return true
 	default:
 		return false
@@ -279,40 +180,40 @@ func (e StartExportRequestSelection) Valid() bool {
 
 // Defines values for SubscriberState.
 const (
-	SubscriberStateBlocklisted SubscriberState = "blocklisted"
-	SubscriberStateDisabled    SubscriberState = "disabled"
-	SubscriberStateEnabled     SubscriberState = "enabled"
+	Blocklisted SubscriberState = "blocklisted"
+	Disabled    SubscriberState = "disabled"
+	Enabled     SubscriberState = "enabled"
 )
 
 // Valid indicates whether the value is a known member of the SubscriberState enum.
 func (e SubscriberState) Valid() bool {
 	switch e {
-	case SubscriberStateBlocklisted:
+	case Blocklisted:
 		return true
-	case SubscriberStateDisabled:
+	case Disabled:
 		return true
-	case SubscriberStateEnabled:
+	case Enabled:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for UpdateSubscriberRequestState.
+// Defines values for SubscriptionStatus.
 const (
-	UpdateSubscriberRequestStateBlocklisted UpdateSubscriberRequestState = "blocklisted"
-	UpdateSubscriberRequestStateDisabled    UpdateSubscriberRequestState = "disabled"
-	UpdateSubscriberRequestStateEnabled     UpdateSubscriberRequestState = "enabled"
+	Confirmed    SubscriptionStatus = "confirmed"
+	Unconfirmed  SubscriptionStatus = "unconfirmed"
+	Unsubscribed SubscriptionStatus = "unsubscribed"
 )
 
-// Valid indicates whether the value is a known member of the UpdateSubscriberRequestState enum.
-func (e UpdateSubscriberRequestState) Valid() bool {
+// Valid indicates whether the value is a known member of the SubscriptionStatus enum.
+func (e SubscriptionStatus) Valid() bool {
 	switch e {
-	case UpdateSubscriberRequestStateBlocklisted:
+	case Confirmed:
 		return true
-	case UpdateSubscriberRequestStateDisabled:
+	case Unconfirmed:
 		return true
-	case UpdateSubscriberRequestStateEnabled:
+	case Unsubscribed:
 		return true
 	default:
 		return false
@@ -337,30 +238,24 @@ type AttrCondition struct {
 
 // ChangeSubscriptionRequest defines model for ChangeSubscriptionRequest.
 type ChangeSubscriptionRequest struct {
-	// Status The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-	Status ChangeSubscriptionRequestStatus `json:"status"`
+	// Status A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+	Status SubscriptionStatus `json:"status"`
 }
-
-// ChangeSubscriptionRequestStatus The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-type ChangeSubscriptionRequestStatus string
 
 // CreateListRequest defines model for CreateListRequest.
 type CreateListRequest struct {
-	Description *string                      `json:"description,omitempty"`
-	Name        string                       `json:"name"`
-	OptIn       *CreateListRequestOptIn      `json:"optIn,omitempty"`
-	Tags        *[]string                    `json:"tags,omitempty"`
-	Visibility  *CreateListRequestVisibility `json:"visibility,omitempty"`
+	Description *string    `json:"description,omitempty"`
+	Name        string     `json:"name"`
+	OptIn       *ListOptIn `json:"optIn,omitempty"`
+
+	// Tags Free-form labels attached to the list.
+	Tags       *[]string       `json:"tags,omitempty"`
+	Visibility *ListVisibility `json:"visibility,omitempty"`
 }
-
-// CreateListRequestOptIn defines model for CreateListRequest.OptIn.
-type CreateListRequestOptIn string
-
-// CreateListRequestVisibility defines model for CreateListRequest.Visibility.
-type CreateListRequestVisibility string
 
 // CreateSubscriberRequest defines model for CreateSubscriberRequest.
 type CreateSubscriberRequest struct {
+	// Attributes Custom subscriber attributes, keyed by field slug.
 	Attributes *map[string]interface{} `json:"attributes,omitempty"`
 	Email      openapi_types.Email     `json:"email"`
 	ListIds    *[]string               `json:"listIds,omitempty"`
@@ -377,8 +272,10 @@ type FieldCondition struct {
 	Field string `json:"field"`
 
 	// Op A segment comparison operator.
-	Op    SegmentOp `json:"op"`
-	Value string    `json:"value"`
+	Op SegmentOp `json:"op"`
+
+	// Value The comparison value. Not required for the exists operator.
+	Value *string `json:"value,omitempty"`
 }
 
 // FieldError One request-body violation.
@@ -397,20 +294,29 @@ type JobAccepted struct {
 
 // JobStatus defines model for JobStatus.
 type JobStatus struct {
-	CreatedCount int           `json:"createdCount"`
-	FailedCount  int           `json:"failedCount"`
-	Failures     []RowFailure  `json:"failures"`
-	FileName     string        `json:"fileName"`
-	Id           string        `json:"id"`
-	Kind         JobStatusKind `json:"kind"`
-	RowCount     int           `json:"rowCount"`
+	// CreatedCount Rows that created a new subscriber.
+	CreatedCount int `json:"createdCount"`
+
+	// FailedCount Rows skipped because they failed validation.
+	FailedCount int          `json:"failedCount"`
+	Failures    []RowFailure `json:"failures"`
+	FileName    string       `json:"fileName"`
+	Id          string       `json:"id"`
+
+	// Kind Whether this is an import or an export job.
+	Kind JobStatusKind `json:"kind"`
+
+	// RowCount Total rows exported. Only meaningful for an export job.
+	RowCount int `json:"rowCount"`
 
 	// Status The job's lifecycle status.
-	Status       JobStatusStatus `json:"status"`
-	UpdatedCount int             `json:"updatedCount"`
+	Status JobStatusStatus `json:"status"`
+
+	// UpdatedCount Rows that updated an existing subscriber.
+	UpdatedCount int `json:"updatedCount"`
 }
 
-// JobStatusKind defines model for JobStatus.Kind.
+// JobStatusKind Whether this is an import or an export job.
 type JobStatusKind string
 
 // JobStatusStatus The job's lifecycle status.
@@ -423,20 +329,19 @@ type List struct {
 	Id          string    `json:"id"`
 	Name        string    `json:"name"`
 
-	// OptIn The subscription confirmation mode for the list.
-	OptIn     ListOptIn `json:"optIn"`
+	// OptIn The subscription confirmation mode for a list.
+	OptIn ListOptIn `json:"optIn"`
+
+	// Tags Free-form labels attached to the list.
 	Tags      []string  `json:"tags"`
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	// Visibility Whether the list is publicly discoverable or private.
+	// Visibility Whether a list is publicly discoverable or private.
 	Visibility ListVisibility `json:"visibility"`
 }
 
-// ListOptIn The subscription confirmation mode for the list.
+// ListOptIn The subscription confirmation mode for a list.
 type ListOptIn string
-
-// ListVisibility Whether the list is publicly discoverable or private.
-type ListVisibility string
 
 // ListPage A page of subscriber lists with the total matching count.
 type ListPage struct {
@@ -444,27 +349,24 @@ type ListPage struct {
 	Total int    `json:"total"`
 }
 
+// ListVisibility Whether a list is publicly discoverable or private.
+type ListVisibility string
+
 // MemberCondition Matches by membership of a list, optionally with a status.
 type MemberCondition struct {
 	ListId string `json:"listId"`
 
-	// Status The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-	Status *MemberConditionStatus `json:"status,omitempty"`
+	// Status A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+	Status *SubscriptionStatus `json:"status,omitempty"`
 }
-
-// MemberConditionStatus The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-type MemberConditionStatus string
 
 // Membership A subscriber's confirmation status within one list.
 type Membership struct {
 	ListId string `json:"listId"`
 
-	// Status The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-	Status MembershipStatus `json:"status"`
+	// Status A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+	Status SubscriptionStatus `json:"status"`
 }
-
-// MembershipStatus The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-type MembershipStatus string
 
 // Problem An RFC 9457 problem detail. Some problems carry context-specific extension members beyond the fields listed here (for example a stale-row 409 conflict's currentUpdatedAt); the server's custom marshaling flattens those onto this same top-level object rather than nesting them, so additional keys are always possible and should not fail validation.
 type Problem struct {
@@ -555,13 +457,10 @@ type Subscriber struct {
 	Memberships []Membership           `json:"memberships"`
 	Name        string                 `json:"name"`
 
-	// State The subscriber's lifecycle state.
+	// State A subscriber's lifecycle state.
 	State     SubscriberState `json:"state"`
 	UpdatedAt time.Time       `json:"updatedAt"`
 }
-
-// SubscriberState The subscriber's lifecycle state.
-type SubscriberState string
 
 // SubscriberPage A page of subscribers with the total matching count.
 type SubscriberPage struct {
@@ -569,18 +468,22 @@ type SubscriberPage struct {
 	Total int          `json:"total"`
 }
 
+// SubscriberState A subscriber's lifecycle state.
+type SubscriberState string
+
+// SubscriptionStatus A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+type SubscriptionStatus string
+
 // UpdateListRequest defines model for UpdateListRequest.
 type UpdateListRequest = CreateListRequest
 
 // UpdateSubscriberRequest defines model for UpdateSubscriberRequest.
 type UpdateSubscriberRequest struct {
-	Attributes *map[string]interface{}       `json:"attributes,omitempty"`
-	Name       *string                       `json:"name,omitempty"`
-	State      *UpdateSubscriberRequestState `json:"state,omitempty"`
+	// Attributes Custom subscriber attributes, keyed by field slug.
+	Attributes *map[string]interface{} `json:"attributes,omitempty"`
+	Name       *string                 `json:"name,omitempty"`
+	State      *SubscriberState        `json:"state,omitempty"`
 }
-
-// UpdateSubscriberRequestState defines model for UpdateSubscriberRequest.State.
-type UpdateSubscriberRequestState string
 
 // IdParam defines model for IdParam.
 type IdParam = string
@@ -2296,6 +2199,22 @@ func (response CreateList403ApplicationProblemPlusJSONResponse) VisitCreateListR
 	return err
 }
 
+type CreateList409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateList409ApplicationProblemPlusJSONResponse) VisitCreateListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateList422ApplicationProblemPlusJSONResponse struct {
 	UnprocessableEntityApplicationProblemPlusJSONResponse
 }
@@ -2388,22 +2307,6 @@ func (response DeleteList404ApplicationProblemPlusJSONResponse) VisitDeleteListR
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteList409ApplicationProblemPlusJSONResponse struct {
-	ConflictApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteList409ApplicationProblemPlusJSONResponse) VisitDeleteListResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2587,6 +2490,22 @@ func (response UpdateList404ApplicationProblemPlusJSONResponse) VisitUpdateListR
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateList409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateList409ApplicationProblemPlusJSONResponse) VisitUpdateListResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4264,68 +4183,71 @@ func (sh *strictHandler) ChangeSubscription(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7Fzrbhu5kn4VgrtAZrBtybkMFqNgfzieeNazuXjtZGcxSXBANUtq2myyQ7Jl6xh69wOSfZXYLcmWnMvk",
-	"jyG3mmSx+LHqq2JRtziWaSYFCKPx6BZnRJEUDCj33yk9s//bjxR0rFhmmBR4hN8lgBRomasYHmn0/v3p",
-	"bwMcYWa/y4hJcIQFSQGPMKM4wgo+50wBxSOjcoiwjhNIie3WzDP7ljaKiSleLCL8iqXMdAz7mtywNE+R",
-	"ktcaGYkUmFyJAfoLlERSITLWIAxKgQiNTAJIg5qBQhQmJOemEvFzDmpey8jtkLgpVuoHwqPHh4eHEU6Z",
-	"8P8eRqXETBiYgipE1qZXVZxp068m7rrYUlVvJxMNXbo6L3Skr1jWNXHpOmjPvG+qCyufzqTQ4PDxgtBz",
-	"+JyDNva/WAoDwn0kWcZZTKwow0zJMYf0Py61leu2Mda/K5jgEf63YY3Bof9WD898Kz9oCHxuWHRNNEoJ",
-	"n0iVAh3gRYSPpZhwFn8xieJifI2umUkcChs7Jc6VshDVhhhw8p5INWaUgnhogWPCOSjESXylCzE99FAG",
-	"KmVaMymchKfCgBKEv1RKqoeU8kigXMBNBrEBWu7lCWE8V153b6Q5kbmgDynUG4l0HifVoiImkEmYRtdS",
-	"XemMxF6094LkJpGK/RMeWjw7MAhjhwBai4U01Gv6XmRKxqA1GXN4KQwz8y+1YcaSzt2qAkUzwhl1Yw6c",
-	"hSu6siMdUfpOWkvbsDiEUmZfJvxMyQyUYdYuTQjXEOGs8ei2NLBBO1rb3A/le58q6yfHlxAbq7MjY9Sx",
-	"FH7ItcMvey4TJ6ARQXGujUwPiDGKjXMD6Arm1j63xb2CeUDWCMtsndYvYJqCMG8z+/qM8BzCPsk2JYpp",
-	"KZB76zmygyEKGQiqkRTOJlRiDlY0ZUV0AoV0dZwQMYWLfFwNe7dls3Yy1+EZ6EbvjzTibALxPOaAfKMR",
-	"yoU1xsy6BvQTuSbMMDFFxTOHsp8jVL0SWQaRi6LXMdDBR4EjDMJ6ww+40RmOcPNzs01DGR0AK2YUVJoC",
-	"YuDuGG+pyP7rWA8eYRytIslTAOfwX4GYmgSPHkchwJnTpd40E1MODdVUD6jMxxwCOoiwIVMnIzOQ6iC0",
-	"iwdEKTJ32GWajRkvLFM9fKbYjJjm+PWTLB9zFq9fBDf57iW4KNdT3W0hql2juxt6erciAKSEcdvKUhpi",
-	"5+ufBFTqTdWWWi2XvQ8cS8ryAnRri3q7uoU1tLuXUeujJgwUkhNEkIBrPkex77HyrquWkW1gxFnYgJ8w",
-	"4PT+FvxKyGuBqj2v0MT2uyqpe7xTK94/az+e671s06mFisu1J/lWVH75wPnlGZO88MfL04slheDsKJgC",
-	"wytfVSpZInroj4u3b9CZtKGGQkwY6cO3fJwy4/FQk4XBWsSWmnAihnTwhxwfxTFkBuiWW/tSjjehEf61",
-	"jqEvKqe2xcDFzjiWuedny8FZhD2HWvNCrqBtMfpQeC6vT3ybkCmZMA5vCnOystIsjPwr5tl6abpZmkll",
-	"I1C4cR9CrkPJ655J9TGESzkOEINB03WAoHaYCKtcCP/JKoKDcb7d6zQoVp7R3gVZtUnF9CuZGyqM2uu7",
-	"1Ht7bRsaaaxpCGuWSmxp5o6ahs16mMDG95IemZabsuIeGObmEjAJLWayKVpEF7oarKSPFba4HkolBTSR",
-	"ypmWcmr75TDFKm6jqmXa05zfnwmYBOoJIKaRpzx8jijTsZyBshGdpbIFKxrciyg51AqP0KYsLTnL9Sg0",
-	"FDUQ0lRBF0LPyBS2RmlGpmCJwxJaG1kXIw3hKLVu29P+XATAXK3lRgbRbajAOruxNjECbpDy/ZBCXkM6",
-	"hnuHmeM5Sl1HOmGZ51dWOxGSme+Jz72iSMMmbhgwR99hUNYT9b+u9HgPS/pIt02RV4ZbAiaQFNBhav+O",
-	"ixD1hchlTmlNWLWSRzw/OUa/PvvlP1GRykKepA7QhUyhfKhRTJSaI5cFuzEHOoOYTViM4MaA0M6HeDSg",
-	"McyloM7OOLKp3QICRQkoQD9ZLwM3xPIIv8U4HCh5jZ4d/loliOts8PvSRP78vHFq4b7XRqYoJUonhNsl",
-	"mnBirCzIJFIDkp4pM400Sa3Jyw44zIAjrzGkSOEviEACtFtlk0AaIS1RrUB0BXONiAJE+DWZa5RJrZn1",
-	"I0RQpBOZc4qENC5N10zSORyEw4IAKo1zTSmxBhkOFBDqHoCNRZDm+XSAXigi4sRnn5iO3KBFKioFrckU",
-	"BmF+UYYcy3swyVMiGmPdZJyIYhOWy1vqUMZ+QeLwIE7OwI5zAVWh9ype0hHKFLjjKJ9hK1RW5q+dxd3I",
-	"5zTitYDnYUIbImLoOqPzYVNGnFO0dKHAfzFXinxot0q6fctTGu74/w+KzMjBKUWxVArstB26mC7niEis",
-	"pPaHCy9OThyYfpfIMFA6OGifTfvvd+/OSrtpMdbooBENGGY4hHCgE6lMtAwHnacpUXPrIa2QpXJsv0EB",
-	"/YPV3t+fn5YJjXmxx1qdPS83lnGZVwqIZDb0AGrBlxiT6dFwKGbAZQYDCjOXctdDK0RFG3PF1ka+7ttS",
-	"DY1AozMSboR428WjCojuYPNKXm/AhexbUdlNSLQiB+IinfPi2HFLITflZd18rBDiTWHVtvD/bwUgYZfa",
-	"0S/t+7HW3/eAjAIYIWDOQhM0VTJ3VC1OGKcKBLqUTAC1XI7YZpe5iG1D543hhsSGzz11ADKp+w3ZZGKM",
-	"Wmdm2qcbiwiXcmxMjpuqClgqO4Vm6E9cKCxVMNSqEkVrLWNLZu+e17Vb5tiLRffCv82C1qRazeoQxeqb",
-	"GKma8RZ8ttGT+ws3Njrx/MgQJuzHqY2PuHGfwH0Mx52FKP+bg5rf8RjF97DVCi6fWxRdBDeJIcq8dBmc",
-	"HZ/ORXcS3bbiENcHIe0gmsVJg5u7KgmffmquHeEc+xw7jgKT7zrdqcYN6qkadG8HCu25HnsC2QiS654i",
-	"y/q8fXG7zTMwHBD7DgmfLY4xOnI/dfy6eXjeiNV6jj6CtAN6IykfwrXjqFZmBYTlE9agUabLj2Mu4ysf",
-	"F/RlEDfXayg5U+q1SNL4uURNxLR1uU12psbrjnI0e07PNPbXXpM0PmBbPqjl/O0Ejz70i7h6xrv4VPX4",
-	"Bc8dN9kc5YlhDfZ7wH/V5zqzHeeKmfmF1ZafxZ9l/cqFL18J71MDgghzYIM7WC15QbGUVwzQT5TZGDg2",
-	"aKJkWpBxYZTkRcv2+z8P0MsZ2PDA+Xb7RVnsQ2WcOwZQAEcjZjzzcnV2vn1daCdm/6iEqrc1ydj/wNzX",
-	"xzAxkeGpVQ0PdCwzoOjo7HRVsEoOIpYKgHINKvooiDtT5TMbcjhlRS4eI41qLxQnEF8NkAs2fT5gOW/y",
-	"UZQz1366RcCFi9il6NvKiCM8A+WXDD8eHA4OfeYeBMkYHuGng8PBU7vhiUncSg+LM6DRLc6kx341P0sO",
-	"mjQDVxHqC0n7Spe2K1kKEJlF2zzY7bNcBvnk8MnOJGieTHYUTnk1oUs5duWPID7nkBfVj88OD7tGqEQe",
-	"Nso2XZPH65u0ytlco6frG9WljbbFkyebDLNalraI8C+bzKpdpuisiY/uS+TYKKwmQjXj88c6HzDJKQMR",
-	"A/5kGw+Lo8l+NJ6ma9GY5tywjCgztC7+gBJD2nBYrhoIJzCOL/7PBn5/nZ4h+0qEiEGp1AY9fYJesxet",
-	"TMGYCeLqfPtqRtoDvHKHJ8ZlBRE44+IVALSpNSNbeas1B2Arx/I8lIT46jaYn/iPDXa/DVZo0XlaIlCe",
-	"cUko0AaQezbfpRzr4S2jCyvWFALb73cwdSlF1Lq40EHB6leGZbX+4tMK0g53ibRCvA6c+fKE8gDuAZFy",
-	"+Gx9i6q2ehfwOAETJxYFBSikanixRy4rPVWg9SaIGFJ5LSyWOqHxW/FCRRX2Bg4DN2YY61kbFGvtcBgO",
-	"UxB2Fn6LWE0kQGhxE+fYj3nwG9OZ1Cyc2SDGkDix5Oy58xGWfP7XRzwYDD5i3HeVZPEVY+/Z4a/rG1SX",
-	"PnYB1hI+Lu1alAIVcH2ky7XpQKmrQegEpnWyr4o84HaYbNyKWkRr325eDNqriavKN0K3N6r43ynlIQ3c",
-	"vSFg5+XCwyr4soZ6qdSkAwZRB1+sI/89BS+B1MIm1OrxjgWgp53EytUsWUpVpKB+MKpuCHpltilVWSTS",
-	"Z3wq1kTBWq6Ad3TPCxzuzDM+67756FbcS0O/aprzBVyN08rGixx1UuFdL+duXUSfPfg7EF8pYOMVzvLA",
-	"CtcJ53su8u69zmoufCOvs85eFAcTX7uH2NrEfEmX4pdqK5fSOLrpZLUXQFScXDTeXMHoUsGUAjiwoRPS",
-	"rimSM1DIHWS5nLSNW7qurH/uDWSib5VIL5209dLpxpp8U6Ta46R1Gjieo4kCQBYMd6LTjRO/fZLq1YO5",
-	"r41aN7b0N0SwtyVcXxsj38xyDr0N6zxJcIU9vfZzz0ZtDwdpgZKljbbMlzGpVRnCqm39EZwGtsLLGeF5",
-	"sRmKUjjruP3v8XRoc/OdMozLO3Udpt9+3d4v3yuGQyWwHR5A5OnYX6b+geZdolkKPvcXEKxa60KlDdC8",
-	"WSqmxWH2nZBZ4gnfQlpmH1mWrRMs+1mkfXi79Qzx75dyuUu2ZWcrvq+cyx2Dks0Mw4/8y4PkX7ZwJPXZ",
-	"YpgVHVFaI8L/VNZXB9yVH/HaIWIJpd8hXh/8SOKI0naG0Mji9vjWWB3e+nKzXg50DqmcNWzZiZLp/bC7",
-	"SRKw/sHOO1Mn5QT/zqmTX502IHxF1x1OMVZ/FO5hF3kP2cHOn7nbgWHLWj8VQDSK3Wg/fPJOk3pOpy2A",
-	"VzV5SIo1pq9xZcGhd/WywodPFnv+Rn/oLOTP5er+MdHg7mvbMXPF8QgPzfBW83y6GJKMud/2UsyqwV/t",
-	"4/m0fT2jedOg5zqBu+9VX4R4f/5qYFH7afGvAAAA//8=",
+	"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",
+	"M0Ct/Tz//wAAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

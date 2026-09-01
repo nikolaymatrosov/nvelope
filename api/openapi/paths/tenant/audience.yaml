@@ -33,6 +33,7 @@ Lists:
       '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
       '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
       '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '409': { $ref: '../../components/responses/common.yaml#/Conflict' }
       '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
       '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
 
@@ -70,6 +71,7 @@ ListById:
       '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
       '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
       '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '409': { $ref: '../../components/responses/common.yaml#/Conflict' }
       '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
       '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
   delete:
@@ -83,7 +85,6 @@ ListById:
       '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
       '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
       '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
-      '409': { $ref: '../../components/responses/common.yaml#/Conflict' }
       '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
 
 Subscribers:
@@ -293,6 +294,9 @@ Import:
         multipart/form-data:
           schema:
             type: object
+            # No additionalProperties: false here, unlike every other request
+            # body in this document — multipart parsers key parts by name and
+            # a closed schema doesn't constrain them the way it does JSON.
             required: [file]
             properties:
               file:

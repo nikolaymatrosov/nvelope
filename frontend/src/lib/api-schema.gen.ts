@@ -219,21 +219,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description Whether a list is publicly discoverable or private.
+         * @enum {string}
+         */
+        ListVisibility: "private" | "public";
+        /**
+         * @description The subscription confirmation mode for a list.
+         * @enum {string}
+         */
+        ListOptIn: "single" | "double";
         /** @description A subscriber list. */
         List: {
             id: string;
             name: string;
             description: string;
-            /**
-             * @description Whether the list is publicly discoverable or private.
-             * @enum {string}
-             */
-            visibility: "private" | "public";
-            /**
-             * @description The subscription confirmation mode for the list.
-             * @enum {string}
-             */
-            optIn: "single" | "double";
+            visibility: components["schemas"]["ListVisibility"];
+            optIn: components["schemas"]["ListOptIn"];
+            /** @description Free-form labels attached to the list. */
             tags: string[];
             /** Format: date-time */
             createdAt: string;
@@ -280,16 +283,11 @@ export interface components {
             name: string;
             /** @default  */
             description: string;
-            /**
-             * @default private
-             * @enum {string}
-             */
-            visibility: "private" | "public";
-            /**
-             * @default single
-             * @enum {string}
-             */
-            optIn: "single" | "double";
+            /** @default private */
+            visibility: components["schemas"]["ListVisibility"];
+            /** @default single */
+            optIn: components["schemas"]["ListOptIn"];
+            /** @description Free-form labels attached to the list. */
             tags?: string[];
         };
         /** @description The identifier of a newly created resource. */
@@ -297,25 +295,27 @@ export interface components {
             id: string;
         };
         UpdateListRequest: components["schemas"]["CreateListRequest"];
+        /**
+         * @description A subscriber's lifecycle state.
+         * @enum {string}
+         */
+        SubscriberState: "enabled" | "disabled" | "blocklisted";
+        /**
+         * @description A subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+         * @enum {string}
+         */
+        SubscriptionStatus: "unconfirmed" | "confirmed" | "unsubscribed";
         /** @description A subscriber's confirmation status within one list. */
         Membership: {
             listId: string;
-            /**
-             * @description The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-             * @enum {string}
-             */
-            status: "unconfirmed" | "confirmed" | "unsubscribed";
+            status: components["schemas"]["SubscriptionStatus"];
         };
         Subscriber: {
             id: string;
             /** Format: email */
             email: string;
             name: string;
-            /**
-             * @description The subscriber's lifecycle state.
-             * @enum {string}
-             */
-            state: "enabled" | "disabled" | "blocklisted";
+            state: components["schemas"]["SubscriberState"];
             /** @description Custom subscriber attributes, keyed by field slug. */
             attributes: {
                 [key: string]: unknown;
@@ -336,6 +336,7 @@ export interface components {
             email: string;
             /** @default  */
             name: string;
+            /** @description Custom subscriber attributes, keyed by field slug. */
             attributes?: {
                 [key: string]: unknown;
             };
@@ -359,7 +360,8 @@ export interface components {
         FieldCondition: {
             field: string;
             op: components["schemas"]["SegmentOp"];
-            value: string;
+            /** @description The comparison value. Not required for the exists operator. */
+            value?: string;
         };
         /** @description Matches a custom-attribute key. */
         AttrCondition: {
@@ -371,11 +373,7 @@ export interface components {
         /** @description Matches by membership of a list, optionally with a status. */
         MemberCondition: {
             listId: string;
-            /**
-             * @description The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-             * @enum {string}
-             */
-            status?: "unconfirmed" | "confirmed" | "unsubscribed";
+            status?: components["schemas"]["SubscriptionStatus"];
         };
         SegmentQueryRequest: {
             segment: components["schemas"]["SegmentNode"];
@@ -385,24 +383,18 @@ export interface components {
         };
         UpdateSubscriberRequest: {
             name?: string;
+            /** @description Custom subscriber attributes, keyed by field slug. */
             attributes?: {
                 [key: string]: unknown;
             };
-            /**
-             * @default enabled
-             * @enum {string}
-             */
-            state: "enabled" | "disabled" | "blocklisted";
+            /** @default enabled */
+            state: components["schemas"]["SubscriberState"];
         };
         AddToListRequest: {
             listId: string;
         };
         ChangeSubscriptionRequest: {
-            /**
-             * @description The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
-             * @enum {string}
-             */
-            status: "unconfirmed" | "confirmed" | "unsubscribed";
+            status: components["schemas"]["SubscriptionStatus"];
         };
         JobAccepted: {
             jobId: string;
@@ -422,7 +414,10 @@ export interface components {
         };
         JobStatus: {
             id: string;
-            /** @enum {string} */
+            /**
+             * @description Whether this is an import or an export job.
+             * @enum {string}
+             */
             kind: "import" | "export";
             /**
              * @description The job's lifecycle status.
@@ -430,9 +425,13 @@ export interface components {
              */
             status: "pending" | "running" | "completed" | "failed";
             fileName: string;
+            /** @description Rows that created a new subscriber. */
             createdCount: number;
+            /** @description Rows that updated an existing subscriber. */
             updatedCount: number;
+            /** @description Rows skipped because they failed validation. */
             failedCount: number;
+            /** @description Total rows exported. Only meaningful for an export job. */
             rowCount: number;
             failures: components["schemas"]["RowFailure"][];
         };
@@ -474,6 +473,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description The request conflicts with the resource's current state. */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description The request body failed validation. */
         UnprocessableEntity: {
             headers: {
@@ -485,15 +493,6 @@ export interface components {
         };
         /** @description No such resource in this workspace. */
         NotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description The request conflicts with the resource's current state. */
-        Conflict: {
             headers: {
                 [name: string]: unknown;
             };
@@ -571,6 +570,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };
@@ -629,6 +629,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };
@@ -655,7 +656,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };
