@@ -77,7 +77,7 @@ func TestSaveVisualTemplateRejectsMissingBodyHTML(t *testing.T) {
 		"ifUnmodifiedSince": updatedAt.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusBadRequest, status)
-	require.Equal(t, "invalid_body", body["error"])
+	require.Equal(t, "invalid_body", body["code"])
 }
 
 func TestSaveVisualTemplateRejectsMissingIfUnmodifiedSince(t *testing.T) {
@@ -98,7 +98,7 @@ func TestSaveVisualTemplateRejectsMissingIfUnmodifiedSince(t *testing.T) {
 		// ifUnmodifiedSince omitted.
 	})
 	require.Equal(t, http.StatusBadRequest, status)
-	require.Equal(t, "invalid_body", body["error"])
+	require.Equal(t, "invalid_body", body["code"])
 }
 
 func TestSaveVisualTemplateRejectsMissingDoc(t *testing.T) {
@@ -119,7 +119,7 @@ func TestSaveVisualTemplateRejectsMissingDoc(t *testing.T) {
 		"ifUnmodifiedSince": updatedAt.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusBadRequest, status)
-	require.Equal(t, "invalid_body", body["error"])
+	require.Equal(t, "invalid_body", body["code"])
 }
 
 // FR-009 stale-row gate: a save whose ifUnmodifiedSince does not match the
@@ -183,7 +183,7 @@ func TestSaveVisualTemplateRejectsCallerWithoutManagePermission(t *testing.T) {
 		"ifUnmodifiedSince": updatedAt.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusForbidden, status)
-	require.Contains(t, body["error"], "forbidden", "error slug is a forbidden variant")
+	require.Contains(t, body["code"], "forbidden", "error slug is a forbidden variant")
 }
 
 // T074 — GET /templates/{id} surfaces body_doc + theme after a visual save

@@ -84,7 +84,7 @@ func TestConvertCampaignToVisualRefusesWhenAlreadyVisual(t *testing.T) {
 
 	status, body := ts.request(http.MethodPost, base+"/campaigns/"+campaignID+"/convert-to-visual", nil)
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "already_visual", body["error"])
+	require.Equal(t, "already_visual", body["code"])
 }
 
 // TestOptOutCampaignVisualHappyPath covers FR-029: clearing body_doc on a
@@ -187,7 +187,7 @@ func TestConvertTemplateToVisualRefusesWhenAlreadyVisual(t *testing.T) {
 
 	status, body := ts.request(http.MethodPost, base+"/templates/"+templateID+"/convert-to-visual", nil)
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "already_visual", body["error"])
+	require.Equal(t, "already_visual", body["code"])
 }
 
 // TestOptOutTemplateVisualHappyPath: clearing body_doc on a template

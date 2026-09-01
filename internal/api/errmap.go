@@ -42,19 +42,21 @@ var statusForSlug = map[string]int{
 // fail is the single place a domain error becomes an HTTP response. A typed
 // apperr is mapped by its category to a status code and rendered with its
 // stable slug; a handful of slugs carry a more specific status. Any other
-// error — or an apperr of unknown category with no slug override — is an
-// unexpected internal failure: it is logged and returned as a generic 500.
-func (s *Server) fail(w http.ResponseWriter, op string, err error) {
+// error is an unexpected internal failure: logged, then rendered as a generic
+// 500 problem document.
+func (s *Server) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
 	if ae, ok := apperr.As(err); ok {
 		if status, override := statusForSlug[ae.Slug()]; override {
-			writeError(w, status, ae.Slug(), ae.Message())
+			writeProblem(w, r, status, ae.Slug(), ae.Message(), nil)
 			return
 		}
 		if ae.Category() != apperr.Unknown {
-			writeError(w, statusForCategory(ae.Category()), ae.Slug(), ae.Message())
+			writeProblem(w, r, statusForCategory(ae.Category()), ae.Slug(), ae.Message(), nil)
 			return
 		}
 	}
-	s.logger.Error("request failed", "op", op, "error", err)
-	writeError(w, http.StatusInternalServerError, "internal_error", "something went wrong")
+	if s.logger != nil {
+		s.logger.Error("request failed", "op", op, "error", err)
+	}
+	writeProblem(w, r, http.StatusInternalServerError, "internal_error", "something went wrong", nil)
 }

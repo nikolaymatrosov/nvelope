@@ -19,17 +19,17 @@ import (
 // decode against the typed struct, and the aggregate's pinned-theme slot
 // is set from the JSON bytes directly. The raw bytes themselves continue
 // to reach persistence alongside the decoded doc.
-func (s *Server) decodeVisualPayload(w http.ResponseWriter,
+func (s *Server) decodeVisualPayload(w http.ResponseWriter, r *http.Request,
 	bodyDocRaw, themeRaw json.RawMessage,
 ) (*campaigndomain.VisualDoc, *campaigndomain.Theme, bool) {
 
 	if !hasJSONValue(bodyDocRaw) {
-		writeError(w, http.StatusBadRequest, "invalid_body", "bodyDoc is required")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "bodyDoc is required")
 		return nil, nil, false
 	}
 	var doc campaigndomain.VisualDoc
 	if err := json.Unmarshal(bodyDocRaw, &doc); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "bodyDoc is not a valid visual document")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "bodyDoc is not a valid visual document")
 		return nil, nil, false
 	}
 	_ = themeRaw // Theme bytes flow through via the request struct, not here.

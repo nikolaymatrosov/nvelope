@@ -49,13 +49,13 @@ var campaignMergeTagDisplayNames = map[string]string{
 func (s *Server) handleListMergeTags(w http.ResponseWriter, r *http.Request) {
 	ws := tenantFromContext(r.Context())
 	if _, ok := principalFromContext(r.Context()); !ok {
-		writeError(w, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
+		writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
 		return
 	}
 	fields, err := s.audience.Queries.ListFields.Handle(r.Context(),
 		audiencequery.ListFields{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "list merge tags", err)
+		s.fail(w, r, "list merge tags", err)
 		return
 	}
 	subscriber := make([]subscriberMergeTag, 0, len(fields))

@@ -65,7 +65,7 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 		BodyText string `json:"body_text"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	res, err := s.campaign.Commands.CreateTemplate.Handle(r.Context(), campaigncommand.CreateTemplate{
@@ -73,7 +73,7 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 		BodyHTML: req.BodyHTML, BodyText: req.BodyText,
 	})
 	if err != nil {
-		s.fail(w, "create template", err)
+		s.fail(w, r, "create template", err)
 		return
 	}
 	s.respondTemplate(w, r, ws.ID, res.TemplateID, http.StatusCreated)
@@ -88,7 +88,7 @@ func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, Page: campaignPageFromRequest(r),
 	})
 	if err != nil {
-		s.fail(w, "list templates", err)
+		s.fail(w, r, "list templates", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"templates": page.Templates, "total": page.Total})
@@ -114,14 +114,14 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 		BodyText string `json:"body_text"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.campaign.Commands.UpdateTemplate.Handle(r.Context(), campaigncommand.UpdateTemplate{
 		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"), Name: req.Name,
 		Subject: req.Subject, BodyHTML: req.BodyHTML, BodyText: req.BodyText,
 	}); err != nil {
-		s.fail(w, "update template", err)
+		s.fail(w, r, "update template", err)
 		return
 	}
 	s.respondTemplate(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK)
@@ -135,7 +135,7 @@ func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 	if err := s.campaign.Commands.DeleteTemplate.Handle(r.Context(), campaigncommand.DeleteTemplate{
 		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "delete template", err)
+		s.fail(w, r, "delete template", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -147,7 +147,7 @@ func (s *Server) respondTemplate(w http.ResponseWriter, r *http.Request, tenantI
 		TenantID: tenantID, TemplateID: id,
 	})
 	if err != nil {
-		s.fail(w, "get template", err)
+		s.fail(w, r, "get template", err)
 		return
 	}
 	writeJSON(w, status, view)
@@ -172,7 +172,7 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 		MaxSendErrors   int               `json:"max_send_errors"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	res, err := s.campaign.Commands.CreateCampaign.Handle(r.Context(), campaigncommand.CreateCampaign{
@@ -182,7 +182,7 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 		ListIDs: req.ListIDs, Segments: rawSegments(req.Segments), MaxSendErrors: req.MaxSendErrors,
 	})
 	if err != nil {
-		s.fail(w, "create campaign", err)
+		s.fail(w, r, "create campaign", err)
 		return
 	}
 	s.respondCampaign(w, r, ws.ID, res.CampaignID, http.StatusCreated)
@@ -197,7 +197,7 @@ func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, Page: campaignPageFromRequest(r),
 	})
 	if err != nil {
-		s.fail(w, "list campaigns", err)
+		s.fail(w, r, "list campaigns", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"campaigns": page.Campaigns, "total": page.Total})
@@ -228,7 +228,7 @@ func (s *Server) handleUpdateCampaign(w http.ResponseWriter, r *http.Request) {
 		Segments        []json.RawMessage `json:"segments"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.campaign.Commands.UpdateCampaign.Handle(r.Context(), campaigncommand.UpdateCampaign{
@@ -237,7 +237,7 @@ func (s *Server) handleUpdateCampaign(w http.ResponseWriter, r *http.Request) {
 		FromLocalPart: req.FromLocalPart, SendingDomainID: req.SendingDomainID,
 		ListIDs: req.ListIDs, Segments: rawSegments(req.Segments),
 	}); err != nil {
-		s.fail(w, "update campaign", err)
+		s.fail(w, r, "update campaign", err)
 		return
 	}
 	s.respondCampaign(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK)
@@ -251,7 +251,7 @@ func (s *Server) handleStartCampaign(w http.ResponseWriter, r *http.Request) {
 	if err := s.campaign.Commands.StartCampaign.Handle(r.Context(), campaigncommand.StartCampaign{
 		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "start campaign", err)
+		s.fail(w, r, "start campaign", err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "running"})
@@ -265,7 +265,7 @@ func (s *Server) handlePauseCampaign(w http.ResponseWriter, r *http.Request) {
 	if err := s.campaign.Commands.PauseCampaign.Handle(r.Context(), campaigncommand.PauseCampaign{
 		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "pause campaign", err)
+		s.fail(w, r, "pause campaign", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "paused"})
@@ -279,7 +279,7 @@ func (s *Server) handleResumeCampaign(w http.ResponseWriter, r *http.Request) {
 	if err := s.campaign.Commands.ResumeCampaign.Handle(r.Context(), campaigncommand.ResumeCampaign{
 		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "resume campaign", err)
+		s.fail(w, r, "resume campaign", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "running"})
@@ -293,7 +293,7 @@ func (s *Server) handleCancelCampaign(w http.ResponseWriter, r *http.Request) {
 	if err := s.campaign.Commands.CancelCampaign.Handle(r.Context(), campaigncommand.CancelCampaign{
 		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "cancel campaign", err)
+		s.fail(w, r, "cancel campaign", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "cancelled"})
@@ -328,22 +328,22 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_body", "false").Inc()
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	doc, theme, ok := s.decodeVisualPayload(w, req.BodyDocRaw, req.ThemeRaw)
+	doc, theme, ok := s.decodeVisualPayload(w, r, req.BodyDocRaw, req.ThemeRaw)
 	if !ok {
 		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_doc", "false").Inc()
 		return
 	}
 	if req.BodyHTML == "" || req.BodyText == "" {
 		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_body", "false").Inc()
-		writeError(w, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
 		return
 	}
 	if req.IfUnmodifiedSince.IsZero() {
 		metrics.VisualSavesTotal.WithLabelValues("campaign", "invalid_body", "false").Inc()
-		writeError(w, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
 		return
 	}
 	campaignID := chi.URLParam(r, "id")
@@ -369,7 +369,7 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 			return
 		}
 		metrics.VisualSavesTotal.WithLabelValues("campaign", saveVisualErrorResult(err), "false").Inc()
-		s.fail(w, "save visual campaign", err)
+		s.fail(w, r, "save visual campaign", err)
 		return
 	}
 	view, err := s.campaign.Queries.GetCampaign.Handle(r.Context(), campaignquery.GetCampaign{
@@ -377,7 +377,7 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		metrics.VisualSavesTotal.WithLabelValues("campaign", "error", "false").Inc()
-		s.fail(w, "save visual campaign", err)
+		s.fail(w, r, "save visual campaign", err)
 		return
 	}
 	warningsPresent := "false"
@@ -428,22 +428,22 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_body", "false").Inc()
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	doc, theme, ok := s.decodeVisualPayload(w, req.BodyDocRaw, req.ThemeRaw)
+	doc, theme, ok := s.decodeVisualPayload(w, r, req.BodyDocRaw, req.ThemeRaw)
 	if !ok {
 		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_doc", "false").Inc()
 		return
 	}
 	if req.BodyHTML == "" || req.BodyText == "" {
 		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_body", "false").Inc()
-		writeError(w, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "bodyHtml and bodyText are required")
 		return
 	}
 	if req.IfUnmodifiedSince.IsZero() {
 		metrics.VisualSavesTotal.WithLabelValues("template", "invalid_body", "false").Inc()
-		writeError(w, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "ifUnmodifiedSince is required")
 		return
 	}
 	templateID := chi.URLParam(r, "id")
@@ -469,7 +469,7 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 			return
 		}
 		metrics.VisualSavesTotal.WithLabelValues("template", saveVisualErrorResult(err), "false").Inc()
-		s.fail(w, "save visual template", err)
+		s.fail(w, r, "save visual template", err)
 		return
 	}
 	view, err := s.campaign.Queries.GetTemplate.Handle(r.Context(), campaignquery.GetTemplate{
@@ -477,7 +477,7 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		metrics.VisualSavesTotal.WithLabelValues("template", "error", "false").Inc()
-		s.fail(w, "save visual template", err)
+		s.fail(w, r, "save visual template", err)
 		return
 	}
 	warningsPresent := "false"
@@ -518,7 +518,7 @@ func (s *Server) handleConvertCampaignToVisual(w http.ResponseWriter, r *http.Re
 			CampaignID: chi.URLParam(r, "id"),
 		})
 	if err != nil {
-		s.fail(w, "convert campaign to visual", err)
+		s.fail(w, r, "convert campaign to visual", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -542,7 +542,7 @@ func (s *Server) handleOptOutCampaignVisual(w http.ResponseWriter, r *http.Reque
 			TenantID:   ws.ID,
 			CampaignID: chi.URLParam(r, "id"),
 		}); err != nil {
-		s.fail(w, "opt out of visual campaign", err)
+		s.fail(w, r, "opt out of visual campaign", err)
 		return
 	}
 	s.respondCampaign(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK)
@@ -561,7 +561,7 @@ func (s *Server) handleConvertTemplateToVisual(w http.ResponseWriter, r *http.Re
 			TemplateID: chi.URLParam(r, "id"),
 		})
 	if err != nil {
-		s.fail(w, "convert template to visual", err)
+		s.fail(w, r, "convert template to visual", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -581,14 +581,14 @@ func (s *Server) handleOptOutTemplateVisual(w http.ResponseWriter, r *http.Reque
 			TenantID:   ws.ID,
 			TemplateID: chi.URLParam(r, "id"),
 		}); err != nil {
-		s.fail(w, "opt out of visual template", err)
+		s.fail(w, r, "opt out of visual template", err)
 		return
 	}
 	view, err := s.campaign.Queries.GetTemplate.Handle(r.Context(), campaignquery.GetTemplate{
 		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"),
 	})
 	if err != nil {
-		s.fail(w, "opt out of visual template", err)
+		s.fail(w, r, "opt out of visual template", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -600,7 +600,7 @@ func (s *Server) respondCampaign(w http.ResponseWriter, r *http.Request, tenantI
 		TenantID: tenantID, CampaignID: id,
 	})
 	if err != nil {
-		s.fail(w, "get campaign", err)
+		s.fail(w, r, "get campaign", err)
 		return
 	}
 	writeJSON(w, status, view)

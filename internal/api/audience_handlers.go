@@ -33,7 +33,7 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 		Tags        []string `json:"tags"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if req.Visibility == "" {
@@ -47,7 +47,7 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 		Visibility: req.Visibility, OptIn: req.OptIn, Tags: req.Tags,
 	})
 	if err != nil {
-		s.fail(w, "create list", err)
+		s.fail(w, r, "create list", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": res.ListID})
@@ -62,7 +62,7 @@ func (s *Server) handleListLists(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, Page: pageFromRequest(r),
 	})
 	if err != nil {
-		s.fail(w, "list lists", err)
+		s.fail(w, r, "list lists", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"lists": page.Lists, "total": page.Total})
@@ -78,7 +78,7 @@ func (s *Server) handleGetList(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, ListID: listID,
 	})
 	if err != nil {
-		s.fail(w, "get list", err)
+		s.fail(w, r, "get list", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"list": view})
@@ -98,7 +98,7 @@ func (s *Server) handleUpdateList(w http.ResponseWriter, r *http.Request) {
 		Tags        []string `json:"tags"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if req.Visibility == "" {
@@ -111,7 +111,7 @@ func (s *Server) handleUpdateList(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, ListID: listID, Name: req.Name,
 		Description: req.Description, Visibility: req.Visibility, OptIn: req.OptIn, Tags: req.Tags,
 	}); err != nil {
-		s.fail(w, "update list", err)
+		s.fail(w, r, "update list", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -126,7 +126,7 @@ func (s *Server) handleDeleteList(w http.ResponseWriter, r *http.Request) {
 	if err := s.audience.Commands.DeleteList.Handle(r.Context(), audiencecommand.DeleteList{
 		TenantID: ws.ID, ListID: listID,
 	}); err != nil {
-		s.fail(w, "delete list", err)
+		s.fail(w, r, "delete list", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -144,7 +144,7 @@ func (s *Server) handleCreateSubscriber(w http.ResponseWriter, r *http.Request) 
 		ListIDs    []string       `json:"list_ids"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	res, err := s.audience.Commands.CreateSubscriber.Handle(r.Context(), audiencecommand.CreateSubscriber{
@@ -152,7 +152,7 @@ func (s *Server) handleCreateSubscriber(w http.ResponseWriter, r *http.Request) 
 		Attributes: req.Attributes, ListIDs: req.ListIDs,
 	})
 	if err != nil {
-		s.fail(w, "create subscriber", err)
+		s.fail(w, r, "create subscriber", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": res.SubscriberID})
@@ -167,7 +167,7 @@ func (s *Server) handleSearchSubscribers(w http.ResponseWriter, r *http.Request)
 		TenantID: ws.ID, Query: r.URL.Query().Get("q"), Page: pageFromRequest(r),
 	})
 	if err != nil {
-		s.fail(w, "search subscribers", err)
+		s.fail(w, r, "search subscribers", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -194,19 +194,19 @@ func (s *Server) runSegmentQuery(w http.ResponseWriter, r *http.Request, countOn
 		Segment domain.Node `json:"segment"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	segment, err := domain.NewSegment(req.Segment)
 	if err != nil {
-		s.fail(w, "query subscribers", err)
+		s.fail(w, r, "query subscribers", err)
 		return
 	}
 	page, err := s.audience.Queries.RunSegment.Handle(r.Context(), audiencequery.RunSegment{
 		TenantID: ws.ID, Segment: *segment, Page: pageFromRequest(r), CountOnly: countOnly,
 	})
 	if err != nil {
-		s.fail(w, "query subscribers", err)
+		s.fail(w, r, "query subscribers", err)
 		return
 	}
 	if countOnly {
@@ -227,7 +227,7 @@ func (s *Server) handleGetSubscriber(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, SubscriberID: chi.URLParam(r, "id"),
 	})
 	if err != nil {
-		s.fail(w, "get subscriber", err)
+		s.fail(w, r, "get subscriber", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"subscriber": view})
@@ -244,7 +244,7 @@ func (s *Server) handleUpdateSubscriber(w http.ResponseWriter, r *http.Request) 
 		State      string         `json:"state"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if req.State == "" {
@@ -254,7 +254,7 @@ func (s *Server) handleUpdateSubscriber(w http.ResponseWriter, r *http.Request) 
 		TenantID: ws.ID, SubscriberID: chi.URLParam(r, "id"), Name: req.Name,
 		Attributes: req.Attributes, State: req.State,
 	}); err != nil {
-		s.fail(w, "update subscriber", err)
+		s.fail(w, r, "update subscriber", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -268,7 +268,7 @@ func (s *Server) handleDeleteSubscriber(w http.ResponseWriter, r *http.Request) 
 	if err := s.audience.Commands.DeleteSubscriber.Handle(r.Context(), audiencecommand.DeleteSubscriber{
 		TenantID: ws.ID, SubscriberID: chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "delete subscriber", err)
+		s.fail(w, r, "delete subscriber", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -280,7 +280,7 @@ func (s *Server) handleAddToList(w http.ResponseWriter, r *http.Request) {
 		ListID string `json:"list_id"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if _, ok := s.requireListPermission(w, r, iamdomain.PermSubscribersManage, req.ListID); !ok {
@@ -289,7 +289,7 @@ func (s *Server) handleAddToList(w http.ResponseWriter, r *http.Request) {
 	if err := s.audience.Commands.AddToList.Handle(r.Context(), audiencecommand.AddToList{
 		TenantID: ws.ID, SubscriberID: chi.URLParam(r, "id"), ListID: req.ListID,
 	}); err != nil {
-		s.fail(w, "add to list", err)
+		s.fail(w, r, "add to list", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -304,7 +304,7 @@ func (s *Server) handleRemoveFromList(w http.ResponseWriter, r *http.Request) {
 	if err := s.audience.Commands.RemoveFromList.Handle(r.Context(), audiencecommand.RemoveFromList{
 		TenantID: ws.ID, SubscriberID: chi.URLParam(r, "id"), ListID: listID,
 	}); err != nil {
-		s.fail(w, "remove from list", err)
+		s.fail(w, r, "remove from list", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -320,7 +320,7 @@ func (s *Server) handleChangeSubscription(w http.ResponseWriter, r *http.Request
 		Status string `json:"status"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.audience.Commands.ChangeSubscriptionState.Handle(r.Context(),
@@ -328,7 +328,7 @@ func (s *Server) handleChangeSubscription(w http.ResponseWriter, r *http.Request
 			TenantID: ws.ID, SubscriberID: chi.URLParam(r, "id"),
 			ListID: listID, Status: req.Status,
 		}); err != nil {
-		s.fail(w, "change subscription", err)
+		s.fail(w, r, "change subscription", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

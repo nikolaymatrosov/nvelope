@@ -30,13 +30,13 @@ func (s *Server) handleCampaignAnalytics(w http.ResponseWriter, r *http.Request)
 	// distinct from a campaign that simply has no analytics row yet.
 	if _, err := s.campaign.Queries.GetCampaign.Handle(r.Context(),
 		campaignquery.GetCampaign{TenantID: ws.ID, CampaignID: campaignID}); err != nil {
-		s.fail(w, "campaign analytics", err)
+		s.fail(w, r, "campaign analytics", err)
 		return
 	}
 	view, err := s.deliverability.Queries.GetCampaignAnalytics.Handle(r.Context(),
 		deliverabilityquery.GetCampaignAnalytics{TenantID: ws.ID, CampaignID: campaignID})
 	if err != nil {
-		s.fail(w, "campaign analytics", err)
+		s.fail(w, r, "campaign analytics", err)
 		return
 	}
 	var refreshedAt any
@@ -64,7 +64,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	view, err := s.deliverability.Queries.GetDashboard.Handle(r.Context(),
 		deliverabilityquery.GetDashboard{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "dashboard", err)
+		s.fail(w, r, "dashboard", err)
 		return
 	}
 	recent := make([]map[string]any, 0, len(view.Recent))

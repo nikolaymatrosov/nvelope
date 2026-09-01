@@ -23,7 +23,7 @@ func (s *Server) handleTransactionalSend(w http.ResponseWriter, r *http.Request)
 		Variables       map[string]string `json:"variables"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 
@@ -39,11 +39,11 @@ func (s *Server) handleTransactionalSend(w http.ResponseWriter, r *http.Request)
 				seconds = 1
 			}
 			w.Header().Set("Retry-After", strconv.Itoa(seconds))
-			writeError(w, http.StatusTooManyRequests, "rate-limited",
+			writeError(w, r, http.StatusTooManyRequests, "rate-limited",
 				"sending is temporarily rate-limited")
 			return
 		}
-		s.fail(w, "transactional send", err)
+		s.fail(w, r, "transactional send", err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"message_id": res.MessageID})

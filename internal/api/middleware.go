@@ -39,7 +39,7 @@ func (s *Server) requireUser(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			writeError(w, http.StatusUnauthorized, "unauthenticated", "a valid session is required")
+			writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a valid session is required")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, user)))
@@ -81,13 +81,13 @@ func (s *Server) resolveTenant(next http.Handler) http.Handler {
 			// No control-plane user — an API-key request. Locate the workspace
 			// by slug; the key's Principal establishes the caller's authority.
 			if _, isBearer := bearerToken(r); !isBearer {
-				writeError(w, http.StatusUnauthorized, "unauthenticated", "a valid session is required")
+				writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a valid session is required")
 				return
 			}
 			ws, err := s.tenant.Queries.LocateWorkspace.Handle(r.Context(),
 				tenantquery.LocateWorkspace{Slug: slug})
 			if err != nil {
-				s.fail(w, "resolve tenant", err)
+				s.fail(w, r, "resolve tenant", err)
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), tenantCtxKey, ws)))
@@ -96,7 +96,7 @@ func (s *Server) resolveTenant(next http.Handler) http.Handler {
 		ws, err := s.tenant.Queries.ResolveWorkspace.Handle(r.Context(),
 			tenantquery.ResolveWorkspace{Slug: slug, UserID: user.ID})
 		if err != nil {
-			s.fail(w, "resolve tenant", err)
+			s.fail(w, r, "resolve tenant", err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), tenantCtxKey, ws)))

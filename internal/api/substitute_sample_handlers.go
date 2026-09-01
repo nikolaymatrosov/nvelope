@@ -62,11 +62,11 @@ func (s *Server) handleSubstituteSample(w http.ResponseWriter, r *http.Request) 
 	}
 	var req substituteSampleRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if req.HTML == "" || req.Text == "" {
-		writeError(w, http.StatusBadRequest, "invalid_body", "html and text are required")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "html and text are required")
 		return
 	}
 	sub := sendingdomain.SubscriberView{

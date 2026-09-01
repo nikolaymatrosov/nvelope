@@ -7,12 +7,6 @@ import (
 	"net/http"
 )
 
-// errorBody is the response envelope for every API error.
-type errorBody struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
-}
-
 // writeJSON writes v as a JSON response with the given status code. A nil v
 // writes only the status (used for 204 responses).
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -23,10 +17,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// writeError writes a {error, message} envelope with the given status code.
-// The code is a stable machine-readable token; the message is human-readable.
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, errorBody{Error: code, Message: message})
+// writeError writes an RFC 9457 problem document. The code is a stable
+// machine-readable token; the message becomes the problem's `detail`.
+func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+	writeProblem(w, r, status, code, message, nil)
 }
 
 // decodeJSON reads a JSON request body into v, rejecting unknown fields and

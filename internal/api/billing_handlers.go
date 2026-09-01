@@ -18,7 +18,7 @@ func (s *Server) handleListPlans(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := s.billing.Queries.ListPlans.Handle(r.Context(), billingquery.ListPlans{})
 	if err != nil {
-		s.fail(w, "list plans", err)
+		s.fail(w, r, "list plans", err)
 		return
 	}
 	plans := make([]map[string]any, 0, len(view.Plans))
@@ -50,14 +50,14 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		PlanID string `json:"planId"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	res, err := s.billing.Commands.Subscribe.Handle(r.Context(), billingcommand.Subscribe{
 		TenantID: ws.ID, ActorID: principal.ActorID(), PlanID: req.PlanID,
 	})
 	if err != nil {
-		s.fail(w, "subscribe", err)
+		s.fail(w, r, "subscribe", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -87,7 +87,7 @@ func (s *Server) handleGetSubscription(w http.ResponseWriter, r *http.Request) {
 	view, err := s.billing.Queries.GetSubscription.Handle(r.Context(),
 		billingquery.GetSubscription{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "get subscription", err)
+		s.fail(w, r, "get subscription", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -123,13 +123,13 @@ func (s *Server) handleCancelSubscription(w http.ResponseWriter, r *http.Request
 	if err := s.billing.Commands.CancelSubscription.Handle(r.Context(), billingcommand.CancelSubscription{
 		TenantID: ws.ID, ActorID: principal.ActorID(),
 	}); err != nil {
-		s.fail(w, "cancel subscription", err)
+		s.fail(w, r, "cancel subscription", err)
 		return
 	}
 	view, err := s.billing.Queries.GetSubscription.Handle(r.Context(),
 		billingquery.GetSubscription{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "cancel subscription", err)
+		s.fail(w, r, "cancel subscription", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -165,7 +165,7 @@ func (s *Server) handleListInvoices(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, Limit: limit, Offset: offset,
 	})
 	if err != nil {
-		s.fail(w, "list invoices", err)
+		s.fail(w, r, "list invoices", err)
 		return
 	}
 	invoices := make([]map[string]any, 0, len(view.Invoices))
@@ -194,7 +194,7 @@ func (s *Server) handleGetInvoice(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, InvoiceID: chi.URLParam(r, "id"),
 	})
 	if err != nil {
-		s.fail(w, "get invoice", err)
+		s.fail(w, r, "get invoice", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, invoicePayload(view))
@@ -212,14 +212,14 @@ func (s *Server) handleSettleInvoice(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID, ActorID: principal.ActorID(), InvoiceID: chi.URLParam(r, "id"),
 	})
 	if err != nil {
-		s.fail(w, "settle invoice", err)
+		s.fail(w, r, "settle invoice", err)
 		return
 	}
 	view, err := s.billing.Queries.GetInvoice.Handle(r.Context(), billingquery.GetInvoice{
 		TenantID: ws.ID, InvoiceID: res.InvoiceID,
 	})
 	if err != nil {
-		s.fail(w, "settle invoice", err)
+		s.fail(w, r, "settle invoice", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, invoicePayload(view))

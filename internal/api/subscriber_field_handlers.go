@@ -44,13 +44,13 @@ func subscriberFieldErrorResult(err error) string {
 func (s *Server) handleListSubscriberFields(w http.ResponseWriter, r *http.Request) {
 	ws := tenantFromContext(r.Context())
 	if _, ok := principalFromContext(r.Context()); !ok {
-		writeError(w, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
+		writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
 		return
 	}
 	views, err := s.audience.Queries.ListFields.Handle(r.Context(),
 		audiencequery.ListFields{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "list subscriber fields", err)
+		s.fail(w, r, "list subscriber fields", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"fields": views})
@@ -68,7 +68,7 @@ func (s *Server) handleCreateSubscriberField(w http.ResponseWriter, r *http.Requ
 		DefaultValue string `json:"defaultValue"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	res, err := s.audience.Commands.CreateField.Handle(r.Context(), audiencecommand.CreateField{
@@ -80,7 +80,7 @@ func (s *Server) handleCreateSubscriberField(w http.ResponseWriter, r *http.Requ
 	})
 	if err != nil {
 		metrics.SubscriberFieldMutationsTotal.WithLabelValues("create", subscriberFieldErrorResult(err)).Inc()
-		s.fail(w, "create subscriber field", err)
+		s.fail(w, r, "create subscriber field", err)
 		return
 	}
 	metrics.SubscriberFieldMutationsTotal.WithLabelValues("create", "ok").Inc()
@@ -131,7 +131,7 @@ func (s *Server) handleUpdateSubscriberField(w http.ResponseWriter, r *http.Requ
 	current, err := s.audience.Queries.GetField.Handle(r.Context(),
 		audiencequery.GetField{TenantID: ws.ID, FieldID: fieldID})
 	if err != nil {
-		s.fail(w, "update subscriber field", err)
+		s.fail(w, r, "update subscriber field", err)
 		return
 	}
 	var req struct {
@@ -140,7 +140,7 @@ func (s *Server) handleUpdateSubscriberField(w http.ResponseWriter, r *http.Requ
 		DefaultValue *string `json:"defaultValue"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	merged := audiencecommand.UpdateField{
@@ -161,7 +161,7 @@ func (s *Server) handleUpdateSubscriberField(w http.ResponseWriter, r *http.Requ
 	}
 	if err := s.audience.Commands.UpdateField.Handle(r.Context(), merged); err != nil {
 		metrics.SubscriberFieldMutationsTotal.WithLabelValues("update", subscriberFieldErrorResult(err)).Inc()
-		s.fail(w, "update subscriber field", err)
+		s.fail(w, r, "update subscriber field", err)
 		return
 	}
 	metrics.SubscriberFieldMutationsTotal.WithLabelValues("update", "ok").Inc()
@@ -195,7 +195,7 @@ func (s *Server) handleDeleteSubscriberField(w http.ResponseWriter, r *http.Requ
 		TenantID: ws.ID, FieldID: fieldID,
 	}); err != nil {
 		metrics.SubscriberFieldMutationsTotal.WithLabelValues("delete", subscriberFieldErrorResult(err)).Inc()
-		s.fail(w, "delete subscriber field", err)
+		s.fail(w, r, "delete subscriber field", err)
 		return
 	}
 	metrics.SubscriberFieldMutationsTotal.WithLabelValues("delete", "ok").Inc()
@@ -218,14 +218,14 @@ func (s *Server) handleReorderSubscriberFields(w http.ResponseWriter, r *http.Re
 		Order []string `json:"order"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.audience.Commands.ReorderFields.Handle(r.Context(), audiencecommand.ReorderFields{
 		TenantID: ws.ID, IDs: req.Order,
 	}); err != nil {
 		metrics.SubscriberFieldMutationsTotal.WithLabelValues("reorder", subscriberFieldErrorResult(err)).Inc()
-		s.fail(w, "reorder subscriber fields", err)
+		s.fail(w, r, "reorder subscriber fields", err)
 		return
 	}
 	metrics.SubscriberFieldMutationsTotal.WithLabelValues("reorder", "ok").Inc()
@@ -238,7 +238,7 @@ func (s *Server) handleReorderSubscriberFields(w http.ResponseWriter, r *http.Re
 	views, err := s.audience.Queries.ListFields.Handle(r.Context(),
 		audiencequery.ListFields{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "reorder subscriber fields", err)
+		s.fail(w, r, "reorder subscriber fields", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"fields": views})
@@ -250,7 +250,7 @@ func (s *Server) respondSubscriberField(w http.ResponseWriter, r *http.Request, 
 	view, err := s.audience.Queries.GetField.Handle(r.Context(),
 		audiencequery.GetField{TenantID: tenantID, FieldID: id})
 	if err != nil {
-		s.fail(w, "get subscriber field", err)
+		s.fail(w, r, "get subscriber field", err)
 		return
 	}
 	writeJSON(w, status, view)

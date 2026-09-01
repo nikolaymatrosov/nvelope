@@ -21,14 +21,14 @@ type credentialsRequest struct {
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	var req credentialsRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	result, err := s.auth.Commands.SignUp.Handle(r.Context(), authcommand.SignUp{
 		Email: req.Email, Password: req.Password, Name: req.Name,
 	})
 	if err != nil {
-		s.fail(w, "signup", err)
+		s.fail(w, r, "signup", err)
 		return
 	}
 	// No session is issued — the account must verify its email address first.
@@ -48,13 +48,13 @@ func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	result, err := s.auth.Commands.VerifyEmail.Handle(r.Context(),
 		authcommand.VerifyEmail{Token: req.Token})
 	if err != nil {
-		s.fail(w, "verify email", err)
+		s.fail(w, r, "verify email", err)
 		return
 	}
 	status := "verified"
@@ -74,12 +74,12 @@ func (s *Server) handleResendVerification(w http.ResponseWriter, r *http.Request
 		Email string `json:"email"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.auth.Commands.ResendEmailVerification.Handle(r.Context(),
 		authcommand.ResendEmailVerification{Email: req.Email}); err != nil {
-		s.fail(w, "resend verification", err)
+		s.fail(w, r, "resend verification", err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
@@ -113,14 +113,14 @@ func (s *Server) resolveAuthLocale(w http.ResponseWriter, r *http.Request, userI
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req credentialsRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	result, err := s.auth.Commands.LogIn.Handle(r.Context(), authcommand.LogIn{
 		Email: req.Email, Password: req.Password,
 	})
 	if err != nil {
-		s.fail(w, "login", err)
+		s.fail(w, r, "login", err)
 		return
 	}
 	s.setSessionCookie(w, result.Token)
@@ -136,7 +136,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		raw = c.Value
 	}
 	if err := s.auth.Commands.LogOut.Handle(r.Context(), authcommand.LogOut{RawToken: raw}); err != nil {
-		s.fail(w, "logout", err)
+		s.fail(w, r, "logout", err)
 		return
 	}
 	s.clearSessionCookie(w)
@@ -148,7 +148,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	memberships, err := s.tenant.Queries.ListWorkspaces.Handle(r.Context(),
 		tenantquery.ListWorkspaces{UserID: user.ID})
 	if err != nil {
-		s.fail(w, "me", err)
+		s.fail(w, r, "me", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -166,13 +166,13 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		Locale string `json:"locale"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.auth.Commands.SetLocale.Handle(r.Context(), authcommand.SetLocale{
 		UserID: user.ID, Locale: req.Locale,
 	}); err != nil {
-		s.fail(w, "set locale", err)
+		s.fail(w, r, "set locale", err)
 		return
 	}
 	// Mirror the chosen locale into the cookie so the next server render is in
@@ -190,14 +190,14 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		Slug string `json:"slug"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	result, err := s.tenant.Commands.CreateWorkspace.Handle(r.Context(), tenantcommand.CreateWorkspace{
 		OwnerID: user.ID, Name: req.Name, Slug: req.Slug,
 	})
 	if err != nil {
-		s.fail(w, "create tenant", err)
+		s.fail(w, r, "create tenant", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -210,7 +210,7 @@ func (s *Server) handleListTenants(w http.ResponseWriter, r *http.Request) {
 	memberships, err := s.tenant.Queries.ListWorkspaces.Handle(r.Context(),
 		tenantquery.ListWorkspaces{UserID: user.ID})
 	if err != nil {
-		s.fail(w, "list tenants", err)
+		s.fail(w, r, "list tenants", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tenants": memberships})
@@ -220,7 +220,7 @@ func (s *Server) handleGetInvitation(w http.ResponseWriter, r *http.Request) {
 	lookup, err := s.tenant.Queries.LookUpInvitation.Handle(r.Context(),
 		tenantquery.LookUpInvitation{Token: chi.URLParam(r, "token")})
 	if err != nil {
-		s.fail(w, "get invitation", err)
+		s.fail(w, r, "get invitation", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -241,7 +241,7 @@ func (s *Server) handleAcceptInvitation(w http.ResponseWriter, r *http.Request) 
 			Name     string `json:"name"`
 		}
 		if err := decodeJSON(r, &body); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_body",
+			writeError(w, r, http.StatusBadRequest, "invalid_body",
 				"request body must supply a password and name to accept this invitation")
 			return
 		}
@@ -253,12 +253,12 @@ func (s *Server) handleAcceptInvitation(w http.ResponseWriter, r *http.Request) 
 	if errors.Is(err, authdomain.ErrEmailTaken) {
 		// More helpful than the generic message: the invitee already has an
 		// account and should sign in before accepting.
-		writeError(w, http.StatusConflict, "email_taken",
+		writeError(w, r, http.StatusConflict, "email_taken",
 			"an account with this email already exists — log in, then accept the invitation")
 		return
 	}
 	if err != nil {
-		s.fail(w, "accept invitation", err)
+		s.fail(w, r, "accept invitation", err)
 		return
 	}
 

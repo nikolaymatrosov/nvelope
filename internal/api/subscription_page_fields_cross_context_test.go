@@ -68,7 +68,7 @@ func TestSubscriptionPageFieldsShareSubscriberFieldsRegistry(t *testing.T) {
 	badReq["fields"] = []map[string]any{{"key": "favorite_color", "label": "Color", "required": false}}
 	status, body = ts.request(http.MethodPost, base+"/subscription-pages", badReq)
 	require.Equal(t, http.StatusUnprocessableEntity, status, "unknown slug rejected: %v", body)
-	require.Equal(t, "validation_failed", body["error"])
+	require.Equal(t, "validation_failed", body["code"])
 
 	// Delete the registry entry. It disappears from /subscriber-fields …
 	status, _ = ts.request(http.MethodDelete, base+"/subscriber-fields/"+fieldID, nil)
@@ -84,7 +84,7 @@ func TestSubscriptionPageFieldsShareSubscriberFieldsRegistry(t *testing.T) {
 	status, body = ts.request(http.MethodPut, base+"/subscription-pages/"+pageID, updateReq)
 	require.Equal(t, http.StatusUnprocessableEntity, status,
 		"update referencing a deleted registry slug is rejected: %v", body)
-	require.Equal(t, "validation_failed", body["error"])
+	require.Equal(t, "validation_failed", body["code"])
 }
 
 func fieldsListContainsSlug(body map[string]any, slug string) bool {

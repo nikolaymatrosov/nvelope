@@ -14,7 +14,7 @@ func (s *Server) handleTenantInfo(w http.ResponseWriter, r *http.Request) {
 	members, err := s.tenant.Queries.WorkspaceMembers.Handle(r.Context(),
 		tenantquery.WorkspaceMembers{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "tenant info", err)
+		s.fail(w, r, "tenant info", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -28,7 +28,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	settings, err := s.tenant.Queries.GetSettings.Handle(r.Context(),
 		tenantquery.GetSettings{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "get settings", err)
+		s.fail(w, r, "get settings", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"settings": settings})
@@ -41,14 +41,14 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		Timezone    string `json:"timezone"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	result, err := s.tenant.Commands.UpdateSettings.Handle(r.Context(), tenantcommand.UpdateSettings{
 		TenantID: ws.ID, DisplayName: req.DisplayName, Timezone: req.Timezone,
 	})
 	if err != nil {
-		s.fail(w, "update settings", err)
+		s.fail(w, r, "update settings", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -67,7 +67,7 @@ func (s *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Request) 
 		Email string `json:"email"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 
@@ -75,12 +75,12 @@ func (s *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Request) 
 		TenantID: ws.ID, InviterID: inviter.ID, Email: req.Email,
 	})
 	if err != nil {
-		s.fail(w, "create invitation", err)
+		s.fail(w, r, "create invitation", err)
 		return
 	}
 	if result.AlreadyMember {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"error":   "already_member",
+			"code":    "already_member",
 			"message": "that person is already a member of this tenant",
 		})
 		return
@@ -102,7 +102,7 @@ func (s *Server) handleListInvitations(w http.ResponseWriter, r *http.Request) {
 	invitations, err := s.tenant.Queries.PendingInvitations.Handle(r.Context(),
 		tenantquery.PendingInvitations{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "list invitations", err)
+		s.fail(w, r, "list invitations", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"invitations": invitations})
@@ -113,7 +113,7 @@ func (s *Server) handleRevokeInvitation(w http.ResponseWriter, r *http.Request) 
 	if err := s.tenant.Commands.RevokeInvitation.Handle(r.Context(), tenantcommand.RevokeInvitation{
 		TenantID: ws.ID, InvitationID: chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "revoke invitation", err)
+		s.fail(w, r, "revoke invitation", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -43,12 +43,12 @@ func (s *Server) handleTrackClick(w http.ResponseWriter, r *http.Request) {
 
 	tenantID, err := s.tracking.ResolveTenantForLink(r.Context(), linkID)
 	if err != nil {
-		s.fail(w, "track click", err)
+		s.fail(w, r, "track click", err)
 		return
 	}
 	url, err := s.tracking.RecordClick(r.Context(), tenantID, linkID, recipientID)
 	if err != nil {
-		s.fail(w, "track click", err)
+		s.fail(w, r, "track click", err)
 		return
 	}
 	http.Redirect(w, r, url, http.StatusFound)

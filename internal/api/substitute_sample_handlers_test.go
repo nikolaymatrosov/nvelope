@@ -56,7 +56,7 @@ func TestSubstituteSampleRejectsMissingBody(t *testing.T) {
 		"sample": map[string]any{},
 	})
 	require.Equal(t, http.StatusBadRequest, status)
-	require.Equal(t, "invalid_body", body["error"])
+	require.Equal(t, "invalid_body", body["code"])
 }
 
 // Unknown subscriber slugs in the sample are silently ignored on this path —

@@ -26,7 +26,7 @@ func (s *Server) authz(next http.Handler) http.Handler {
 		ws := tenantFromContext(r.Context())
 		principal, err := s.resolvePrincipal(r, ws.ID)
 		if err != nil {
-			s.fail(w, "authorize", err)
+			s.fail(w, r, "authorize", err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalCtxKey, principal)))
@@ -75,11 +75,11 @@ func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request,
 	required iamdomain.Permission) (iamdomain.Principal, bool) {
 	p, ok := principalFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
+		writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
 		return iamdomain.Principal{}, false
 	}
 	if !p.Can(required) {
-		s.fail(w, "authorize", iamdomain.Forbidden(required))
+		s.fail(w, r, "authorize", iamdomain.Forbidden(required))
 		return iamdomain.Principal{}, false
 	}
 	return p, true
@@ -91,11 +91,11 @@ func (s *Server) requireListPermission(w http.ResponseWriter, r *http.Request,
 	required iamdomain.Permission, listID string) (iamdomain.Principal, bool) {
 	p, ok := principalFromContext(r.Context())
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
+		writeError(w, r, http.StatusUnauthorized, "unauthenticated", "a workspace session is required")
 		return iamdomain.Principal{}, false
 	}
 	if !p.CanOnList(required, listID) {
-		s.fail(w, "authorize", iamdomain.Forbidden(required))
+		s.fail(w, r, "authorize", iamdomain.Forbidden(required))
 		return iamdomain.Principal{}, false
 	}
 	return p, true

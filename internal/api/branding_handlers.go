@@ -27,7 +27,7 @@ func (s *Server) handleGetBranding(w http.ResponseWriter, r *http.Request) {
 	view, err := s.tenant.Queries.GetBranding.Handle(r.Context(),
 		tenantquery.GetBranding{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "get branding", err)
+		s.fail(w, r, "get branding", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -41,7 +41,7 @@ func (s *Server) handleSaveBranding(w http.ResponseWriter, r *http.Request) {
 	}
 	var req brandingRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.tenant.Commands.SaveBranding.Handle(r.Context(), tenantcommand.SaveBranding{
@@ -50,13 +50,13 @@ func (s *Server) handleSaveBranding(w http.ResponseWriter, r *http.Request) {
 		PrimaryColor: req.PrimaryColor,
 		CustomCSS:    req.CustomCSS,
 	}); err != nil {
-		s.fail(w, "save branding", err)
+		s.fail(w, r, "save branding", err)
 		return
 	}
 	view, err := s.tenant.Queries.GetBranding.Handle(r.Context(),
 		tenantquery.GetBranding{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "save branding", err)
+		s.fail(w, r, "save branding", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
@@ -76,14 +76,14 @@ func (s *Server) handleSetCampaignArchive(w http.ResponseWriter, r *http.Request
 	}
 	var req archiveRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.campaign.Commands.SetArchiveVisibility.Handle(r.Context(),
 		campaigncommand.SetArchiveVisibility{
 			TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"), Visible: req.Visible,
 		}); err != nil {
-		s.fail(w, "set campaign archive", err)
+		s.fail(w, r, "set campaign archive", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"visible": req.Visible})

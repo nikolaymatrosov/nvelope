@@ -56,7 +56,7 @@ func TestSendingDomainAddInvalid(t *testing.T) {
 	status, body := ts.request(http.MethodPost, "/t/"+slug+"/api/sending-domains",
 		map[string]string{"domain": "not a domain"})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "domain-invalid", body["error"])
+	require.Equal(t, "domain-invalid", body["code"])
 }
 
 func TestSendingDomainDuplicateConflicts(t *testing.T) {
@@ -75,7 +75,7 @@ func TestSendingDomainDuplicateConflicts(t *testing.T) {
 	status, body := ts.request(http.MethodPost, base+"/sending-domains",
 		map[string]string{"domain": "mail.acme.com"})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "domain-already-exists", body["error"])
+	require.Equal(t, "domain-already-exists", body["code"])
 }
 
 // TestSendingDomainCrossTenantIsolation confirms one tenant's sending domain is

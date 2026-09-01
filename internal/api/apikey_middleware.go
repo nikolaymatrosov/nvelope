@@ -19,18 +19,18 @@ func (s *Server) apiKeyAuth(next http.Handler) http.Handler {
 
 		key, ok := bearerToken(r)
 		if !ok {
-			writeError(w, http.StatusUnauthorized, "unauthorized",
+			writeError(w, r, http.StatusUnauthorized, "unauthorized",
 				"an API key is required")
 			return
 		}
 		principal, err := s.iam.Queries.AuthenticateAPIKey.Handle(r.Context(),
 			iamquery.AuthenticateAPIKey{TenantID: ws.ID, RawKey: key})
 		if err != nil {
-			s.fail(w, "api key auth", err)
+			s.fail(w, r, "api key auth", err)
 			return
 		}
 		if !principal.Can(iamdomain.PermTransactionalSend) {
-			s.fail(w, "api key auth", iamdomain.Forbidden(iamdomain.PermTransactionalSend))
+			s.fail(w, r, "api key auth", iamdomain.Forbidden(iamdomain.PermTransactionalSend))
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(

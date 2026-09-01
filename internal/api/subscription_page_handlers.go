@@ -33,7 +33,7 @@ func (s *Server) handleListSubscriptionPages(w http.ResponseWriter, r *http.Requ
 	views, err := s.audience.Queries.ListSubscriptionPages.Handle(r.Context(),
 		audiencequery.ListSubscriptionPages{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "list subscription pages", err)
+		s.fail(w, r, "list subscription pages", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"subscription_pages": views})
@@ -47,7 +47,7 @@ func (s *Server) handleCreateSubscriptionPage(w http.ResponseWriter, r *http.Req
 	}
 	var req subscriptionPageRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	res, err := s.audience.Commands.SaveSubscriptionPage.Handle(r.Context(),
@@ -63,7 +63,7 @@ func (s *Server) handleCreateSubscriptionPage(w http.ResponseWriter, r *http.Req
 			Active:          true,
 		})
 	if err != nil {
-		s.fail(w, "create subscription page", err)
+		s.fail(w, r, "create subscription page", err)
 		return
 	}
 	view, err := s.audience.Queries.GetSubscriptionPage.Handle(r.Context(),
@@ -84,7 +84,7 @@ func (s *Server) handleUpdateSubscriptionPage(w http.ResponseWriter, r *http.Req
 	pageID := chi.URLParam(r, "id")
 	var req subscriptionPageRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if _, err := s.audience.Commands.SaveSubscriptionPage.Handle(r.Context(),
@@ -100,13 +100,13 @@ func (s *Server) handleUpdateSubscriptionPage(w http.ResponseWriter, r *http.Req
 			FromLocalPart:   req.FromLocalPart,
 			Active:          req.Active,
 		}); err != nil {
-		s.fail(w, "update subscription page", err)
+		s.fail(w, r, "update subscription page", err)
 		return
 	}
 	view, err := s.audience.Queries.GetSubscriptionPage.Handle(r.Context(),
 		audiencequery.GetSubscriptionPage{TenantID: ws.ID, Slug: req.Slug})
 	if err != nil {
-		s.fail(w, "update subscription page", err)
+		s.fail(w, r, "update subscription page", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)

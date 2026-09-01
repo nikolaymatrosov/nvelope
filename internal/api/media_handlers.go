@@ -20,7 +20,7 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	items, err := s.media.Queries.ListAssets.Handle(r.Context(),
 		mediaquery.ListAssets{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "list media", err)
+		s.fail(w, r, "list media", err)
 		return
 	}
 	if items == nil {
@@ -41,12 +41,12 @@ func (s *Server) handleUploadMedia(w http.ResponseWriter, r *http.Request) {
 	// in the domain constructor.
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MediaMaxBytes+4096)
 	if err := r.ParseMultipartForm(s.cfg.MediaMaxBytes + 4096); err != nil {
-		s.fail(w, "upload media", mediadomain.ErrMediaTooLarge)
+		s.fail(w, r, "upload media", mediadomain.ErrMediaTooLarge)
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		s.fail(w, "upload media", mediadomain.ErrEmptyUpload)
+		s.fail(w, r, "upload media", mediadomain.ErrEmptyUpload)
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -61,7 +61,7 @@ func (s *Server) handleUploadMedia(w http.ResponseWriter, r *http.Request) {
 		UploadedBy:  principal.ActorID(),
 	})
 	if err != nil {
-		s.fail(w, "upload media", err)
+		s.fail(w, r, "upload media", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -81,7 +81,7 @@ func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
 		TenantID: ws.ID,
 		AssetID:  chi.URLParam(r, "id"),
 	}); err != nil {
-		s.fail(w, "delete media", err)
+		s.fail(w, r, "delete media", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -33,7 +33,7 @@ func (s *Server) handleListSuppressions(w http.ResponseWriter, r *http.Request) 
 			EmailLike: r.URL.Query().Get("email"),
 		})
 	if err != nil {
-		s.fail(w, "list suppressions", err)
+		s.fail(w, r, "list suppressions", err)
 		return
 	}
 	items := make([]map[string]any, 0, len(page.Items))
@@ -64,14 +64,14 @@ func (s *Server) handleAddSuppression(w http.ResponseWriter, r *http.Request) {
 		Note  string `json:"note"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.deliverability.Commands.AddSuppression.Handle(r.Context(),
 		deliverabilitycommand.AddSuppression{
 			TenantID: ws.ID, ActorID: principal.ActorID(), Email: req.Email, Note: req.Note,
 		}); err != nil {
-		s.fail(w, "add suppression", err)
+		s.fail(w, r, "add suppression", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -88,14 +88,14 @@ func (s *Server) handleRemoveSuppression(w http.ResponseWriter, r *http.Request)
 	}
 	email, err := url.PathUnescape(chi.URLParam(r, "email"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "the email path segment is malformed")
+		writeError(w, r, http.StatusBadRequest, "invalid_request", "the email path segment is malformed")
 		return
 	}
 	if err := s.deliverability.Commands.RemoveSuppression.Handle(r.Context(),
 		deliverabilitycommand.RemoveSuppression{
 			TenantID: ws.ID, ActorID: principal.ActorID(), Email: email,
 		}); err != nil {
-		s.fail(w, "remove suppression", err)
+		s.fail(w, r, "remove suppression", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -110,7 +110,7 @@ func (s *Server) handleGetBounceSettings(w http.ResponseWriter, r *http.Request)
 	view, err := s.deliverability.Queries.GetBounceSettings.Handle(r.Context(),
 		deliverabilityquery.GetBounceSettings{TenantID: ws.ID})
 	if err != nil {
-		s.fail(w, "get bounce settings", err)
+		s.fail(w, r, "get bounce settings", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -131,7 +131,7 @@ func (s *Server) handleUpdateBounceSettings(w http.ResponseWriter, r *http.Reque
 		SuppressOnComplaint  bool `json:"suppressOnComplaint"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
 	if err := s.deliverability.Commands.UpdateBounceSettings.Handle(r.Context(),
@@ -140,7 +140,7 @@ func (s *Server) handleUpdateBounceSettings(w http.ResponseWriter, r *http.Reque
 			SuppressHardBounce: req.SuppressOnHardBounce,
 			SuppressComplaint:  req.SuppressOnComplaint,
 		}); err != nil {
-		s.fail(w, "update bounce settings", err)
+		s.fail(w, r, "update bounce settings", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

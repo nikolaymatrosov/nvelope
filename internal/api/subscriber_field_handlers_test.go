@@ -78,7 +78,7 @@ func TestSubscriberFieldsRejectsBuiltinSlug(t *testing.T) {
 		"slug": "email", "displayName": "Email", "type": "text",
 	})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "subscriber_field_builtin_slug", body["error"])
+	require.Equal(t, "subscriber_field_builtin_slug", body["code"])
 }
 
 func TestSubscriberFieldsRejectsDuplicateSlug(t *testing.T) {
@@ -97,7 +97,7 @@ func TestSubscriberFieldsRejectsDuplicateSlug(t *testing.T) {
 		"slug": "country", "displayName": "Country 2", "type": "text",
 	})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "subscriber_field_slug_taken", body["error"])
+	require.Equal(t, "subscriber_field_slug_taken", body["code"])
 }
 
 func TestSubscriberFieldsRejectsInvalidSlug(t *testing.T) {
@@ -111,7 +111,7 @@ func TestSubscriberFieldsRejectsInvalidSlug(t *testing.T) {
 		"slug": "Bad-Slug", "displayName": "Bad", "type": "text",
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "subscriber_field_invalid_slug", body["error"])
+	require.Equal(t, "subscriber_field_invalid_slug", body["code"])
 }
 
 func TestSubscriberFieldsReorder(t *testing.T) {
@@ -153,7 +153,7 @@ func TestSubscriberFieldsReorder(t *testing.T) {
 		"order": []string{a, b}, // missing c
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "subscriber_field_reorder_incomplete", body["error"])
+	require.Equal(t, "subscriber_field_reorder_incomplete", body["code"])
 }
 
 // FR-016e: deleting a registry definition MUST NOT delete underlying

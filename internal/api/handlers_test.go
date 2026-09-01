@@ -38,7 +38,7 @@ func TestSignupCreatesUnverifiedAccount(t *testing.T) {
 		"email": email, "password": "a-good-password",
 	})
 	require.Equal(t, http.StatusForbidden, status)
-	require.Equal(t, "email_not_verified", body["error"])
+	require.Equal(t, "email_not_verified", body["code"])
 }
 
 func TestVerifyEmailRejectsUnknownToken(t *testing.T) {
@@ -47,7 +47,7 @@ func TestVerifyEmailRejectsUnknownToken(t *testing.T) {
 		"token": "no-such-token",
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "verification_link_invalid", body["error"])
+	require.Equal(t, "verification_link_invalid", body["code"])
 }
 
 func TestResendVerificationIsEnumerationSafe(t *testing.T) {
@@ -81,7 +81,7 @@ func TestSignupRejectsDuplicateEmail(t *testing.T) {
 		"email": email, "password": "another-password", "name": "Imposter",
 	})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "email_taken", body["error"])
+	require.Equal(t, "email_taken", body["code"])
 }
 
 func TestSignupRejectsShortPassword(t *testing.T) {
@@ -90,7 +90,7 @@ func TestSignupRejectsShortPassword(t *testing.T) {
 		"email": dbtest.RandString() + "@example.com", "password": "short", "name": "Ada",
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "validation_failed", body["error"])
+	require.Equal(t, "validation_failed", body["code"])
 }
 
 func TestLoginSucceedsAndFails(t *testing.T) {
@@ -108,7 +108,7 @@ func TestLoginSucceedsAndFails(t *testing.T) {
 		"email": email, "password": "the-wrong-password",
 	})
 	require.Equal(t, http.StatusUnauthorized, status)
-	require.Equal(t, "invalid_credentials", body["error"])
+	require.Equal(t, "invalid_credentials", body["code"])
 
 	status, _ = ts.do(anon, http.MethodPost, "/api/platform/login", map[string]string{
 		"email": email, "password": "a-good-password",
@@ -134,7 +134,7 @@ func TestMeRequiresAuthentication(t *testing.T) {
 	ts := newTestServer(t)
 	status, body := ts.request(http.MethodGet, "/api/platform/me", nil)
 	require.Equal(t, http.StatusUnauthorized, status)
-	require.Equal(t, "unauthenticated", body["error"])
+	require.Equal(t, "unauthenticated", body["code"])
 }
 
 func TestCreateAndListTenants(t *testing.T) {
@@ -171,7 +171,7 @@ func TestCreateTenantRejectsDuplicateSlug(t *testing.T) {
 		"name": "Second", "slug": slug,
 	})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "slug_taken", body["error"])
+	require.Equal(t, "slug_taken", body["code"])
 }
 
 func TestCreateTenantRejectsReservedSlug(t *testing.T) {
@@ -181,7 +181,7 @@ func TestCreateTenantRejectsReservedSlug(t *testing.T) {
 		"name": "Acme", "slug": "api",
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "validation_failed", body["error"])
+	require.Equal(t, "validation_failed", body["code"])
 }
 
 func TestCreateTenantRequiresAuthentication(t *testing.T) {
@@ -221,9 +221,16 @@ func TestNonMemberGetsOpaque404(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, memberStatus)
 	require.Equal(t, http.StatusNotFound, unknownStatus)
-	require.Equal(t, "tenant_not_found", memberBody["error"])
-	require.Equal(t, memberBody, unknownBody,
-		"a non-member and an unknown tenant must be indistinguishable")
+	require.Equal(t, "tenant_not_found", memberBody["code"])
+	// instance and requestId legitimately differ per request (instance echoes
+	// the URL the caller already typed; requestId is a fresh correlation id
+	// on every call) — neither carries a signal about tenant existence. The
+	// opacity property under test is that the discriminating fields are
+	// identical.
+	for _, field := range []string{"type", "title", "status", "detail", "code"} {
+		require.Equal(t, memberBody[field], unknownBody[field],
+			"a non-member and an unknown tenant must be indistinguishable via %q", field)
+	}
 }
 
 func TestGetAndUpdateSettings(t *testing.T) {
@@ -255,7 +262,7 @@ func TestUpdateSettingsRejectsEmptyDisplayName(t *testing.T) {
 		"display_name": "  ", "timezone": "UTC",
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "validation_failed", body["error"])
+	require.Equal(t, "validation_failed", body["code"])
 }
 
 func TestTenantRoutesRequireAuthentication(t *testing.T) {
@@ -333,7 +340,7 @@ func TestInviteRejectsExistingMember(t *testing.T) {
 	status, body := ts.request(http.MethodPost, "/t/"+slug+"/api/invitations",
 		map[string]string{"email": ownerEmail})
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, "already_member", body["error"])
+	require.Equal(t, "already_member", body["code"])
 }
 
 func TestInviteRejectsDuplicatePending(t *testing.T) {
@@ -349,14 +356,14 @@ func TestInviteRejectsDuplicatePending(t *testing.T) {
 	status, body := ts.request(http.MethodPost, "/t/"+slug+"/api/invitations",
 		map[string]string{"email": email})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "invitation_exists", body["error"])
+	require.Equal(t, "invitation_exists", body["code"])
 }
 
 func TestGetInvitationUnknownToken(t *testing.T) {
 	ts := newTestServer(t)
 	status, body := ts.request(http.MethodGet, "/api/platform/invitations/no-such-token", nil)
 	require.Equal(t, http.StatusNotFound, status)
-	require.Equal(t, "invitation_not_found", body["error"])
+	require.Equal(t, "invitation_not_found", body["code"])
 }
 
 func TestRevokeInvitationEndpoint(t *testing.T) {

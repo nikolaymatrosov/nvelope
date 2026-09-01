@@ -86,7 +86,7 @@ func TestSaveVisualCampaignRejectsMissingBodyHTML(t *testing.T) {
 		"ifUnmodifiedSince": updatedAt.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusBadRequest, status)
-	require.Equal(t, "invalid_body", body["error"])
+	require.Equal(t, "invalid_body", body["code"])
 }
 
 func TestSaveVisualCampaignRejectsMissingIfUnmodifiedSince(t *testing.T) {
@@ -107,7 +107,7 @@ func TestSaveVisualCampaignRejectsMissingIfUnmodifiedSince(t *testing.T) {
 		// ifUnmodifiedSince omitted.
 	})
 	require.Equal(t, http.StatusBadRequest, status)
-	require.Equal(t, "invalid_body", body["error"])
+	require.Equal(t, "invalid_body", body["code"])
 }
 
 func TestSaveVisualCampaignRejectsMissingDoc(t *testing.T) {
@@ -128,7 +128,7 @@ func TestSaveVisualCampaignRejectsMissingDoc(t *testing.T) {
 		"ifUnmodifiedSince": updatedAt.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusBadRequest, status)
-	require.Equal(t, "invalid_body", body["error"])
+	require.Equal(t, "invalid_body", body["code"])
 }
 
 // FR-009 stale-row gate: a save whose ifUnmodifiedSince does not match the
@@ -194,7 +194,7 @@ func TestSaveVisualCampaignRejectsCallerWithoutManagePermission(t *testing.T) {
 		"ifUnmodifiedSince": updatedAt.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusForbidden, status)
-	require.Contains(t, body["error"], "forbidden", "error slug is a forbidden variant")
+	require.Contains(t, body["code"], "forbidden", "error slug is a forbidden variant")
 }
 
 // --- T128: two-client concurrent-save flow test ------------------------------

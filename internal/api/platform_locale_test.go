@@ -71,7 +71,7 @@ func TestUpdateMeRejectsUnsupportedLocale(t *testing.T) {
 	status, body := ts.request(http.MethodPut, "/api/platform/me",
 		map[string]string{"locale": "de"})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Equal(t, "unsupported_locale", body["error"])
+	require.Equal(t, "unsupported_locale", body["code"])
 }
 
 func TestUpdateMeRequiresAuthentication(t *testing.T) {
