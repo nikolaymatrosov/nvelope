@@ -37,6 +37,11 @@ var statusForSlug = map[string]int{
 	"payment_failed": http.StatusPaymentRequired,
 	// A throttled verification-email resend is a 429, not a generic 422.
 	"verification_resend_throttled": http.StatusTooManyRequests,
+	// A request body over its size limit is a 413, not a generic 422 — the
+	// same status and slug limitImportUploadSize's http.MaxBytesReader path
+	// renders (openapi_wiring.go's validationErrorHandler), so StartImport's
+	// own oversize-file check (audience_api.go) answers identically.
+	"payload_too_large": http.StatusRequestEntityTooLarge,
 }
 
 // fail is the single place a domain error becomes an HTTP response. A typed

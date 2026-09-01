@@ -148,6 +148,30 @@ func TestImportRejectsOversizeUpload(t *testing.T) {
 	require.Equal(t, "payload_too_large", body["code"])
 }
 
+// TestImportRejectsFileJustOverTheLimit exercises the window
+// TestImportRejectsOversizeUpload's 1 MiB-over file cannot reach: a file only
+// a few KiB over maxUploadBytes, whose multipart-encoded body still lands
+// under limitImportUploadSize's maxUploadBytes+uploadBodySlack whole-body
+// cap. Before StartImport read one byte past its own limit to tell an
+// oversize file apart from one that exactly fills it, a file in this window
+// passed the outer guard untouched and was then silently truncated by
+// io.LimitReader — a "successful" 202 import missing rows with no
+// indication. It must now be rejected the same way as a grossly oversize
+// upload: 413 payload_too_large, not 202.
+func TestImportRejectsFileJustOverTheLimit(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	justOver := bytes.Repeat([]byte("a"), maxUploadBytes+3000)
+	status, body := ts.uploadCSV(base+"/import", "just-over.csv", justOver, nil)
+	require.Equal(t, http.StatusRequestEntityTooLarge, status)
+	require.Equal(t, "payload_too_large", body["code"])
+}
+
 // TestGetJobStatusRequiresImportOrExportPermission pins the one permission
 // check in this file with no structural enforcement behind it: requirePerm
 // only expresses a single permission, so GetJobStatus inlines an OR

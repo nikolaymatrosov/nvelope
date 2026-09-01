@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
@@ -29,11 +30,27 @@ import (
 const maxUploadBytes = 32 << 20
 
 // uploadBodySlack is added to maxUploadBytes when bounding the *whole*
-// POST /import request body (see limitImportUploadSize in openapi_wiring.go),
-// to account for the multipart boilerplate — headers, boundaries, the
-// listIds parts — around the file bytes themselves. Mirrors the same +4096
-// handleUploadMedia applies for the same reason.
+// POST /import request body (see limitImportUploadSize in openapi_wiring.go).
+// It exists only to cover multipart framing — the boundary lines, the
+// file part's Content-Disposition/Content-Type headers, and a handful of
+// listIds parts — around the file bytes themselves; it is not a second
+// truncation boundary, since StartImport independently rejects a file part
+// over maxUploadBytes on its own (see the "file" case below) regardless of
+// where the whole-body cap sits. 4096 bytes is generous headroom for that
+// framing — a boundary line plus headers for one part is on the order of a
+// few hundred bytes even with a long filename — while staying small enough
+// that a request just over the file-size limit is still caught by
+// limitImportUploadSize rather than reaching the handler at all. Mirrors the
+// same +4096 handleUploadMedia applies for the same reason.
 const uploadBodySlack = 4096
+
+// errUploadTooLarge is returned when StartImport's own read of the file part
+// finds it over maxUploadBytes — the same slug and status
+// limitImportUploadSize's http.MaxBytesReader produces for an oversize whole
+// body (see statusForSlug in errmap.go), so a caller gets the same 413
+// answer regardless of which of the two guards happens to catch them.
+var errUploadTooLarge = apperr.NewIncorrectInput("payload_too_large",
+	fmt.Sprintf("the uploaded file exceeds the %d byte limit", maxUploadBytes))
 
 // ListLists serves GET /lists.
 func (s *Server) ListLists(ctx context.Context,
@@ -319,9 +336,17 @@ func (s *Server) ChangeSubscription(ctx context.Context,
 // StartImport serves POST /import. oapi-codegen models a multipart/form-data
 // body as a *multipart.Reader rather than decoding it into a struct, so the
 // file and the repeated listIds parts are read here directly instead of
-// through r.ParseMultipartForm. Each part is bounded by io.LimitReader the
-// same way the hand-written handler bounded r.FormFile's reader — the 32 MiB
-// cap on the file part, a much smaller one on each listIds value.
+// through r.ParseMultipartForm. Each part is bounded the same way the
+// hand-written handler bounded r.FormFile's reader — the 32 MiB cap on the
+// file part, a much smaller one on each listIds value — except that the file
+// part is read one byte past its limit so an oversize file can be told apart
+// from one that exactly fills it: io.LimitReader alone stops silently at the
+// limit with err == nil, which would otherwise import a truncated file
+// without any indication rows were dropped. limitImportUploadSize
+// (openapi_wiring.go) catches most oversize uploads earlier, ahead of the
+// permission check, but its whole-body cap carries a few KiB of multipart
+// framing slack (uploadBodySlack) that a file just over maxUploadBytes can
+// still land inside — this check is what closes that gap.
 func (s *Server) StartImport(ctx context.Context,
 	req openapitenant.StartImportRequestObject) (openapitenant.StartImportResponseObject, error) {
 	ws := tenantFromContext(ctx)
@@ -346,7 +371,11 @@ func (s *Server) StartImport(ctx context.Context,
 		switch part.FormName() {
 		case "file":
 			fileName = part.FileName()
-			fileData, err = io.ReadAll(io.LimitReader(part, maxUploadBytes))
+			fileData, err = io.ReadAll(io.LimitReader(part, maxUploadBytes+1))
+			if err == nil && len(fileData) > maxUploadBytes {
+				fileData = nil
+				err = errUploadTooLarge
+			}
 		case "listIds":
 			var value []byte
 			value, err = io.ReadAll(io.LimitReader(part, 1<<12))
