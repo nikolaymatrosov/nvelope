@@ -1,0 +1,45 @@
+Problem:
+  type: object
+  description: An RFC 9457 problem detail.
+  required: [type, title, status, code]
+  properties:
+    type:
+      type: string
+      format: uri
+      description: A URI identifying the problem type; always the code appended to https://nvelope.dev/probs/.
+    title:
+      type: string
+      description: A short, human-readable summary of the problem type.
+    status:
+      type: integer
+      description: The HTTP status code.
+    detail:
+      type: string
+      description: A human-readable explanation specific to this occurrence.
+    instance:
+      type: string
+      description: The request path this problem occurred on.
+    code:
+      type: string
+      description: The stable machine-readable error slug. Branch on this, not on the message.
+    requestId:
+      type: string
+      description: The X-Request-Id correlating this failure across the BFF and Go tiers.
+    errors:
+      type: array
+      description: Field-level violations, present on validation failures.
+      items:
+        $ref: '#/FieldError'
+
+FieldError:
+  type: object
+  description: One request-body violation.
+  required: [field, code]
+  properties:
+    field:
+      type: string
+      description: A JSON Pointer into the submitted request body.
+    code:
+      type: string
+    detail:
+      type: string

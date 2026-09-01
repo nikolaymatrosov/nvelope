@@ -1,6 +1,6 @@
 .PHONY: build run-api run-worker run-scheduler test test-db-clean lint lint-arch \
         verify ci ci-backend ci-frontend tidy migrate-up migrate-down \
-        migrate-version migrate-create \
+        migrate-version migrate-create generate generate-check \
         k8s-images k8s-tls k8s-deploy k8s-delete
 
 GO      ?= go
@@ -71,6 +71,7 @@ ci: ci-backend ci-frontend
 # ci-backend mirrors the `backend` workflow job.
 ci-backend:
 	$(GO) build ./...
+	$(MAKE) generate-check
 	$(GO) test ./...
 	$(MAKE) lint-arch
 	golangci-lint run
@@ -96,6 +97,22 @@ ci-frontend:
 
 tidy:
 	$(GO) mod tidy
+
+# --- API contract codegen ---------------------------------------------------
+# The OpenAPI documents under api/openapi/ are the source of truth for the JSON
+# API. `generate` bundles them, lints them, and regenerates both the Go server
+# and the TypeScript types. Generated files are committed; `generate-check`
+# fails when they are stale, which is what CI enforces.
+generate:
+	cd frontend && pnpm exec redocly lint --config ../api/openapi/redocly.yaml ../api/openapi/tenant.yaml
+	cd frontend && pnpm exec redocly bundle --config ../api/openapi/redocly.yaml \
+		../api/openapi/tenant.yaml -o ../api/openapi/gen/tenant.gen.yaml
+	$(GO) tool oapi-codegen --config api/openapi/cfg/tenant.cfg.yaml api/openapi/gen/tenant.gen.yaml
+	cd frontend && pnpm exec openapi-typescript ../api/openapi/gen/tenant.gen.yaml \
+		-o src/lib/api-schema.gen.ts
+
+generate-check: generate
+	git diff --exit-code -- api/openapi/gen internal/api/openapitenant frontend/src/lib/api-schema.gen.ts
 
 migrate-up:
 	$(GO) run ./cmd/migrate up

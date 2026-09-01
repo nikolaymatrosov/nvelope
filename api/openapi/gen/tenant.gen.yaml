@@ -1,0 +1,48 @@
+openapi: 3.0.3
+info:
+  title: nvelope tenant API
+  version: 1.0.0
+  description: |
+    The workspace-scoped API. Every operation requires an authenticated user,
+    a resolved tenant, and a permission check. Errors are RFC 9457 problem
+    documents.
+servers:
+  - url: /t/{slug}/api
+    description: Workspace-scoped base path.
+    variables:
+      slug:
+        default: workspace
+        description: The workspace slug from the URL.
+paths:
+  /lists:
+    get:
+      operationId: listLists
+      summary: List the workspace's subscriber lists.
+      tags:
+        - audience
+      responses:
+        '200':
+          description: A page of lists.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                  - total
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                  total:
+                    type: integer
+components: {}
