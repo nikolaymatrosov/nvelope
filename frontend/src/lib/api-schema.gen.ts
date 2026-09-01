@@ -14,6 +14,200 @@ export interface paths {
         /** List the workspace's subscriber lists. */
         get: operations["listLists"];
         put?: never;
+        /** Create a subscriber list. */
+        post: operations["createList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one subscriber list. */
+        get: operations["getList"];
+        /** Update a subscriber list. */
+        put: operations["updateList"];
+        post?: never;
+        /** Delete a subscriber list. */
+        delete: operations["deleteList"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search subscribers by free text. */
+        get: operations["searchSubscribers"];
+        put?: never;
+        /** Create a subscriber. */
+        post: operations["createSubscriber"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate a segment and return matching subscribers. */
+        post: operations["querySubscribers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/query/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate a segment and return only the match count. */
+        post: operations["countSubscribers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch one subscriber. */
+        get: operations["getSubscriber"];
+        /** Update a subscriber. */
+        put: operations["updateSubscriber"];
+        post?: never;
+        /** Delete a subscriber. */
+        delete: operations["deleteSubscriber"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/{id}/lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a subscriber to a list. */
+        post: operations["addSubscriberToList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribers/{id}/lists/{listId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a subscriber's status on a list. */
+        put: operations["changeSubscription"];
+        post?: never;
+        /** Remove a subscriber from a list. */
+        delete: operations["removeSubscriberFromList"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a subscriber import from an uploaded CSV or ZIP. */
+        post: operations["startImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a subscriber export. */
+        post: operations["startExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch an import or export job's progress. */
+        get: operations["getJobStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a completed export's CSV. */
+        get: operations["downloadExport"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -24,9 +218,300 @@ export interface paths {
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
-    responses: never;
-    parameters: never;
+    schemas: {
+        /** @description A subscriber list. */
+        List: {
+            id: string;
+            name: string;
+            description: string;
+            /**
+             * @description Whether the list is publicly discoverable or private.
+             * @enum {string}
+             */
+            visibility: "private" | "public";
+            /**
+             * @description The subscription confirmation mode for the list.
+             * @enum {string}
+             */
+            optIn: "single" | "double";
+            tags: string[];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A page of subscriber lists with the total matching count. */
+        ListPage: {
+            items: components["schemas"]["List"][];
+            total: number;
+        };
+        /** @description One request-body violation. */
+        FieldError: {
+            /** @description A JSON Pointer into the submitted request body. */
+            field: string;
+            code: string;
+            detail?: string;
+        };
+        /** @description An RFC 9457 problem detail. Some problems carry context-specific extension members beyond the fields listed here (for example a stale-row 409 conflict's currentUpdatedAt); the server's custom marshaling flattens those onto this same top-level object rather than nesting them, so additional keys are always possible and should not fail validation. */
+        Problem: {
+            /**
+             * Format: uri
+             * @description A URI identifying the problem type; always the code appended to https://nvelope.dev/probs/.
+             */
+            type: string;
+            /** @description A short, human-readable summary of the problem type. */
+            title: string;
+            /** @description The HTTP status code. */
+            status: number;
+            /** @description A human-readable explanation specific to this occurrence. */
+            detail?: string;
+            /** @description The request path this problem occurred on. */
+            instance?: string;
+            /** @description The stable machine-readable error slug. Branch on this, not on the message. */
+            code: string;
+            /** @description The X-Request-Id correlating this failure across the BFF and Go tiers. */
+            requestId?: string;
+            /** @description Field-level violations, present on validation failures. */
+            errors?: components["schemas"]["FieldError"][];
+        } & {
+            [key: string]: unknown;
+        };
+        CreateListRequest: {
+            name: string;
+            /** @default  */
+            description: string;
+            /**
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "public";
+            /**
+             * @default single
+             * @enum {string}
+             */
+            optIn: "single" | "double";
+            tags?: string[];
+        };
+        /** @description The identifier of a newly created resource. */
+        CreatedId: {
+            id: string;
+        };
+        UpdateListRequest: components["schemas"]["CreateListRequest"];
+        /** @description A subscriber's confirmation status within one list. */
+        Membership: {
+            listId: string;
+            /**
+             * @description The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+             * @enum {string}
+             */
+            status: "unconfirmed" | "confirmed" | "unsubscribed";
+        };
+        Subscriber: {
+            id: string;
+            /** Format: email */
+            email: string;
+            name: string;
+            /**
+             * @description The subscriber's lifecycle state.
+             * @enum {string}
+             */
+            state: "enabled" | "disabled" | "blocklisted";
+            /** @description Custom subscriber attributes, keyed by field slug. */
+            attributes: {
+                [key: string]: unknown;
+            };
+            memberships: components["schemas"]["Membership"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A page of subscribers with the total matching count. */
+        SubscriberPage: {
+            items: components["schemas"]["Subscriber"][];
+            total: number;
+        };
+        CreateSubscriberRequest: {
+            /** Format: email */
+            email: string;
+            /** @default  */
+            name: string;
+            attributes?: {
+                [key: string]: unknown;
+            };
+            listIds?: string[];
+        };
+        /** @description One node of a segment condition tree: either a group of children joined by a conjunction, or exactly one leaf condition. */
+        SegmentNode: {
+            /** @enum {string} */
+            conj?: "and" | "or";
+            children?: components["schemas"]["SegmentNode"][];
+            field?: components["schemas"]["FieldCondition"];
+            attr?: components["schemas"]["AttrCondition"];
+            member?: components["schemas"]["MemberCondition"];
+        };
+        /**
+         * @description A segment comparison operator.
+         * @enum {string}
+         */
+        SegmentOp: "eq" | "neq" | "exists" | "contains" | "gt" | "lt" | "gte" | "lte";
+        /** @description Matches a known subscriber field. */
+        FieldCondition: {
+            field: string;
+            op: components["schemas"]["SegmentOp"];
+            value: string;
+        };
+        /** @description Matches a custom-attribute key. */
+        AttrCondition: {
+            key: string;
+            op: components["schemas"]["SegmentOp"];
+            /** @description The comparison value; type depends on the attribute. */
+            value?: unknown;
+        };
+        /** @description Matches by membership of a list, optionally with a status. */
+        MemberCondition: {
+            listId: string;
+            /**
+             * @description The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+             * @enum {string}
+             */
+            status?: "unconfirmed" | "confirmed" | "unsubscribed";
+        };
+        SegmentQueryRequest: {
+            segment: components["schemas"]["SegmentNode"];
+        };
+        SegmentCountResponse: {
+            total: number;
+        };
+        UpdateSubscriberRequest: {
+            name?: string;
+            attributes?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @default enabled
+             * @enum {string}
+             */
+            state: "enabled" | "disabled" | "blocklisted";
+        };
+        AddToListRequest: {
+            listId: string;
+        };
+        ChangeSubscriptionRequest: {
+            /**
+             * @description The subscription's lifecycle status: unconfirmed (awaiting confirmation), confirmed, or unsubscribed.
+             * @enum {string}
+             */
+            status: "unconfirmed" | "confirmed" | "unsubscribed";
+        };
+        JobAccepted: {
+            jobId: string;
+        };
+        StartExportRequest: {
+            /**
+             * @description Which subscribers to export.
+             * @enum {string}
+             */
+            selection: "all" | "list" | "segment";
+            listId?: string;
+            segment?: components["schemas"]["SegmentNode"];
+        };
+        RowFailure: {
+            row: number;
+            reason: string;
+        };
+        JobStatus: {
+            id: string;
+            /** @enum {string} */
+            kind: "import" | "export";
+            /**
+             * @description The job's lifecycle status.
+             * @enum {string}
+             */
+            status: "pending" | "running" | "completed" | "failed";
+            fileName: string;
+            createdCount: number;
+            updatedCount: number;
+            failedCount: number;
+            rowCount: number;
+            failures: components["schemas"]["RowFailure"][];
+        };
+    };
+    responses: {
+        /** @description No authenticated workspace session. */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The caller lacks the required permission. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description An unexpected server failure. */
+        InternalError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The request was malformed. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The request body failed validation. */
+        UnprocessableEntity: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description No such resource in this workspace. */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The request conflicts with the resource's current state. */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+    };
+    parameters: {
+        /** @description Maximum rows to return. Zero or absent means the server default. */
+        LimitParam: number;
+        /** @description Rows to skip. */
+        OffsetParam: number;
+        /** @description The resource's UUID. */
+        IdParam: string;
+        /** @description The list's UUID. */
+        ListIdParam: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -35,7 +520,12 @@ export type $defs = Record<string, never>;
 export interface operations {
     listLists: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum rows to return. Zero or absent means the server default. */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description Rows to skip. */
+                offset?: components["parameters"]["OffsetParam"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -48,15 +538,545 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        items: {
-                            id: string;
-                            name: string;
-                        }[];
-                        total: number;
-                    };
+                    "application/json": components["schemas"]["ListPage"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateListRequest"];
+            };
+        };
+        responses: {
+            /** @description The list was created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedId"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["List"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateListRequest"];
+            };
+        };
+        responses: {
+            /** @description The list was updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    searchSubscribers: {
+        parameters: {
+            query?: {
+                /** @description Free-text search over email and name. */
+                q?: string;
+                /** @description Maximum rows to return. Zero or absent means the server default. */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description Rows to skip. */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of subscribers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriberPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSubscriberRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscriber was created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedId"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    querySubscribers: {
+        parameters: {
+            query?: {
+                /** @description Maximum rows to return. Zero or absent means the server default. */
+                limit?: components["parameters"]["LimitParam"];
+                /** @description Rows to skip. */
+                offset?: components["parameters"]["OffsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description A page of matching subscribers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriberPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    countSubscribers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description The number of matching subscribers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentCountResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscriber. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Subscriber"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSubscriberRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscriber was updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteSubscriber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscriber was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    addSubscriberToList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToListRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscriber was added. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    changeSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+                /** @description The list's UUID. */
+                listId: components["parameters"]["ListIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscription status was changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    removeSubscriberFromList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+                /** @description The list's UUID. */
+                listId: components["parameters"]["ListIdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The subscriber was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description A CSV or ZIP file, at most 32 MiB.
+                     */
+                    file: string;
+                    /** @description Lists to add every imported subscriber to. */
+                    listIds?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description The import job was enqueued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartExportRequest"];
+            };
+        };
+        responses: {
+            /** @description The export job was enqueued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getJobStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job's status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    downloadExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The resource's UUID. */
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The generated CSV. */
+            200: {
+                headers: {
+                    /** @description attachment; filename="..." */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
         };
     };
 }

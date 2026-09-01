@@ -13,27 +13,40 @@ servers:
       slug:
         default: workspace
         description: The workspace slug from the URL.
+security:
+  - WorkspaceSession: []
+components:
+  securitySchemes:
+    WorkspaceSession:
+      type: apiKey
+      in: cookie
+      name: nv_workspace
+      description: >
+        The tenant-plane workspace session cookie (distinct from the
+        control-plane session cookie). Every operation in this document
+        requires it.
 paths:
   /lists:
-    get:
-      operationId: listLists
-      summary: List the workspace's subscriber lists.
-      tags: [audience]
-      responses:
-        '200':
-          description: A page of lists.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items, total]
-                properties:
-                  items:
-                    type: array
-                    items:
-                      type: object
-                      required: [id, name]
-                      properties:
-                        id: { type: string }
-                        name: { type: string }
-                  total: { type: integer }
+    $ref: './paths/tenant/audience.yaml#/Lists'
+  /lists/{id}:
+    $ref: './paths/tenant/audience.yaml#/ListById'
+  /subscribers:
+    $ref: './paths/tenant/audience.yaml#/Subscribers'
+  /subscribers/query:
+    $ref: './paths/tenant/audience.yaml#/SubscribersQuery'
+  /subscribers/query/count:
+    $ref: './paths/tenant/audience.yaml#/SubscribersQueryCount'
+  /subscribers/{id}:
+    $ref: './paths/tenant/audience.yaml#/SubscriberById'
+  /subscribers/{id}/lists:
+    $ref: './paths/tenant/audience.yaml#/SubscriberLists'
+  /subscribers/{id}/lists/{listId}:
+    $ref: './paths/tenant/audience.yaml#/SubscriberListById'
+  /import:
+    $ref: './paths/tenant/audience.yaml#/Import'
+  /export:
+    $ref: './paths/tenant/audience.yaml#/Export'
+  /jobs/{id}:
+    $ref: './paths/tenant/audience.yaml#/JobById'
+  /jobs/{id}/download:
+    $ref: './paths/tenant/audience.yaml#/JobDownload'

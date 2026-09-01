@@ -1,0 +1,34 @@
+LimitParam:
+  name: limit
+  in: query
+  required: false
+  description: Maximum rows to return. Zero or absent means the server default.
+  schema:
+    type: integer
+    minimum: 0
+    maximum: 1000
+
+OffsetParam:
+  name: offset
+  in: query
+  required: false
+  description: Rows to skip.
+  schema:
+    type: integer
+    minimum: 0
+
+IdParam:
+  name: id
+  in: path
+  required: true
+  description: The resource's UUID.
+  schema:
+    type: string
+
+ListIdParam:
+  name: listId
+  in: path
+  required: true
+  description: The list's UUID.
+  schema:
+    type: string

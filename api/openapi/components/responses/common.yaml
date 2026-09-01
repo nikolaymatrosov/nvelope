@@ -1,0 +1,48 @@
+Unauthorized:
+  description: No authenticated workspace session.
+  content:
+    application/problem+json:
+      schema:
+        $ref: '../schemas/common.yaml#/Problem'
+
+Forbidden:
+  description: The caller lacks the required permission.
+  content:
+    application/problem+json:
+      schema:
+        $ref: '../schemas/common.yaml#/Problem'
+
+NotFound:
+  description: No such resource in this workspace.
+  content:
+    application/problem+json:
+      schema:
+        $ref: '../schemas/common.yaml#/Problem'
+
+Conflict:
+  description: The request conflicts with the resource's current state.
+  content:
+    application/problem+json:
+      schema:
+        $ref: '../schemas/common.yaml#/Problem'
+
+UnprocessableEntity:
+  description: The request body failed validation.
+  content:
+    application/problem+json:
+      schema:
+        $ref: '../schemas/common.yaml#/Problem'
+
+BadRequest:
+  description: The request was malformed.
+  content:
+    application/problem+json:
+      schema:
+        $ref: '../schemas/common.yaml#/Problem'
+
+InternalError:
+  description: An unexpected server failure.
+  content:
+    application/problem+json:
+      schema:
+        $ref: '../schemas/common.yaml#/Problem'

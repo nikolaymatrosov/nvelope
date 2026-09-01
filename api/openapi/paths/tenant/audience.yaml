@@ -1,0 +1,381 @@
+Lists:
+  get:
+    operationId: listLists
+    summary: List the workspace's subscriber lists.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/LimitParam'
+      - $ref: '../../components/parameters/common.yaml#/OffsetParam'
+    responses:
+      '200':
+        description: A page of lists.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/ListPage' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+  post:
+    operationId: createList
+    summary: Create a subscriber list.
+    tags: [audience]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/CreateListRequest' }
+    responses:
+      '201':
+        description: The list was created.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/CreatedId' }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+ListById:
+  get:
+    operationId: getList
+    summary: Fetch one subscriber list.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    responses:
+      '200':
+        description: The list.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/List' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+  put:
+    operationId: updateList
+    summary: Update a subscriber list.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/UpdateListRequest' }
+    responses:
+      '204': { description: The list was updated. }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+  delete:
+    operationId: deleteList
+    summary: Delete a subscriber list.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    responses:
+      '204': { description: The list was deleted. }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '409': { $ref: '../../components/responses/common.yaml#/Conflict' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+Subscribers:
+  get:
+    operationId: searchSubscribers
+    summary: Search subscribers by free text.
+    tags: [audience]
+    parameters:
+      - name: q
+        in: query
+        required: false
+        description: Free-text search over email and name.
+        schema: { type: string }
+      - $ref: '../../components/parameters/common.yaml#/LimitParam'
+      - $ref: '../../components/parameters/common.yaml#/OffsetParam'
+    responses:
+      '200':
+        description: A page of subscribers.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/SubscriberPage' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+  post:
+    operationId: createSubscriber
+    summary: Create a subscriber.
+    tags: [audience]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/CreateSubscriberRequest' }
+    responses:
+      '201':
+        description: The subscriber was created.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/CreatedId' }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '409': { $ref: '../../components/responses/common.yaml#/Conflict' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+SubscribersQuery:
+  post:
+    operationId: querySubscribers
+    summary: Evaluate a segment and return matching subscribers.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/LimitParam'
+      - $ref: '../../components/parameters/common.yaml#/OffsetParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/SegmentQueryRequest' }
+    responses:
+      '200':
+        description: A page of matching subscribers.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/SubscriberPage' }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+SubscribersQueryCount:
+  post:
+    operationId: countSubscribers
+    summary: Evaluate a segment and return only the match count.
+    tags: [audience]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/SegmentQueryRequest' }
+    responses:
+      '200':
+        description: The number of matching subscribers.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/SegmentCountResponse' }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+SubscriberById:
+  get:
+    operationId: getSubscriber
+    summary: Fetch one subscriber.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    responses:
+      '200':
+        description: The subscriber.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/Subscriber' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+  put:
+    operationId: updateSubscriber
+    summary: Update a subscriber.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/UpdateSubscriberRequest' }
+    responses:
+      '204': { description: The subscriber was updated. }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+  delete:
+    operationId: deleteSubscriber
+    summary: Delete a subscriber.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    responses:
+      '204': { description: The subscriber was deleted. }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+SubscriberLists:
+  post:
+    operationId: addSubscriberToList
+    summary: Add a subscriber to a list.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/AddToListRequest' }
+    responses:
+      '204': { description: The subscriber was added. }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '409': { $ref: '../../components/responses/common.yaml#/Conflict' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+SubscriberListById:
+  delete:
+    operationId: removeSubscriberFromList
+    summary: Remove a subscriber from a list.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+      - $ref: '../../components/parameters/common.yaml#/ListIdParam'
+    responses:
+      '204': { description: The subscriber was removed. }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+  put:
+    operationId: changeSubscription
+    summary: Change a subscriber's status on a list.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+      - $ref: '../../components/parameters/common.yaml#/ListIdParam'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/ChangeSubscriptionRequest' }
+    responses:
+      '204': { description: The subscription status was changed. }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+Import:
+  post:
+    operationId: startImport
+    summary: Start a subscriber import from an uploaded CSV or ZIP.
+    tags: [audience]
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file:
+                type: string
+                format: binary
+                description: A CSV or ZIP file, at most 32 MiB.
+              listIds:
+                type: array
+                description: Lists to add every imported subscriber to.
+                items: { type: string }
+    responses:
+      '202':
+        description: The import job was enqueued.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/JobAccepted' }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+Export:
+  post:
+    operationId: startExport
+    summary: Start a subscriber export.
+    tags: [audience]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/audience.yaml#/StartExportRequest' }
+    responses:
+      '202':
+        description: The export job was enqueued.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/JobAccepted' }
+      '400': { $ref: '../../components/responses/common.yaml#/BadRequest' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '422': { $ref: '../../components/responses/common.yaml#/UnprocessableEntity' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+JobById:
+  get:
+    operationId: getJobStatus
+    summary: Fetch an import or export job's progress.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    responses:
+      '200':
+        description: The job's status.
+        content:
+          application/json:
+            schema: { $ref: '../../components/schemas/audience.yaml#/JobStatus' }
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }
+
+JobDownload:
+  get:
+    operationId: downloadExport
+    summary: Download a completed export's CSV.
+    tags: [audience]
+    parameters:
+      - $ref: '../../components/parameters/common.yaml#/IdParam'
+    responses:
+      '200':
+        description: The generated CSV.
+        headers:
+          Content-Disposition:
+            description: attachment; filename="..."
+            schema: { type: string }
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+      '401': { $ref: '../../components/responses/common.yaml#/Unauthorized' }
+      '403': { $ref: '../../components/responses/common.yaml#/Forbidden' }
+      '404': { $ref: '../../components/responses/common.yaml#/NotFound' }
+      '409': { $ref: '../../components/responses/common.yaml#/Conflict' }
+      '500': { $ref: '../../components/responses/common.yaml#/InternalError' }

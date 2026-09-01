@@ -1,7 +1,13 @@
 Problem:
   type: object
-  description: An RFC 9457 problem detail.
+  description: >
+    An RFC 9457 problem detail. Some problems carry context-specific
+    extension members beyond the fields listed here (for example a stale-row
+    409 conflict's currentUpdatedAt); the server's custom marshaling flattens
+    those onto this same top-level object rather than nesting them, so
+    additional keys are always possible and should not fail validation.
   required: [type, title, status, code]
+  additionalProperties: true
   properties:
     type:
       type: string

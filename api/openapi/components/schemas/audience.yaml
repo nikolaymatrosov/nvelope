@@ -1,0 +1,277 @@
+List:
+  type: object
+  description: A subscriber list.
+  required: [id, name, description, visibility, optIn, tags, createdAt, updatedAt]
+  additionalProperties: false
+  properties:
+    id: { type: string }
+    name: { type: string }
+    description: { type: string }
+    visibility:
+      type: string
+      description: Whether the list is publicly discoverable or private.
+      enum: [private, public]
+    optIn:
+      type: string
+      description: The subscription confirmation mode for the list.
+      enum: [single, double]
+    tags:
+      type: array
+      items: { type: string }
+    createdAt: { type: string, format: date-time }
+    updatedAt: { type: string, format: date-time }
+
+ListPage:
+  type: object
+  description: A page of subscriber lists with the total matching count.
+  required: [items, total]
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      items: { $ref: '#/List' }
+    total: { type: integer }
+
+CreateListRequest:
+  type: object
+  required: [name]
+  additionalProperties: false
+  properties:
+    name: { type: string, minLength: 1 }
+    description: { type: string, default: "" }
+    visibility:
+      type: string
+      enum: [private, public]
+      default: private
+    optIn:
+      type: string
+      enum: [single, double]
+      default: single
+    tags:
+      type: array
+      items: { type: string }
+
+UpdateListRequest:
+  allOf:
+    - $ref: '#/CreateListRequest'
+
+CreatedId:
+  type: object
+  description: The identifier of a newly created resource.
+  required: [id]
+  additionalProperties: false
+  properties:
+    id: { type: string }
+
+Membership:
+  type: object
+  description: A subscriber's confirmation status within one list.
+  required: [listId, status]
+  additionalProperties: false
+  properties:
+    listId: { type: string }
+    status:
+      type: string
+      description: >
+        The subscription's lifecycle status: unconfirmed (awaiting
+        confirmation), confirmed, or unsubscribed.
+      enum: [unconfirmed, confirmed, unsubscribed]
+
+Subscriber:
+  type: object
+  required: [id, email, name, state, attributes, memberships, createdAt, updatedAt]
+  additionalProperties: false
+  properties:
+    id: { type: string }
+    email: { type: string, format: email }
+    name: { type: string }
+    state:
+      type: string
+      description: The subscriber's lifecycle state.
+      enum: [enabled, disabled, blocklisted]
+    attributes:
+      type: object
+      description: Custom subscriber attributes, keyed by field slug.
+      additionalProperties: true
+    memberships:
+      type: array
+      items: { $ref: '#/Membership' }
+    createdAt: { type: string, format: date-time }
+    updatedAt: { type: string, format: date-time }
+
+SubscriberPage:
+  type: object
+  description: A page of subscribers with the total matching count.
+  required: [items, total]
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      items: { $ref: '#/Subscriber' }
+    total: { type: integer }
+
+CreateSubscriberRequest:
+  type: object
+  required: [email]
+  additionalProperties: false
+  properties:
+    email: { type: string, format: email }
+    name: { type: string, default: "" }
+    attributes:
+      type: object
+      additionalProperties: true
+    listIds:
+      type: array
+      items: { type: string }
+
+UpdateSubscriberRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    name: { type: string }
+    attributes:
+      type: object
+      additionalProperties: true
+    state:
+      type: string
+      enum: [enabled, disabled, blocklisted]
+      default: enabled
+
+AddToListRequest:
+  type: object
+  required: [listId]
+  additionalProperties: false
+  properties:
+    listId: { type: string }
+
+ChangeSubscriptionRequest:
+  type: object
+  required: [status]
+  additionalProperties: false
+  properties:
+    status:
+      type: string
+      description: >
+        The subscription's lifecycle status: unconfirmed (awaiting
+        confirmation), confirmed, or unsubscribed.
+      enum: [unconfirmed, confirmed, unsubscribed]
+
+FieldCondition:
+  type: object
+  description: Matches a known subscriber field.
+  required: [field, op, value]
+  additionalProperties: false
+  properties:
+    field: { type: string }
+    op: { $ref: '#/SegmentOp' }
+    value: { type: string }
+
+AttrCondition:
+  type: object
+  description: Matches a custom-attribute key.
+  required: [key, op]
+  additionalProperties: false
+  properties:
+    key: { type: string }
+    op: { $ref: '#/SegmentOp' }
+    value:
+      description: The comparison value; type depends on the attribute.
+
+MemberCondition:
+  type: object
+  description: Matches by membership of a list, optionally with a status.
+  required: [listId]
+  additionalProperties: false
+  properties:
+    listId: { type: string }
+    status:
+      type: string
+      description: >
+        The subscription's lifecycle status: unconfirmed (awaiting
+        confirmation), confirmed, or unsubscribed.
+      enum: [unconfirmed, confirmed, unsubscribed]
+
+SegmentOp:
+  type: string
+  description: A segment comparison operator.
+  enum: [eq, neq, exists, contains, gt, lt, gte, lte]
+
+SegmentNode:
+  type: object
+  description: >
+    One node of a segment condition tree: either a group of children joined by
+    a conjunction, or exactly one leaf condition.
+  additionalProperties: false
+  properties:
+    conj:
+      type: string
+      enum: [and, or]
+    children:
+      type: array
+      items: { $ref: '#/SegmentNode' }
+    field: { $ref: '#/FieldCondition' }
+    attr: { $ref: '#/AttrCondition' }
+    member: { $ref: '#/MemberCondition' }
+
+SegmentQueryRequest:
+  type: object
+  required: [segment]
+  additionalProperties: false
+  properties:
+    segment: { $ref: '#/SegmentNode' }
+
+SegmentCountResponse:
+  type: object
+  required: [total]
+  additionalProperties: false
+  properties:
+    total: { type: integer }
+
+StartExportRequest:
+  type: object
+  required: [selection]
+  additionalProperties: false
+  properties:
+    selection:
+      type: string
+      description: Which subscribers to export.
+      enum: [all, list, segment]
+    listId: { type: string }
+    segment: { $ref: '#/SegmentNode' }
+
+JobAccepted:
+  type: object
+  required: [jobId]
+  additionalProperties: false
+  properties:
+    jobId: { type: string }
+
+RowFailure:
+  type: object
+  required: [row, reason]
+  additionalProperties: false
+  properties:
+    row: { type: integer }
+    reason: { type: string }
+
+JobStatus:
+  type: object
+  required: [id, kind, status, fileName, createdCount, updatedCount, failedCount, rowCount, failures]
+  additionalProperties: false
+  properties:
+    id: { type: string }
+    kind:
+      type: string
+      enum: [import, export]
+    status:
+      type: string
+      description: The job's lifecycle status.
+      enum: [pending, running, completed, failed]
+    fileName: { type: string }
+    createdCount: { type: integer }
+    updatedCount: { type: integer }
+    failedCount: { type: integer }
+    rowCount: { type: integer }
+    failures:
+      type: array
+      items: { $ref: '#/RowFailure' }
