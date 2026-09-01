@@ -147,7 +147,7 @@ func TestSaveVisualCampaignReturnsStaleRowOnMismatchedTimestamp(t *testing.T) {
 
 	// A timestamp that cannot match the row's actual updated_at.
 	stale := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	status, body := ts.request(http.MethodPut, base+"/campaigns/"+campaignID+"/visual", map[string]any{
+	status, body, contentType := ts.requestHeader(http.MethodPut, base+"/campaigns/"+campaignID+"/visual", map[string]any{
 		"subject":           "Subject",
 		"bodyDoc":           emptyVisualDoc(),
 		"bodyHtml":          "<p>x</p>",
@@ -155,7 +155,8 @@ func TestSaveVisualCampaignReturnsStaleRowOnMismatchedTimestamp(t *testing.T) {
 		"ifUnmodifiedSince": stale.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "stale_row", body["error"])
+	require.Equal(t, "application/problem+json", contentType)
+	require.Equal(t, "stale_row", body["code"])
 	require.Equal(t, "stale_row", body["kind"])
 	require.NotEmpty(t, body["currentUpdatedAt"], "current updated_at echoed for the Force-overwrite path")
 }
@@ -231,7 +232,7 @@ func TestSaveVisualCampaignConcurrentSavesForceOverwriteFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 
 	// Client 1 races in with its stale timestamp — must be rejected.
-	status, body := ts.request(http.MethodPut, base+"/campaigns/"+campaignID+"/visual", map[string]any{
+	status, body, contentType := ts.requestHeader(http.MethodPut, base+"/campaigns/"+campaignID+"/visual", map[string]any{
 		"subject":           "From client 1",
 		"bodyDoc":           emptyVisualDoc(),
 		"bodyHtml":          "<p>client 1</p>",
@@ -239,7 +240,8 @@ func TestSaveVisualCampaignConcurrentSavesForceOverwriteFlow(t *testing.T) {
 		"ifUnmodifiedSince": client1Stamp.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "stale_row", body["error"])
+	require.Equal(t, "application/problem+json", contentType)
+	require.Equal(t, "stale_row", body["code"])
 	currentRaw, _ := body["currentUpdatedAt"].(string)
 	require.NotEmpty(t, currentRaw, "currentUpdatedAt is returned so the SPA can adopt it")
 	current, err := time.Parse(time.RFC3339Nano, currentRaw)

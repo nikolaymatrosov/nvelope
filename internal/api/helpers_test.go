@@ -185,6 +185,35 @@ func (ts *testServer) request(method, path string, body any) (int, map[string]an
 	return ts.do(ts.client, method, path, body)
 }
 
+// requestHeader performs a JSON request with the server's session-carrying
+// client and additionally returns the response Content-Type — for tests that
+// need to pin the wire format (e.g. application/problem+json), not just the
+// decoded body.
+func (ts *testServer) requestHeader(method, path string, body any) (int, map[string]any, string) {
+	ts.t.Helper()
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		require.NoError(ts.t, err)
+		reader = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, ts.URL+path, reader)
+	require.NoError(ts.t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := ts.client.Do(req)
+	require.NoError(ts.t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	var decoded map[string]any
+	raw, _ := io.ReadAll(resp.Body)
+	if len(raw) > 0 {
+		require.NoError(ts.t, json.Unmarshal(raw, &decoded), "response body should be JSON")
+	}
+	return resp.StatusCode, decoded, resp.Header.Get("Content-Type")
+}
+
 // markVerified flips an account's email to verified directly in the database —
 // the test-suite shortcut for the verification email a real registrant would
 // open. platform_users is control-plane, so the app role may update it.

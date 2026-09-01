@@ -29,27 +29,80 @@ type fieldError struct {
 // extension members: `code` preserves the flat apperr slug taxonomy so callers
 // need not parse `type`, `requestId` makes a user-reported failure traceable,
 // and `errors` carries field-level validation detail.
+//
+// Extensions holds further, endpoint-specific extension members (RFC 9457
+// §3.2 permits arbitrary additional members on a problem document). They are
+// flattened into the top-level JSON object by MarshalJSON, not nested under
+// an "extensions" key. A key that collides with one of the fixed members
+// above is dropped — the standard member always wins, deterministically —
+// see problemReservedKeys.
 type problem struct {
-	Type      string       `json:"type"`
-	Title     string       `json:"title"`
-	Status    int          `json:"status"`
-	Detail    string       `json:"detail,omitempty"`
-	Instance  string       `json:"instance,omitempty"`
-	Code      string       `json:"code"`
-	RequestID string       `json:"requestId,omitempty"`
-	Errors    []fieldError `json:"errors,omitempty"`
+	Type       string         `json:"type"`
+	Title      string         `json:"title"`
+	Status     int            `json:"status"`
+	Detail     string         `json:"detail,omitempty"`
+	Instance   string         `json:"instance,omitempty"`
+	Code       string         `json:"code"`
+	RequestID  string         `json:"requestId,omitempty"`
+	Errors     []fieldError   `json:"errors,omitempty"`
+	Extensions map[string]any `json:"-"`
 }
 
-// writeProblem renders an RFC 9457 document. It is the only function in the
-// package that writes an error body.
+// problemReservedKeys are the fixed problem members. An Extensions entry
+// under one of these keys is silently dropped by MarshalJSON rather than
+// overriding the standard member — see problem.Extensions.
+var problemReservedKeys = map[string]struct{}{
+	"type": {}, "title": {}, "status": {}, "detail": {}, "instance": {},
+	"code": {}, "requestId": {}, "errors": {},
+}
+
+// MarshalJSON renders the fixed members via the ordinary struct encoding,
+// then merges Extensions in as additional top-level keys. Reserved keys in
+// Extensions are dropped (see problemReservedKeys) so a caller can never
+// accidentally — or a malicious extension value can never — shadow a
+// standard member.
+func (p problem) MarshalJSON() ([]byte, error) {
+	type alias problem
+	base, err := json.Marshal(alias(p))
+	if err != nil {
+		return nil, err
+	}
+	if len(p.Extensions) == 0 {
+		return base, nil
+	}
+	merged := make(map[string]any, len(p.Extensions)+8)
+	if err := json.Unmarshal(base, &merged); err != nil {
+		return nil, err
+	}
+	for k, v := range p.Extensions {
+		if _, reserved := problemReservedKeys[k]; reserved {
+			continue
+		}
+		merged[k] = v
+	}
+	return json.Marshal(merged)
+}
+
+// writeProblem renders an RFC 9457 document with no extension members. It
+// delegates to writeProblemWithExtensions, the only function in the package
+// that actually writes an error body.
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, detail string, fields []fieldError) {
+	writeProblemWithExtensions(w, r, status, code, detail, fields, nil)
+}
+
+// writeProblemWithExtensions renders an RFC 9457 document with additional,
+// endpoint-specific top-level members (e.g. the FR-009 stale-row conflict's
+// currentUpdatedAt). It is the only function in the package that writes an
+// error body; writeProblem and writeError both delegate to it.
+func writeProblemWithExtensions(w http.ResponseWriter, r *http.Request, status int, code, detail string, fields []fieldError, ext map[string]any) {
 	doc := problem{
-		Type:   problemBaseURI + code,
-		Title:  titleForCode(code),
-		Status: status,
-		Detail: detail,
-		Code:   code,
-		Errors: fields,
+		Type:       problemBaseURI + code,
+		Title:      titleForCode(code),
+		Status:     status,
+		Detail:     detail,
+		Code:       code,
+		Errors:     fields,
+		Extensions: ext,
 	}
 	if r != nil {
 		doc.Instance = r.URL.Path

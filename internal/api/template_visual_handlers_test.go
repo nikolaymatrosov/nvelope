@@ -138,7 +138,7 @@ func TestSaveVisualTemplateReturnsStaleRowOnMismatchedTimestamp(t *testing.T) {
 
 	// A timestamp that cannot match the row's actual updated_at.
 	stale := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	status, body := ts.request(http.MethodPut, base+"/templates/"+templateID+"/visual", map[string]any{
+	status, body, contentType := ts.requestHeader(http.MethodPut, base+"/templates/"+templateID+"/visual", map[string]any{
 		"subject":           "Subject",
 		"bodyDoc":           emptyVisualDoc(),
 		"bodyHtml":          "<p>x</p>",
@@ -146,7 +146,8 @@ func TestSaveVisualTemplateReturnsStaleRowOnMismatchedTimestamp(t *testing.T) {
 		"ifUnmodifiedSince": stale.Format(time.RFC3339Nano),
 	})
 	require.Equal(t, http.StatusConflict, status)
-	require.Equal(t, "stale_row", body["error"])
+	require.Equal(t, "application/problem+json", contentType)
+	require.Equal(t, "stale_row", body["code"])
 	require.Equal(t, "stale_row", body["kind"])
 	require.NotEmpty(t, body["currentUpdatedAt"], "current updated_at echoed for the Force-overwrite path")
 }

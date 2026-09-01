@@ -53,6 +53,60 @@ func TestWriteProblemFieldErrors(t *testing.T) {
 	require.Equal(t, "name is required", first["detail"])
 }
 
+func TestWriteProblemWithExtensionsAddsTopLevelKeys(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/t/acme/api/campaigns/abc/visual", nil)
+	req = req.WithContext(withRequestIDForTest(req.Context(), "req-123"))
+
+	writeProblemWithExtensions(rec, req, http.StatusConflict, "stale_row",
+		"the campaign was modified since it was loaded", nil, map[string]any{
+			"kind":             "stale_row",
+			"currentUpdatedAt": "2026-09-01T10:04:00Z",
+		})
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+
+	require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
+	require.Equal(t, http.StatusConflict, rec.Code)
+	// Standard members are unaffected by the presence of extensions.
+	require.Equal(t, "https://nvelope.dev/probs/stale_row", body["type"])
+	require.Equal(t, "Stale row", body["title"])
+	require.EqualValues(t, 409, body["status"])
+	require.Equal(t, "stale_row", body["code"])
+	require.Equal(t, "req-123", body["requestId"])
+	// Extensions land as top-level keys, not nested under "extensions".
+	require.NotContains(t, body, "extensions")
+	require.Equal(t, "stale_row", body["kind"])
+	require.Equal(t, "2026-09-01T10:04:00Z", body["currentUpdatedAt"])
+}
+
+// TestWriteProblemWithExtensionsReservedKeyCannotClobberStandardMember pins
+// the deterministic collision rule documented on problem.Extensions: a
+// standard member always wins over an extension entry of the same name,
+// rather than the two racing nondeterministically through map iteration.
+func TestWriteProblemWithExtensionsReservedKeyCannotClobberStandardMember(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil)
+	req = req.WithContext(withRequestIDForTest(req.Context(), "req-123"))
+
+	writeProblemWithExtensions(rec, req, http.StatusNotFound, "list_not_found",
+		"no such list", nil, map[string]any{
+			"code":  "attacker-supplied",
+			"title": "attacker-supplied",
+			"safe":  "kept",
+		})
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+
+	require.Equal(t, "list_not_found", body["code"], "the standard member wins the collision")
+	require.Equal(t, "List not found", body["title"], "the standard member wins the collision")
+	require.Equal(t, "kept", body["safe"], "non-colliding extension keys still land")
+}
+
 func TestFailRendersProblemPerCategory(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

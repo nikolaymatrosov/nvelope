@@ -361,11 +361,11 @@ func (s *Server) handleSaveVisualCampaign(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if errors.Is(err, campaigndomain.ErrStaleRow) {
 			metrics.VisualSavesTotal.WithLabelValues("campaign", "stale_row", "false").Inc()
-			writeJSON(w, http.StatusConflict, map[string]any{
-				"error":            "stale_row",
-				"kind":             "stale_row",
-				"currentUpdatedAt": res.CurrentUpdatedAt,
-			})
+			writeProblemWithExtensions(w, r, http.StatusConflict, "stale_row",
+				"the campaign was modified since it was loaded", nil, map[string]any{
+					"kind":             "stale_row",
+					"currentUpdatedAt": res.CurrentUpdatedAt,
+				})
 			return
 		}
 		metrics.VisualSavesTotal.WithLabelValues("campaign", saveVisualErrorResult(err), "false").Inc()
@@ -461,11 +461,11 @@ func (s *Server) handleSaveVisualTemplate(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if errors.Is(err, campaigndomain.ErrStaleRow) {
 			metrics.VisualSavesTotal.WithLabelValues("template", "stale_row", "false").Inc()
-			writeJSON(w, http.StatusConflict, map[string]any{
-				"error":            "stale_row",
-				"kind":             "stale_row",
-				"currentUpdatedAt": res.CurrentUpdatedAt,
-			})
+			writeProblemWithExtensions(w, r, http.StatusConflict, "stale_row",
+				"the template was modified since it was loaded", nil, map[string]any{
+					"kind":             "stale_row",
+					"currentUpdatedAt": res.CurrentUpdatedAt,
+				})
 			return
 		}
 		metrics.VisualSavesTotal.WithLabelValues("template", saveVisualErrorResult(err), "false").Inc()
