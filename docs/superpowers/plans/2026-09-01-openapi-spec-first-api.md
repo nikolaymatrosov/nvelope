@@ -34,7 +34,7 @@
 ### Created
 
 | Path | Responsibility |
-|---|---|
+| --- | --- |
 | `internal/api/problem.go` | RFC 9457 `Problem` document type and `writeProblem`; the single place an error becomes a response body |
 | `internal/api/problem_test.go` | Golden tests: one well-formed Problem per `apperr.Category`, plus slug overrides |
 | `api/openapi/tenant.yaml` | Tenant-plane document root; `servers: /t/{slug}/api`; `$ref`s into `paths/tenant/*` |
@@ -56,7 +56,7 @@
 ### Modified
 
 | Path | Change |
-|---|---|
+| --- | --- |
 | `internal/api/respond.go` | `writeError` delegates to `writeProblem`; `errorBody` deleted |
 | `internal/api/errmap.go` | `fail` renders a Problem including `requestId` |
 | `internal/api/authz_middleware.go` | Add ctx-based `requirePerm` / `requireListPerm` returning `error` |
@@ -73,7 +73,7 @@
 ### Deleted
 
 | Path | When |
-|---|---|
+| --- | --- |
 | `internal/api/audience_handlers.go` | Task 7 (fully absorbed into `audience_api.go`) |
 | `internal/api/jobs_handlers.go` | Task 8 |
 
@@ -86,6 +86,7 @@
 Converts all ~120 endpoints in one commit. `writeError` and `fail` are the only two functions that emit errors, so this needs no spec and no codegen.
 
 **Files:**
+
 - Create: `internal/api/problem.go`
 - Create: `internal/api/problem_test.go`
 - Modify: `internal/api/respond.go` (lines 10–31: `errorBody`, `writeJSON`, `writeError`)
@@ -93,6 +94,7 @@ Converts all ~120 endpoints in one commit. `writeError` and `fail` are the only 
 - Modify: `internal/api/*_test.go` (36 `body["error"]` assertions)
 
 **Interfaces:**
+
 - Consumes: `apperr.As`, `apperr.Category`, `apperr.Error.Slug()`, `apperr.Error.Message()` from `internal/platform/apperr`; `requestIDFromContext(ctx)` from `internal/api/request_id.go`.
 - Produces:
   - `type problem struct` with JSON fields `type`, `title`, `status`, `detail`, `instance`, `code`, `requestId`, `errors`.
@@ -109,91 +111,91 @@ Create `internal/api/problem_test.go`:
 package api
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"testing"
+ "encoding/json"
+ "net/http"
+ "net/http/httptest"
+ "testing"
 
-	"github.com/stretchr/testify/require"
+ "github.com/stretchr/testify/require"
 
-	"github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
+ "github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
 )
 
 // problemFor drives writeProblem through a recorder and decodes the body.
 func problemFor(t *testing.T, status int, code, detail string, fields []fieldError) (*httptest.ResponseRecorder, map[string]any) {
-	t.Helper()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil)
-	req = req.WithContext(withRequestIDForTest(req.Context(), "req-123"))
-	writeProblem(rec, req, status, code, detail, fields)
-	var body map[string]any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-	return rec, body
+ t.Helper()
+ rec := httptest.NewRecorder()
+ req := httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil)
+ req = req.WithContext(withRequestIDForTest(req.Context(), "req-123"))
+ writeProblem(rec, req, status, code, detail, fields)
+ var body map[string]any
+ require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+ return rec, body
 }
 
 func TestWriteProblemShape(t *testing.T) {
-	t.Parallel()
-	rec, body := problemFor(t, http.StatusNotFound, "list_not_found", "no such list", nil)
+ t.Parallel()
+ rec, body := problemFor(t, http.StatusNotFound, "list_not_found", "no such list", nil)
 
-	require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
-	require.Equal(t, http.StatusNotFound, rec.Code)
-	require.Equal(t, "https://nvelope.dev/probs/list_not_found", body["type"])
-	require.Equal(t, "List not found", body["title"])
-	require.EqualValues(t, 404, body["status"])
-	require.Equal(t, "no such list", body["detail"])
-	require.Equal(t, "/t/acme/api/lists", body["instance"])
-	require.Equal(t, "list_not_found", body["code"])
-	require.Equal(t, "req-123", body["requestId"])
-	require.NotContains(t, body, "errors", "absent when no field errors")
+ require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
+ require.Equal(t, http.StatusNotFound, rec.Code)
+ require.Equal(t, "https://nvelope.dev/probs/list_not_found", body["type"])
+ require.Equal(t, "List not found", body["title"])
+ require.EqualValues(t, 404, body["status"])
+ require.Equal(t, "no such list", body["detail"])
+ require.Equal(t, "/t/acme/api/lists", body["instance"])
+ require.Equal(t, "list_not_found", body["code"])
+ require.Equal(t, "req-123", body["requestId"])
+ require.NotContains(t, body, "errors", "absent when no field errors")
 }
 
 func TestWriteProblemFieldErrors(t *testing.T) {
-	t.Parallel()
-	_, body := problemFor(t, http.StatusUnprocessableEntity, "validation_failed", "request is invalid",
-		[]fieldError{{Field: "/name", Code: "required", Detail: "name is required"}})
+ t.Parallel()
+ _, body := problemFor(t, http.StatusUnprocessableEntity, "validation_failed", "request is invalid",
+  []fieldError{{Field: "/name", Code: "required", Detail: "name is required"}})
 
-	errs, ok := body["errors"].([]any)
-	require.True(t, ok, "errors is an array")
-	require.Len(t, errs, 1)
-	first, _ := errs[0].(map[string]any)
-	require.Equal(t, "/name", first["field"])
-	require.Equal(t, "required", first["code"])
-	require.Equal(t, "name is required", first["detail"])
+ errs, ok := body["errors"].([]any)
+ require.True(t, ok, "errors is an array")
+ require.Len(t, errs, 1)
+ first, _ := errs[0].(map[string]any)
+ require.Equal(t, "/name", first["field"])
+ require.Equal(t, "required", first["code"])
+ require.Equal(t, "name is required", first["detail"])
 }
 
 func TestFailRendersProblemPerCategory(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name   string
-		err    error
-		status int
-		code   string
-	}{
-		{"incorrect input", apperr.NewIncorrectInput("validation_failed", "bad"), 422, "validation_failed"},
-		{"conflict", apperr.NewConflict("email_taken", "taken"), 409, "email_taken"},
-		{"not found", apperr.NewNotFound("list_not_found", "gone"), 404, "list_not_found"},
-		{"authorization", apperr.NewAuthorization("unauthenticated", "nope"), 401, "unauthenticated"},
-		{"forbidden", apperr.NewForbidden("forbidden-lists-manage", "nope"), 403, "forbidden-lists-manage"},
-		{"slug override", apperr.NewUnknown("payment_failed", "declined"), 402, "payment_failed"},
-		{"unknown", apperr.NewUnknown("weird", "oops"), 500, "internal_error"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			s := &Server{}
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil)
-			s.fail(rec, req, "op", tc.err)
+ t.Parallel()
+ cases := []struct {
+  name   string
+  err    error
+  status int
+  code   string
+ }{
+  {"incorrect input", apperr.NewIncorrectInput("validation_failed", "bad"), 422, "validation_failed"},
+  {"conflict", apperr.NewConflict("email_taken", "taken"), 409, "email_taken"},
+  {"not found", apperr.NewNotFound("list_not_found", "gone"), 404, "list_not_found"},
+  {"authorization", apperr.NewAuthorization("unauthenticated", "nope"), 401, "unauthenticated"},
+  {"forbidden", apperr.NewForbidden("forbidden-lists-manage", "nope"), 403, "forbidden-lists-manage"},
+  {"slug override", apperr.NewUnknown("payment_failed", "declined"), 402, "payment_failed"},
+  {"unknown", apperr.NewUnknown("weird", "oops"), 500, "internal_error"},
+ }
+ for _, tc := range cases {
+  t.Run(tc.name, func(t *testing.T) {
+   t.Parallel()
+   s := &Server{}
+   rec := httptest.NewRecorder()
+   req := httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil)
+   s.fail(rec, req, "op", tc.err)
 
-			var body map[string]any
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-			require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
-			require.Equal(t, tc.status, rec.Code)
-			require.Equal(t, tc.code, body["code"])
-			require.Equal(t, "https://nvelope.dev/probs/"+tc.code, body["type"])
-			require.NotEmpty(t, body["title"])
-		})
-	}
+   var body map[string]any
+   require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+   require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
+   require.Equal(t, tc.status, rec.Code)
+   require.Equal(t, tc.code, body["code"])
+   require.Equal(t, "https://nvelope.dev/probs/"+tc.code, body["type"])
+   require.NotEmpty(t, body["title"])
+  })
+ }
 }
 ```
 
@@ -211,10 +213,10 @@ Expected: compile failure — `undefined: writeProblem`, `undefined: fieldError`
 package api
 
 import (
-	"encoding/json"
-	"net/http"
-	"strings"
-	"unicode"
+ "encoding/json"
+ "net/http"
+ "strings"
+ "unicode"
 )
 
 // problemBaseURI namespaces the RFC 9457 `type` URIs. The suffix is always the
@@ -229,9 +231,9 @@ const problemContentType = "application/problem+json"
 // fieldError is a Problem extension member describing one request-body
 // violation. Field is a JSON Pointer into the submitted body.
 type fieldError struct {
-	Field  string `json:"field"`
-	Code   string `json:"code"`
-	Detail string `json:"detail,omitempty"`
+ Field  string `json:"field"`
+ Code   string `json:"code"`
+ Detail string `json:"detail,omitempty"`
 }
 
 // problem is an RFC 9457 problem detail. `code`, `requestId`, and `errors` are
@@ -239,51 +241,51 @@ type fieldError struct {
 // need not parse `type`, `requestId` makes a user-reported failure traceable,
 // and `errors` carries field-level validation detail.
 type problem struct {
-	Type      string       `json:"type"`
-	Title     string       `json:"title"`
-	Status    int          `json:"status"`
-	Detail    string       `json:"detail,omitempty"`
-	Instance  string       `json:"instance,omitempty"`
-	Code      string       `json:"code"`
-	RequestID string       `json:"requestId,omitempty"`
-	Errors    []fieldError `json:"errors,omitempty"`
+ Type      string       `json:"type"`
+ Title     string       `json:"title"`
+ Status    int          `json:"status"`
+ Detail    string       `json:"detail,omitempty"`
+ Instance  string       `json:"instance,omitempty"`
+ Code      string       `json:"code"`
+ RequestID string       `json:"requestId,omitempty"`
+ Errors    []fieldError `json:"errors,omitempty"`
 }
 
 // writeProblem renders an RFC 9457 document. It is the only function in the
 // package that writes an error body.
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, detail string, fields []fieldError) {
-	doc := problem{
-		Type:     problemBaseURI + code,
-		Title:    titleForCode(code),
-		Status:   status,
-		Detail:   detail,
-		Code:     code,
-		Errors:   fields,
-	}
-	if r != nil {
-		doc.Instance = r.URL.Path
-		doc.RequestID = requestIDFromContext(r.Context())
-	}
-	w.Header().Set("Content-Type", problemContentType)
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(doc)
+ doc := problem{
+  Type:     problemBaseURI + code,
+  Title:    titleForCode(code),
+  Status:   status,
+  Detail:   detail,
+  Code:     code,
+  Errors:   fields,
+ }
+ if r != nil {
+  doc.Instance = r.URL.Path
+  doc.RequestID = requestIDFromContext(r.Context())
+ }
+ w.Header().Set("Content-Type", problemContentType)
+ w.WriteHeader(status)
+ _ = json.NewEncoder(w).Encode(doc)
 }
 
 // titleForCode derives a short human-readable title from an error code.
 // Codes are either snake_case ("list_not_found") or kebab-case
 // ("forbidden-lists-manage"); both become sentence case.
 func titleForCode(code string) string {
-	if code == "" {
-		return "Error"
-	}
-	words := strings.FieldsFunc(code, func(r rune) bool { return r == '_' || r == '-' })
-	if len(words) == 0 {
-		return "Error"
-	}
-	joined := strings.Join(words, " ")
-	runes := []rune(joined)
-	runes[0] = unicode.ToUpper(runes[0])
-	return string(runes)
+ if code == "" {
+  return "Error"
+ }
+ words := strings.FieldsFunc(code, func(r rune) bool { return r == '_' || r == '-' })
+ if len(words) == 0 {
+  return "Error"
+ }
+ joined := strings.Join(words, " ")
+ runes := []rune(joined)
+ runes[0] = unicode.ToUpper(runes[0])
+ return string(runes)
 }
 ```
 
@@ -296,7 +298,7 @@ Append to `internal/api/problem.go`:
 // lives in the non-test file because requestIDCtxKey is unexported and tests in
 // other files need it too.
 func withRequestIDForTest(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, requestIDCtxKey, id)
+ return context.WithValue(ctx, requestIDCtxKey, id)
 }
 ```
 
@@ -310,7 +312,7 @@ Delete the `errorBody` struct entirely. Replace `writeError` with:
 // writeError writes an RFC 9457 problem document. The code is a stable
 // machine-readable token; the message becomes the problem's `detail`.
 func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
-	writeProblem(w, r, status, code, message, nil)
+ writeProblem(w, r, status, code, message, nil)
 }
 ```
 
@@ -325,20 +327,20 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, messag
 // error is an unexpected internal failure: logged, then rendered as a generic
 // 500 problem document.
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
-	if ae, ok := apperr.As(err); ok {
-		if status, override := statusForSlug[ae.Slug()]; override {
-			writeProblem(w, r, status, ae.Slug(), ae.Message(), nil)
-			return
-		}
-		if ae.Category() != apperr.Unknown {
-			writeProblem(w, r, statusForCategory(ae.Category()), ae.Slug(), ae.Message(), nil)
-			return
-		}
-	}
-	if s.logger != nil {
-		s.logger.Error("request failed", "op", op, "error", err)
-	}
-	writeProblem(w, r, http.StatusInternalServerError, "internal_error", "something went wrong", nil)
+ if ae, ok := apperr.As(err); ok {
+  if status, override := statusForSlug[ae.Slug()]; override {
+   writeProblem(w, r, status, ae.Slug(), ae.Message(), nil)
+   return
+  }
+  if ae.Category() != apperr.Unknown {
+   writeProblem(w, r, statusForCategory(ae.Category()), ae.Slug(), ae.Message(), nil)
+   return
+  }
+ }
+ if s.logger != nil {
+  s.logger.Error("request failed", "op", op, "error", err)
+ }
+ writeProblem(w, r, http.StatusInternalServerError, "internal_error", "something went wrong", nil)
 }
 ```
 
@@ -412,11 +414,13 @@ failures traceable for the first time."
 ### Task 2: Frontend reads the Problem shape
 
 **Files:**
+
 - Modify: `frontend/src/lib/errors.ts` (`ErrorEnvelope`, `normalizeError`)
 - Modify: `frontend/src/server/clients/go-api.ts` (`GoApiError` constructor)
 - Test: `frontend/src/lib/errors.test.ts` (create)
 
 **Interfaces:**
+
 - Consumes: the Go `problem` JSON shape from Task 1.
 - Produces: `ApiError` keeps its existing public surface — `status`, `slug`, `message`, `path`, `data`. Nothing that branches on `err.slug` changes.
 
@@ -551,6 +555,7 @@ against a `servers:` entry templated as `/t/{slug}/api`. Prove it before any
 handler moves.
 
 **Files:**
+
 - Create: `api/openapi/tenant.yaml`, `api/openapi/redocly.yaml`, `api/openapi/cfg/tenant.cfg.yaml`
 - Create: `api/openapi/components/schemas/common.yaml`
 - Create: `internal/api/openapi_spike_test.go` (deleted at the end of Task 5)
@@ -558,6 +563,7 @@ handler moves.
 - Generated: `api/openapi/gen/tenant.gen.yaml`, `internal/api/openapitenant/tenant.gen.go`, `frontend/src/lib/api-schema.gen.ts`
 
 **Interfaces:**
+
 - Produces: `make generate`, `make generate-check`, package `openapitenant` exposing `GetSwagger() (*openapi3.T, error)`, `StrictServerInterface`, `NewStrictHandlerWithOptions`, `HandlerWithOptions`, `ChiServerOptions`.
 
 - [ ] **Step 1: Pin the Go tool**
@@ -727,15 +733,15 @@ Then append:
 # and the TypeScript types. Generated files are committed; `generate-check`
 # fails when they are stale, which is what CI enforces.
 generate:
-	cd frontend && pnpm exec redocly lint --config ../api/openapi/redocly.yaml ../api/openapi/tenant.yaml
-	cd frontend && pnpm exec redocly bundle --config ../api/openapi/redocly.yaml \
-		../api/openapi/tenant.yaml -o ../api/openapi/gen/tenant.gen.yaml
-	$(GO) tool oapi-codegen --config api/openapi/cfg/tenant.cfg.yaml api/openapi/gen/tenant.gen.yaml
-	cd frontend && pnpm exec openapi-typescript ../api/openapi/gen/tenant.gen.yaml \
-		-o src/lib/api-schema.gen.ts
+ cd frontend && pnpm exec redocly lint --config ../api/openapi/redocly.yaml ../api/openapi/tenant.yaml
+ cd frontend && pnpm exec redocly bundle --config ../api/openapi/redocly.yaml \
+  ../api/openapi/tenant.yaml -o ../api/openapi/gen/tenant.gen.yaml
+ $(GO) tool oapi-codegen --config api/openapi/cfg/tenant.cfg.yaml api/openapi/gen/tenant.gen.yaml
+ cd frontend && pnpm exec openapi-typescript ../api/openapi/gen/tenant.gen.yaml \
+  -o src/lib/api-schema.gen.ts
 
 generate-check: generate
-	git diff --exit-code -- api/openapi/gen internal/api/openapitenant frontend/src/lib/api-schema.gen.ts
+ git diff --exit-code -- api/openapi/gen internal/api/openapitenant frontend/src/lib/api-schema.gen.ts
 ```
 
 Then add `$(MAKE) generate-check` to `ci-backend`, immediately after
@@ -764,15 +770,15 @@ Create `internal/api/openapi_spike_test.go`:
 package api
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
+ "net/http"
+ "net/http/httptest"
+ "testing"
 
-	"github.com/go-chi/chi/v5"
-	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
-	"github.com/stretchr/testify/require"
+ "github.com/go-chi/chi/v5"
+ oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
+ "github.com/stretchr/testify/require"
 
-	"github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
+ "github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
 )
 
 // TestValidatorMatchesTemplatedServerBase is the load-bearing assumption of the
@@ -782,25 +788,25 @@ import (
 // If this fails, the fallback documented in the design spec is to drop servers:
 // templating and write full paths in tenant.yaml.
 func TestValidatorMatchesTemplatedServerBase(t *testing.T) {
-	t.Parallel()
-	swagger, err := openapitenant.GetSwagger()
-	require.NoError(t, err)
+ t.Parallel()
+ swagger, err := openapitenant.GetSwagger()
+ require.NoError(t, err)
 
-	validator := oapimiddleware.OapiRequestValidator(swagger)
+ validator := oapimiddleware.OapiRequestValidator(swagger)
 
-	r := chi.NewRouter()
-	r.Route("/t/{slug}/api", func(tr chi.Router) {
-		tr.With(validator).Get("/lists", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"items":[],"total":0}`))
-		})
-	})
+ r := chi.NewRouter()
+ r.Route("/t/{slug}/api", func(tr chi.Router) {
+  tr.With(validator).Get("/lists", func(w http.ResponseWriter, _ *http.Request) {
+   w.WriteHeader(http.StatusOK)
+   _, _ = w.Write([]byte(`{"items":[],"total":0}`))
+  })
+ })
 
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil))
+ rec := httptest.NewRecorder()
+ r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil))
 
-	require.Equal(t, http.StatusOK, rec.Code,
-		"the validator resolved /t/acme/api/lists against the templated server base")
+ require.Equal(t, http.StatusOK, rec.Code,
+  "the validator resolved /t/acme/api/lists against the templated server base")
 }
 ```
 
@@ -894,6 +900,7 @@ Spec only. Nothing is wired; the generated Go interface is not yet
 implemented, so no handler changes and the build stays green.
 
 **Files:**
+
 - Create: `api/openapi/components/schemas/audience.yaml`
 - Create: `api/openapi/components/parameters/common.yaml`
 - Create: `api/openapi/components/responses/common.yaml`
@@ -901,6 +908,7 @@ implemented, so no handler changes and the build stays green.
 - Modify: `api/openapi/tenant.yaml` (replace the throwaway `/lists` operation with `$ref`s)
 
 **Interfaces:**
+
 - Consumes: `Problem` and `FieldError` from `components/schemas/common.yaml` (Task 3).
 - Produces, in package `openapitenant`: `List`, `ListPage`, `CreateListRequest`, `CreateListResponse`, `UpdateListRequest`, `Subscriber`, `Membership`, `SubscriberPage`, `CreateSubscriberRequest`, `UpdateSubscriberRequest`, `AddToListRequest`, `ChangeSubscriptionRequest`, `SegmentNode`, `FieldCondition`, `AttrCondition`, `MemberCondition`, `SegmentQueryRequest`, `SegmentCountResponse`, `StartExportRequest`, `JobAccepted`, `JobStatus`, `RowFailure`, and one `StrictServerInterface` method per operation.
 
@@ -909,7 +917,7 @@ enforces (read these off `internal/api/audience_handlers.go` and
 `internal/api/jobs_handlers.go` — do not guess):
 
 | operationId | Method + path | Handler | Permission |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `createList` | `POST /lists` | `handleCreateList` | `PermListsManage` |
 | `listLists` | `GET /lists` | `handleListLists` | `PermListsGet` |
 | `getList` | `GET /lists/{id}` | `handleGetList` | `PermListsGet` (per-list) |
@@ -1778,6 +1786,7 @@ itself — cannot be used. It becomes an error-returning helper whose result the
 strict handler's error routing turns into a Problem.
 
 **Files:**
+
 - Modify: `internal/api/authz_middleware.go` (add, do not remove, the ctx helpers)
 - Create: `internal/api/openapi_wiring.go`
 - Create: `internal/api/openapi_wiring_test.go`
@@ -1785,6 +1794,7 @@ strict handler's error routing turns into a Problem.
 - Delete: `internal/api/openapi_spike_test.go`
 
 **Interfaces:**
+
 - Consumes: `openapitenant.GetSwagger`, `openapitenant.NewStrictHandlerWithOptions`, `openapitenant.HandlerWithOptions`, `openapitenant.ChiServerOptions`, `openapitenant.StrictHTTPServerOptions` (Task 3/4); `writeProblem`, `fieldError` (Task 1).
 - Produces:
   - `func (s *Server) requirePerm(ctx context.Context, required iamdomain.Permission) (iamdomain.Principal, error)`
@@ -1799,55 +1809,55 @@ Create `internal/api/openapi_wiring_test.go`:
 package api
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
+ "context"
+ "encoding/json"
+ "net/http"
+ "net/http/httptest"
+ "strings"
+ "testing"
 
-	"github.com/stretchr/testify/require"
+ "github.com/stretchr/testify/require"
 
-	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
+ iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
 )
 
 func TestRequirePermWithoutPrincipal(t *testing.T) {
-	t.Parallel()
-	s := &Server{}
-	_, err := s.requirePerm(context.Background(), iamdomain.PermListsGet)
-	require.Error(t, err)
+ t.Parallel()
+ s := &Server{}
+ _, err := s.requirePerm(context.Background(), iamdomain.PermListsGet)
+ require.Error(t, err)
 
-	rec := httptest.NewRecorder()
-	s.fail(rec, httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil), "authorize", err)
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
+ rec := httptest.NewRecorder()
+ s.fail(rec, httptest.NewRequest(http.MethodGet, "/t/acme/api/lists", nil), "authorize", err)
+ require.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	var body map[string]any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-	require.Equal(t, "unauthenticated", body["code"])
+ var body map[string]any
+ require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+ require.Equal(t, "unauthenticated", body["code"])
 }
 
 // TestValidationMiddlewareRejectsUnknownField proves that additionalProperties:
 // false in the spec preserves today's DisallowUnknownFields behaviour, and that
 // the rejection is rendered as a problem document with a populated errors array.
 func TestValidationMiddlewareRejectsUnknownField(t *testing.T) {
-	t.Parallel()
-	srv := newTestServerForWiring(t)
+ t.Parallel()
+ srv := newTestServerForWiring(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/t/acme/api/lists",
-		strings.NewReader(`{"name":"ok","bogus":1}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+ req := httptest.NewRequest(http.MethodPost, "/t/acme/api/lists",
+  strings.NewReader(`{"name":"ok","bogus":1}`))
+ req.Header.Set("Content-Type", "application/json")
+ rec := httptest.NewRecorder()
+ srv.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
-	require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
+ require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+ require.Equal(t, "application/problem+json", rec.Header().Get("Content-Type"))
 
-	var body map[string]any
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
-	require.Equal(t, "validation_failed", body["code"])
-	errs, ok := body["errors"].([]any)
-	require.True(t, ok, "errors array is present")
-	require.NotEmpty(t, errs)
+ var body map[string]any
+ require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+ require.Equal(t, "validation_failed", body["code"])
+ errs, ok := body["errors"].([]any)
+ require.True(t, ok, "errors array is present")
+ require.NotEmpty(t, errs)
 }
 ```
 
@@ -1860,14 +1870,14 @@ file:
 // validator, bypassing authentication — this test exercises validation and
 // error rendering only.
 func newTestServerForWiring(t *testing.T) http.Handler {
-	t.Helper()
-	s := &Server{}
-	r := chi.NewRouter()
-	r.Use(s.requestID)
-	r.Route("/t/{slug}/api", func(tr chi.Router) {
-		s.mountGeneratedTenantAPI(tr)
-	})
-	return r
+ t.Helper()
+ s := &Server{}
+ r := chi.NewRouter()
+ r.Use(s.requestID)
+ r.Route("/t/{slug}/api", func(tr chi.Router) {
+  s.mountGeneratedTenantAPI(tr)
+ })
+ return r
 }
 ```
 
@@ -1892,27 +1902,27 @@ Append to `internal/api/authz_middleware.go`:
 // strict handler's error routing renders them through the same fail() path as
 // every other domain error.
 func (s *Server) requirePerm(ctx context.Context, required iamdomain.Permission) (iamdomain.Principal, error) {
-	p, ok := principalFromContext(ctx)
-	if !ok {
-		return iamdomain.Principal{}, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
-	}
-	if !p.Can(required) {
-		return iamdomain.Principal{}, iamdomain.Forbidden(required)
-	}
-	return p, nil
+ p, ok := principalFromContext(ctx)
+ if !ok {
+  return iamdomain.Principal{}, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
+ }
+ if !p.Can(required) {
+  return iamdomain.Principal{}, iamdomain.Forbidden(required)
+ }
+ return p, nil
 }
 
 // requireListPerm checks a permission targeting a specific list, honouring
 // per-list role grants.
 func (s *Server) requireListPerm(ctx context.Context, required iamdomain.Permission, listID string) (iamdomain.Principal, error) {
-	p, ok := principalFromContext(ctx)
-	if !ok {
-		return iamdomain.Principal{}, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
-	}
-	if !p.CanOnList(required, listID) {
-		return iamdomain.Principal{}, iamdomain.Forbidden(required)
-	}
-	return p, nil
+ p, ok := principalFromContext(ctx)
+ if !ok {
+  return iamdomain.Principal{}, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
+ }
+ if !p.CanOnList(required, listID) {
+  return iamdomain.Principal{}, iamdomain.Forbidden(required)
+ }
+ return p, nil
 }
 ```
 
@@ -1928,13 +1938,13 @@ Create `internal/api/openapi_wiring.go`:
 package api
 
 import (
-	"context"
-	"net/http"
+ "context"
+ "net/http"
 
-	"github.com/go-chi/chi/v5"
-	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
+ "github.com/go-chi/chi/v5"
+ oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
 
-	"github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
+ "github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
 )
 
 // mountGeneratedTenantAPI registers every operation described by
@@ -1945,50 +1955,50 @@ import (
 // ChiServerOptions.Middlewares, not r.Use), because unmigrated routes are not
 // in the spec and the validator would reject them.
 func (s *Server) mountGeneratedTenantAPI(r chi.Router) {
-	swagger, err := openapitenant.GetSwagger()
-	if err != nil {
-		// The spec is embedded at build time; a parse failure is a programming
-		// error, not a runtime condition.
-		panic("loading embedded tenant OpenAPI document: " + err.Error())
-	}
+ swagger, err := openapitenant.GetSwagger()
+ if err != nil {
+  // The spec is embedded at build time; a parse failure is a programming
+  // error, not a runtime condition.
+  panic("loading embedded tenant OpenAPI document: " + err.Error())
+ }
 
-	validator := oapimiddleware.OapiRequestValidatorWithOptions(swagger, &oapimiddleware.Options{
-		ErrorHandlerWithOpts: s.validationErrorHandler,
-	})
+ validator := oapimiddleware.OapiRequestValidatorWithOptions(swagger, &oapimiddleware.Options{
+  ErrorHandlerWithOpts: s.validationErrorHandler,
+ })
 
-	strict := openapitenant.NewStrictHandlerWithOptions(s, nil, openapitenant.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  s.strictRequestError,
-		ResponseErrorHandlerFunc: s.strictResponseError,
-	})
+ strict := openapitenant.NewStrictHandlerWithOptions(s, nil, openapitenant.StrictHTTPServerOptions{
+  RequestErrorHandlerFunc:  s.strictRequestError,
+  ResponseErrorHandlerFunc: s.strictResponseError,
+ })
 
-	openapitenant.HandlerWithOptions(strict, openapitenant.ChiServerOptions{
-		BaseRouter:  r,
-		Middlewares: []openapitenant.MiddlewareFunc{validator},
-		ErrorHandlerFunc: func(w http.ResponseWriter, req *http.Request, err error) {
-			writeProblem(w, req, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		},
-	})
+ openapitenant.HandlerWithOptions(strict, openapitenant.ChiServerOptions{
+  BaseRouter:  r,
+  Middlewares: []openapitenant.MiddlewareFunc{validator},
+  ErrorHandlerFunc: func(w http.ResponseWriter, req *http.Request, err error) {
+   writeProblem(w, req, http.StatusBadRequest, "invalid_request", err.Error(), nil)
+  },
+ })
 }
 
 // validationErrorHandler renders a request-validation failure as a problem
 // document with a populated errors array.
 func (s *Server) validationErrorHandler(_ context.Context, w http.ResponseWriter, r *http.Request, opts oapimiddleware.ErrorHandlerOpts) {
-	writeProblem(w, r, http.StatusUnprocessableEntity, "validation_failed",
-		"the request body or parameters failed validation",
-		fieldErrorsFrom(opts.Error))
+ writeProblem(w, r, http.StatusUnprocessableEntity, "validation_failed",
+  "the request body or parameters failed validation",
+  fieldErrorsFrom(opts.Error))
 }
 
 // strictRequestError fires when the generated code cannot bind a request into
 // its typed request object — a malformed body that slipped past the validator.
 func (s *Server) strictRequestError(w http.ResponseWriter, r *http.Request, err error) {
-	writeProblem(w, r, http.StatusBadRequest, "invalid_body", err.Error(), nil)
+ writeProblem(w, r, http.StatusBadRequest, "invalid_body", err.Error(), nil)
 }
 
 // strictResponseError is the single exit for every error a strict handler
 // returns. It reuses fail(), so an authz denial, a domain conflict, and an
 // unexpected panic all render identical problem documents.
 func (s *Server) strictResponseError(w http.ResponseWriter, r *http.Request, err error) {
-	s.fail(w, r, "openapi handler", err)
+ s.fail(w, r, "openapi handler", err)
 }
 ```
 
@@ -2011,18 +2021,18 @@ Append to `internal/api/openapi_wiring.go`:
 // which is exactly what a form needs to highlight the right input. Anything
 // else degrades to a single unlocated entry, so the array is never empty.
 func fieldErrorsFrom(err error) []fieldError {
-	var reqErr *openapi3filter.RequestError
-	if errors.As(err, &reqErr) {
-		var schemaErr *openapi3.SchemaError
-		if errors.As(reqErr.Err, &schemaErr) {
-			return []fieldError{{
-				Field:  "/" + strings.Join(schemaErr.JSONPointer(), "/"),
-				Code:   schemaErr.SchemaField,
-				Detail: schemaErr.Reason,
-			}}
-		}
-	}
-	return []fieldError{{Field: "", Code: "invalid", Detail: err.Error()}}
+ var reqErr *openapi3filter.RequestError
+ if errors.As(err, &reqErr) {
+  var schemaErr *openapi3.SchemaError
+  if errors.As(reqErr.Err, &schemaErr) {
+   return []fieldError{{
+    Field:  "/" + strings.Join(schemaErr.JSONPointer(), "/"),
+    Code:   schemaErr.SchemaField,
+    Detail: schemaErr.Reason,
+   }}
+  }
+ }
+ return []fieldError{{Field: "", Code: "invalid", Detail: err.Error()}}
 }
 ```
 
@@ -2038,14 +2048,14 @@ the `ErrorHandler func(w http.ResponseWriter, message string, statusCode int)`
 field instead:
 
 ```go
-	validator := oapimiddleware.OapiRequestValidatorWithOptions(swagger, &oapimiddleware.Options{
-		ErrorHandler: func(w http.ResponseWriter, message string, _ int) {
-			// This variant gives no *http.Request, so the problem carries no
-			// instance or requestId. Prefer ErrorHandlerWithOpts when available.
-			writeProblem(w, nil, http.StatusUnprocessableEntity, "validation_failed", message,
-				[]fieldError{{Field: "", Code: "invalid", Detail: message}})
-		},
-	})
+ validator := oapimiddleware.OapiRequestValidatorWithOptions(swagger, &oapimiddleware.Options{
+  ErrorHandler: func(w http.ResponseWriter, message string, _ int) {
+   // This variant gives no *http.Request, so the problem carries no
+   // instance or requestId. Prefer ErrorHandlerWithOpts when available.
+   writeProblem(w, nil, http.StatusUnprocessableEntity, "validation_failed", message,
+    []fieldError{{Field: "", Code: "invalid", Detail: message}})
+  },
+ })
 ```
 
 and delete `validationErrorHandler`. Note which variant you used in a comment.
@@ -2104,11 +2114,11 @@ In `internal/api/server.go`, inside `r.Route("/t/{slug}/api", …)` →
 statement in the group:
 
 ```go
-			// Generated, spec-first operations. Every route registered here is
-			// described by api/openapi/tenant.yaml and validated against it.
-			// Routes below this line are still hand-written; a route may not
-			// appear in both places, or chi panics on the duplicate pattern.
-			s.mountGeneratedTenantAPI(r)
+   // Generated, spec-first operations. Every route registered here is
+   // described by api/openapi/tenant.yaml and validated against it.
+   // Routes below this line are still hand-written; a route may not
+   // appear in both places, or chi panics on the duplicate pattern.
+   s.mountGeneratedTenantAPI(r)
 ```
 
 - [ ] **Step 8: Run the test**
@@ -2123,7 +2133,7 @@ is not in the spec yet (Step 6 parked it), so no generated route serves it.
 Skip it, naming the task that unskips it:
 
 ```go
-	t.Skip("unskipped in Task 6, once POST /lists is in the spec and implemented")
+ t.Skip("unskipped in Task 6, once POST /lists is in the spec and implemented")
 ```
 
 - [ ] **Step 9: Delete the spike test**
@@ -2161,6 +2171,7 @@ domain errors, and bind failures all render identical problem documents."
 ### Task 6: Migrate the list operations
 
 **Files:**
+
 - Create: `internal/api/audience_mapping.go`
 - Create: `internal/api/audience_api.go`
 - Modify: `internal/api/audience_handlers.go` (delete the five list handlers)
@@ -2169,6 +2180,7 @@ domain errors, and bind failures all render identical problem documents."
 - Modify: `internal/api/openapi_wiring_test.go` (unskip)
 
 **Interfaces:**
+
 - Consumes: `openapitenant.List`, `ListPage`, `CreateListRequest`, `UpdateListRequest`, `CreatedId`, and the five request/response objects (Task 4); `s.requirePerm` / `s.requireListPerm` (Task 5).
 - Produces:
   - `func listViewToAPI(v audiencequery.ListView) openapitenant.List`
@@ -2183,35 +2195,35 @@ that harness, change only the expectations. Add:
 
 ```go
 func TestListsWireShape(t *testing.T) {
-	t.Parallel()
-	env := newAudienceTestEnv(t) // the harness the existing tests already use
+ t.Parallel()
+ env := newAudienceTestEnv(t) // the harness the existing tests already use
 
-	created := env.post(t, "/lists", map[string]any{
-		"name": "Newsletter", "description": "weekly", "tags": []string{"a"},
-	})
-	require.Equal(t, http.StatusCreated, created.status)
-	id, ok := created.body["id"].(string)
-	require.True(t, ok, "201 body is {id}, not a wrapper")
-	require.NotEmpty(t, id)
+ created := env.post(t, "/lists", map[string]any{
+  "name": "Newsletter", "description": "weekly", "tags": []string{"a"},
+ })
+ require.Equal(t, http.StatusCreated, created.status)
+ id, ok := created.body["id"].(string)
+ require.True(t, ok, "201 body is {id}, not a wrapper")
+ require.NotEmpty(t, id)
 
-	page := env.get(t, "/lists?limit=10&offset=0")
-	require.Equal(t, http.StatusOK, page.status)
-	items, ok := page.body["items"].([]any)
-	require.True(t, ok, "list envelope is {items,total}, not {lists,total}")
-	require.Len(t, items, 1)
-	require.Contains(t, page.body, "total")
+ page := env.get(t, "/lists?limit=10&offset=0")
+ require.Equal(t, http.StatusOK, page.status)
+ items, ok := page.body["items"].([]any)
+ require.True(t, ok, "list envelope is {items,total}, not {lists,total}")
+ require.Len(t, items, 1)
+ require.Contains(t, page.body, "total")
 
-	first, _ := items[0].(map[string]any)
-	require.Equal(t, "Newsletter", first["name"], "properties are lowerCamelCase")
-	require.Equal(t, "private", first["visibility"], "the default is applied by the spec")
-	require.Equal(t, "single", first["optIn"])
-	require.Contains(t, first, "createdAt")
-	require.NotContains(t, first, "CreatedAt", "no PascalCase leakage")
+ first, _ := items[0].(map[string]any)
+ require.Equal(t, "Newsletter", first["name"], "properties are lowerCamelCase")
+ require.Equal(t, "private", first["visibility"], "the default is applied by the spec")
+ require.Equal(t, "single", first["optIn"])
+ require.Contains(t, first, "createdAt")
+ require.NotContains(t, first, "CreatedAt", "no PascalCase leakage")
 
-	one := env.get(t, "/lists/"+id)
-	require.Equal(t, http.StatusOK, one.status)
-	require.Equal(t, "Newsletter", one.body["name"], "single objects are unwrapped")
-	require.NotContains(t, one.body, "list")
+ one := env.get(t, "/lists/"+id)
+ require.Equal(t, http.StatusOK, one.status)
+ require.Equal(t, "Newsletter", one.body["name"], "single objects are unwrapped")
+ require.NotContains(t, one.body, "list")
 }
 ```
 
@@ -2237,43 +2249,43 @@ Create `internal/api/audience_mapping.go`:
 package api
 
 import (
-	audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
-	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
-	"github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
+ audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
+ audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
+ "github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
 )
 
 // listViewToAPI projects the audience context's read model onto the generated
 // wire type. Domain and query views are never serialized directly — this
 // function is the only place the two shapes meet.
 func listViewToAPI(v audiencequery.ListView) openapitenant.List {
-	tags := v.Tags
-	if tags == nil {
-		tags = []string{}
-	}
-	return openapitenant.List{
-		Id:          v.ID,
-		Name:        v.Name,
-		Description: v.Description,
-		Visibility:  openapitenant.ListVisibility(v.Visibility),
-		OptIn:       openapitenant.ListOptIn(v.OptIn),
-		Tags:        tags,
-		CreatedAt:   v.CreatedAt,
-		UpdatedAt:   v.UpdatedAt,
-	}
+ tags := v.Tags
+ if tags == nil {
+  tags = []string{}
+ }
+ return openapitenant.List{
+  Id:          v.ID,
+  Name:        v.Name,
+  Description: v.Description,
+  Visibility:  openapitenant.ListVisibility(v.Visibility),
+  OptIn:       openapitenant.ListOptIn(v.OptIn),
+  Tags:        tags,
+  CreatedAt:   v.CreatedAt,
+  UpdatedAt:   v.UpdatedAt,
+ }
 }
 
 // pageFrom converts the generated optional limit/offset query parameters into
 // the audience context's Page value. A nil pointer means the parameter was
 // absent, which the domain reads as "server default".
 func pageFrom(limit, offset *int) audiencedomain.Page {
-	p := audiencedomain.Page{}
-	if limit != nil {
-		p.Limit = *limit
-	}
-	if offset != nil {
-		p.Offset = *offset
-	}
-	return p
+ p := audiencedomain.Page{}
+ if limit != nil {
+  p.Limit = *limit
+ }
+ if offset != nil {
+  p.Offset = *offset
+ }
+ return p
 }
 ```
 
@@ -2299,96 +2311,96 @@ Create `internal/api/audience_api.go`:
 package api
 
 import (
-	"context"
+ "context"
 
-	audiencecommand "github.com/nikolaymatrosov/nvelope/internal/audience/app/command"
-	audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
-	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
+ audiencecommand "github.com/nikolaymatrosov/nvelope/internal/audience/app/command"
+ audiencequery "github.com/nikolaymatrosov/nvelope/internal/audience/app/query"
+ iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
 
-	"github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
+ "github.com/nikolaymatrosov/nvelope/internal/api/openapitenant"
 )
 
 func (s *Server) ListLists(ctx context.Context, req openapitenant.ListListsRequestObject) (openapitenant.ListListsResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requirePerm(ctx, iamdomain.PermListsGet); err != nil {
-		return nil, err
-	}
-	page, err := s.audience.Queries.ListLists.Handle(ctx, audiencequery.ListLists{
-		TenantID: ws.ID, Page: pageFrom(req.Params.Limit, req.Params.Offset),
-	})
-	if err != nil {
-		return nil, err
-	}
-	items := make([]openapitenant.List, 0, len(page.Lists))
-	for _, v := range page.Lists {
-		items = append(items, listViewToAPI(v))
-	}
-	return openapitenant.ListLists200JSONResponse{Items: items, Total: page.Total}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requirePerm(ctx, iamdomain.PermListsGet); err != nil {
+  return nil, err
+ }
+ page, err := s.audience.Queries.ListLists.Handle(ctx, audiencequery.ListLists{
+  TenantID: ws.ID, Page: pageFrom(req.Params.Limit, req.Params.Offset),
+ })
+ if err != nil {
+  return nil, err
+ }
+ items := make([]openapitenant.List, 0, len(page.Lists))
+ for _, v := range page.Lists {
+  items = append(items, listViewToAPI(v))
+ }
+ return openapitenant.ListLists200JSONResponse{Items: items, Total: page.Total}, nil
 }
 
 func (s *Server) CreateList(ctx context.Context, req openapitenant.CreateListRequestObject) (openapitenant.CreateListResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requirePerm(ctx, iamdomain.PermListsManage); err != nil {
-		return nil, err
-	}
-	res, err := s.audience.Commands.CreateList.Handle(ctx, audiencecommand.CreateList{
-		TenantID:    ws.ID,
-		Name:        req.Body.Name,
-		Description: derefString(req.Body.Description),
-		Visibility:  string(derefVisibility(req.Body.Visibility)),
-		OptIn:       string(derefOptIn(req.Body.OptIn)),
-		Tags:        derefStrings(req.Body.Tags),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return openapitenant.CreateList201JSONResponse{Id: res.ListID}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requirePerm(ctx, iamdomain.PermListsManage); err != nil {
+  return nil, err
+ }
+ res, err := s.audience.Commands.CreateList.Handle(ctx, audiencecommand.CreateList{
+  TenantID:    ws.ID,
+  Name:        req.Body.Name,
+  Description: derefString(req.Body.Description),
+  Visibility:  string(derefVisibility(req.Body.Visibility)),
+  OptIn:       string(derefOptIn(req.Body.OptIn)),
+  Tags:        derefStrings(req.Body.Tags),
+ })
+ if err != nil {
+  return nil, err
+ }
+ return openapitenant.CreateList201JSONResponse{Id: res.ListID}, nil
 }
 
 func (s *Server) GetList(ctx context.Context, req openapitenant.GetListRequestObject) (openapitenant.GetListResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requireListPerm(ctx, iamdomain.PermListsGet, req.Id); err != nil {
-		return nil, err
-	}
-	view, err := s.audience.Queries.GetList.Handle(ctx, audiencequery.GetList{
-		TenantID: ws.ID, ListID: req.Id,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return openapitenant.GetList200JSONResponse(listViewToAPI(view)), nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requireListPerm(ctx, iamdomain.PermListsGet, req.Id); err != nil {
+  return nil, err
+ }
+ view, err := s.audience.Queries.GetList.Handle(ctx, audiencequery.GetList{
+  TenantID: ws.ID, ListID: req.Id,
+ })
+ if err != nil {
+  return nil, err
+ }
+ return openapitenant.GetList200JSONResponse(listViewToAPI(view)), nil
 }
 
 func (s *Server) UpdateList(ctx context.Context, req openapitenant.UpdateListRequestObject) (openapitenant.UpdateListResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requireListPerm(ctx, iamdomain.PermListsManage, req.Id); err != nil {
-		return nil, err
-	}
-	if err := s.audience.Commands.UpdateList.Handle(ctx, audiencecommand.UpdateList{
-		TenantID:    ws.ID,
-		ListID:      req.Id,
-		Name:        req.Body.Name,
-		Description: derefString(req.Body.Description),
-		Visibility:  string(derefVisibility(req.Body.Visibility)),
-		OptIn:       string(derefOptIn(req.Body.OptIn)),
-		Tags:        derefStrings(req.Body.Tags),
-	}); err != nil {
-		return nil, err
-	}
-	return openapitenant.UpdateList204Response{}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requireListPerm(ctx, iamdomain.PermListsManage, req.Id); err != nil {
+  return nil, err
+ }
+ if err := s.audience.Commands.UpdateList.Handle(ctx, audiencecommand.UpdateList{
+  TenantID:    ws.ID,
+  ListID:      req.Id,
+  Name:        req.Body.Name,
+  Description: derefString(req.Body.Description),
+  Visibility:  string(derefVisibility(req.Body.Visibility)),
+  OptIn:       string(derefOptIn(req.Body.OptIn)),
+  Tags:        derefStrings(req.Body.Tags),
+ }); err != nil {
+  return nil, err
+ }
+ return openapitenant.UpdateList204Response{}, nil
 }
 
 func (s *Server) DeleteList(ctx context.Context, req openapitenant.DeleteListRequestObject) (openapitenant.DeleteListResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requireListPerm(ctx, iamdomain.PermListsManage, req.Id); err != nil {
-		return nil, err
-	}
-	if err := s.audience.Commands.DeleteList.Handle(ctx, audiencecommand.DeleteList{
-		TenantID: ws.ID, ListID: req.Id,
-	}); err != nil {
-		return nil, err
-	}
-	return openapitenant.DeleteList204Response{}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requireListPerm(ctx, iamdomain.PermListsManage, req.Id); err != nil {
+  return nil, err
+ }
+ if err := s.audience.Commands.DeleteList.Handle(ctx, audiencecommand.DeleteList{
+  TenantID: ws.ID, ListID: req.Id,
+ }); err != nil {
+  return nil, err
+ }
+ return openapitenant.DeleteList204Response{}, nil
 }
 ```
 
@@ -2398,36 +2410,36 @@ Append the pointer helpers to `internal/api/audience_mapping.go`:
 // derefString returns the pointed-to string, or "" when the optional property
 // was absent from the request body.
 func derefString(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return *p
+ if p == nil {
+  return ""
+ }
+ return *p
 }
 
 // derefStrings returns the pointed-to slice, or nil when absent.
 func derefStrings(p *[]string) []string {
-	if p == nil {
-		return nil
-	}
-	return *p
+ if p == nil {
+  return nil
+ }
+ return *p
 }
 
 // derefVisibility returns the pointed-to visibility. The spec declares a
 // default, but oapi-codegen models a defaulted optional property as a pointer,
 // so the zero case is re-applied here.
 func derefVisibility(p *openapitenant.CreateListRequestVisibility) openapitenant.CreateListRequestVisibility {
-	if p == nil {
-		return openapitenant.Private
-	}
-	return *p
+ if p == nil {
+  return openapitenant.Private
+ }
+ return *p
 }
 
 // derefOptIn mirrors derefVisibility for the opt-in mode.
 func derefOptIn(p *openapitenant.CreateListRequestOptIn) openapitenant.CreateListRequestOptIn {
-	if p == nil {
-		return openapitenant.Single
-	}
-	return *p
+ if p == nil {
+  return openapitenant.Single
+ }
+ return *p
 }
 ```
 
@@ -2445,11 +2457,11 @@ edit, or chi panics on a duplicate pattern.
 From `internal/api/server.go`, delete these five lines:
 
 ```go
-			r.Post("/lists", s.handleCreateList)
-			r.Get("/lists", s.handleListLists)
-			r.Get("/lists/{id}", s.handleGetList)
-			r.Put("/lists/{id}", s.handleUpdateList)
-			r.Delete("/lists/{id}", s.handleDeleteList)
+   r.Post("/lists", s.handleCreateList)
+   r.Get("/lists", s.handleListLists)
+   r.Get("/lists/{id}", s.handleGetList)
+   r.Put("/lists/{id}", s.handleUpdateList)
+   r.Delete("/lists/{id}", s.handleDeleteList)
 ```
 
 From `internal/api/audience_handlers.go`, delete `handleCreateList`,
@@ -2519,6 +2531,7 @@ from the untagged query view is gone."
 ### Task 7: Migrate the subscriber operations
 
 **Files:**
+
 - Modify: `internal/api/audience_mapping.go` (subscriber and segment mapping)
 - Modify: `internal/api/audience_api.go` (nine strict methods)
 - Delete: `internal/api/audience_handlers.go` (now empty)
@@ -2527,6 +2540,7 @@ from the untagged query view is gone."
 - Modify: `api/openapi/tenant.yaml` (restore any entries commented in Task 6)
 
 **Interfaces:**
+
 - Consumes: `openapitenant.Subscriber`, `Membership`, `SubscriberPage`, `SegmentNode`, `CreateSubscriberRequest`, `UpdateSubscriberRequest`, `AddToListRequest`, `ChangeSubscriptionRequest`, `SegmentQueryRequest`, `SegmentCountResponse`; `listViewToAPI`, `pageFrom`, `derefString` (Task 6).
 - Produces:
   - `func subscriberViewToAPI(v audiencequery.SubscriberView) openapitenant.Subscriber`
@@ -2539,54 +2553,54 @@ Add to `internal/api/audience_handlers_test.go`:
 
 ```go
 func TestSubscriberWireShape(t *testing.T) {
-	t.Parallel()
-	env := newAudienceTestEnv(t)
+ t.Parallel()
+ env := newAudienceTestEnv(t)
 
-	list := env.post(t, "/lists", map[string]any{"name": "L"})
-	listID, _ := list.body["id"].(string)
+ list := env.post(t, "/lists", map[string]any{"name": "L"})
+ listID, _ := list.body["id"].(string)
 
-	created := env.post(t, "/subscribers", map[string]any{
-		"email": "a@example.com", "name": "A",
-		"attributes": map[string]any{"city": "Belgrade"},
-		"listIds":    []string{listID},
-	})
-	require.Equal(t, http.StatusCreated, created.status)
-	subID, _ := created.body["id"].(string)
-	require.NotEmpty(t, subID)
+ created := env.post(t, "/subscribers", map[string]any{
+  "email": "a@example.com", "name": "A",
+  "attributes": map[string]any{"city": "Belgrade"},
+  "listIds":    []string{listID},
+ })
+ require.Equal(t, http.StatusCreated, created.status)
+ subID, _ := created.body["id"].(string)
+ require.NotEmpty(t, subID)
 
-	one := env.get(t, "/subscribers/"+subID)
-	require.Equal(t, http.StatusOK, one.status)
-	require.Equal(t, "a@example.com", one.body["email"], "single objects are unwrapped")
-	require.NotContains(t, one.body, "subscriber")
-	memberships, ok := one.body["memberships"].([]any)
-	require.True(t, ok)
-	require.Len(t, memberships, 1)
-	m, _ := memberships[0].(map[string]any)
-	require.Equal(t, listID, m["listId"], "memberships are lowerCamelCase")
+ one := env.get(t, "/subscribers/"+subID)
+ require.Equal(t, http.StatusOK, one.status)
+ require.Equal(t, "a@example.com", one.body["email"], "single objects are unwrapped")
+ require.NotContains(t, one.body, "subscriber")
+ memberships, ok := one.body["memberships"].([]any)
+ require.True(t, ok)
+ require.Len(t, memberships, 1)
+ m, _ := memberships[0].(map[string]any)
+ require.Equal(t, listID, m["listId"], "memberships are lowerCamelCase")
 
-	page := env.get(t, "/subscribers?q=a&limit=10&offset=0")
-	items, ok := page.body["items"].([]any)
-	require.True(t, ok, "search envelope is {items,total}")
-	require.Len(t, items, 1)
+ page := env.get(t, "/subscribers?q=a&limit=10&offset=0")
+ items, ok := page.body["items"].([]any)
+ require.True(t, ok, "search envelope is {items,total}")
+ require.Len(t, items, 1)
 }
 
 func TestSegmentQueryWireShape(t *testing.T) {
-	t.Parallel()
-	env := newAudienceTestEnv(t)
-	env.post(t, "/subscribers", map[string]any{"email": "b@example.com", "name": "B"})
+ t.Parallel()
+ env := newAudienceTestEnv(t)
+ env.post(t, "/subscribers", map[string]any{"email": "b@example.com", "name": "B"})
 
-	res := env.post(t, "/subscribers/query/count", map[string]any{
-		"segment": map[string]any{
-			"conj": "and",
-			"children": []any{
-				map[string]any{
-					"field": map[string]any{"field": "email", "op": "contains", "value": "b@"},
-				},
-			},
-		},
-	})
-	require.Equal(t, http.StatusOK, res.status)
-	require.EqualValues(t, 1, res.body["total"], "segment nodes are lowerCamelCase")
+ res := env.post(t, "/subscribers/query/count", map[string]any{
+  "segment": map[string]any{
+   "conj": "and",
+   "children": []any{
+    map[string]any{
+     "field": map[string]any{"field": "email", "op": "contains", "value": "b@"},
+    },
+   },
+  },
+ })
+ require.Equal(t, http.StatusOK, res.status)
+ require.EqualValues(t, 1, res.body["total"], "segment nodes are lowerCamelCase")
 }
 ```
 
@@ -2610,27 +2624,27 @@ Append to `internal/api/audience_mapping.go`:
 ```go
 // subscriberViewToAPI projects the audience read model onto the wire type.
 func subscriberViewToAPI(v audiencequery.SubscriberView) openapitenant.Subscriber {
-	attrs := v.Attributes
-	if attrs == nil {
-		attrs = map[string]any{}
-	}
-	memberships := make([]openapitenant.Membership, 0, len(v.Memberships))
-	for _, m := range v.Memberships {
-		memberships = append(memberships, openapitenant.Membership{
-			ListId: m.ListID,
-			Status: openapitenant.MembershipStatus(m.Status),
-		})
-	}
-	return openapitenant.Subscriber{
-		Id:          v.ID,
-		Email:       openapitypes.Email(v.Email),
-		Name:        v.Name,
-		State:       openapitenant.SubscriberState(v.State),
-		Attributes:  attrs,
-		Memberships: memberships,
-		CreatedAt:   v.CreatedAt,
-		UpdatedAt:   v.UpdatedAt,
-	}
+ attrs := v.Attributes
+ if attrs == nil {
+  attrs = map[string]any{}
+ }
+ memberships := make([]openapitenant.Membership, 0, len(v.Memberships))
+ for _, m := range v.Memberships {
+  memberships = append(memberships, openapitenant.Membership{
+   ListId: m.ListID,
+   Status: openapitenant.MembershipStatus(m.Status),
+  })
+ }
+ return openapitenant.Subscriber{
+  Id:          v.ID,
+  Email:       openapitypes.Email(v.Email),
+  Name:        v.Name,
+  State:       openapitenant.SubscriberState(v.State),
+  Attributes:  attrs,
+  Memberships: memberships,
+  CreatedAt:   v.CreatedAt,
+  UpdatedAt:   v.UpdatedAt,
+ }
 }
 
 // segmentNodeFromAPI converts the generated recursive wire type into the
@@ -2638,45 +2652,45 @@ func subscriberViewToAPI(v audiencequery.SubscriberView) openapitenant.Subscribe
 // re-shapes it. Keeping the two types separate is what lets the wire format use
 // lowerCamelCase without adding json tags to a domain type.
 func segmentNodeFromAPI(n openapitenant.SegmentNode) audiencedomain.Node {
-	out := audiencedomain.Node{}
-	if n.Conj != nil {
-		out.Conj = audiencedomain.Conjunction(*n.Conj)
-	}
-	if n.Children != nil {
-		for _, c := range *n.Children {
-			out.Children = append(out.Children, segmentNodeFromAPI(c))
-		}
-	}
-	if n.Field != nil {
-		out.Field = &audiencedomain.FieldCondition{
-			Field: n.Field.Field,
-			Op:    audiencedomain.SegmentOp(n.Field.Op),
-			Value: n.Field.Value,
-		}
-	}
-	if n.Attr != nil {
-		out.Attr = &audiencedomain.AttrCondition{
-			Key:   n.Attr.Key,
-			Op:    audiencedomain.SegmentOp(n.Attr.Op),
-			Value: n.Attr.Value,
-		}
-	}
-	if n.Member != nil {
-		out.Member = &audiencedomain.MemberCondition{
-			ListID: n.Member.ListId,
-			Status: derefMembershipStatus(n.Member.Status),
-		}
-	}
-	return out
+ out := audiencedomain.Node{}
+ if n.Conj != nil {
+  out.Conj = audiencedomain.Conjunction(*n.Conj)
+ }
+ if n.Children != nil {
+  for _, c := range *n.Children {
+   out.Children = append(out.Children, segmentNodeFromAPI(c))
+  }
+ }
+ if n.Field != nil {
+  out.Field = &audiencedomain.FieldCondition{
+   Field: n.Field.Field,
+   Op:    audiencedomain.SegmentOp(n.Field.Op),
+   Value: n.Field.Value,
+  }
+ }
+ if n.Attr != nil {
+  out.Attr = &audiencedomain.AttrCondition{
+   Key:   n.Attr.Key,
+   Op:    audiencedomain.SegmentOp(n.Attr.Op),
+   Value: n.Attr.Value,
+  }
+ }
+ if n.Member != nil {
+  out.Member = &audiencedomain.MemberCondition{
+   ListID: n.Member.ListId,
+   Status: derefMembershipStatus(n.Member.Status),
+  }
+ }
+ return out
 }
 
 // derefMembershipStatus returns the optional membership status as a plain
 // string, or "" when absent (meaning "any status").
 func derefMembershipStatus(p *openapitenant.MemberConditionStatus) string {
-	if p == nil {
-		return ""
-	}
-	return string(*p)
+ if p == nil {
+  return ""
+ }
+ return string(*p)
 }
 ```
 
@@ -2697,50 +2711,50 @@ non-obvious plumbing — write them exactly as given:
 // SearchSubscribers reads the optional free-text query. An absent `q` is an
 // empty search, which the query handler treats as "all subscribers".
 func (s *Server) SearchSubscribers(ctx context.Context, req openapitenant.SearchSubscribersRequestObject) (openapitenant.SearchSubscribersResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requirePerm(ctx, iamdomain.PermSubscribersGet); err != nil {
-		return nil, err
-	}
-	page, err := s.audience.Queries.SearchSubscribers.Handle(ctx, audiencequery.SearchSubscribers{
-		TenantID: ws.ID,
-		Query:    derefString(req.Params.Q),
-		Page:     pageFrom(req.Params.Limit, req.Params.Offset),
-	})
-	if err != nil {
-		return nil, err
-	}
-	items := make([]openapitenant.Subscriber, 0, len(page.Subscribers))
-	for _, v := range page.Subscribers {
-		items = append(items, subscriberViewToAPI(v))
-	}
-	return openapitenant.SearchSubscribers200JSONResponse{Items: items, Total: page.Total}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requirePerm(ctx, iamdomain.PermSubscribersGet); err != nil {
+  return nil, err
+ }
+ page, err := s.audience.Queries.SearchSubscribers.Handle(ctx, audiencequery.SearchSubscribers{
+  TenantID: ws.ID,
+  Query:    derefString(req.Params.Q),
+  Page:     pageFrom(req.Params.Limit, req.Params.Offset),
+ })
+ if err != nil {
+  return nil, err
+ }
+ items := make([]openapitenant.Subscriber, 0, len(page.Subscribers))
+ for _, v := range page.Subscribers {
+  items = append(items, subscriberViewToAPI(v))
+ }
+ return openapitenant.SearchSubscribers200JSONResponse{Items: items, Total: page.Total}, nil
 }
 
 // QuerySubscribers evaluates a segment. NewSegment validates the tree and
 // returns a typed apperr on a malformed one, so the error is returned unwrapped
 // and rendered as a 422 problem by the strict handler's error routing.
 func (s *Server) QuerySubscribers(ctx context.Context, req openapitenant.QuerySubscribersRequestObject) (openapitenant.QuerySubscribersResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requirePerm(ctx, iamdomain.PermSubscribersGet); err != nil {
-		return nil, err
-	}
-	segment, err := audiencedomain.NewSegment(segmentNodeFromAPI(req.Body.Segment))
-	if err != nil {
-		return nil, err
-	}
-	page, err := s.audience.Queries.RunSegment.Handle(ctx, audiencequery.RunSegment{
-		TenantID: ws.ID, Segment: *segment,
-		Page:      pageFrom(req.Params.Limit, req.Params.Offset),
-		CountOnly: false,
-	})
-	if err != nil {
-		return nil, err
-	}
-	items := make([]openapitenant.Subscriber, 0, len(page.Subscribers))
-	for _, v := range page.Subscribers {
-		items = append(items, subscriberViewToAPI(v))
-	}
-	return openapitenant.QuerySubscribers200JSONResponse{Items: items, Total: page.Total}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requirePerm(ctx, iamdomain.PermSubscribersGet); err != nil {
+  return nil, err
+ }
+ segment, err := audiencedomain.NewSegment(segmentNodeFromAPI(req.Body.Segment))
+ if err != nil {
+  return nil, err
+ }
+ page, err := s.audience.Queries.RunSegment.Handle(ctx, audiencequery.RunSegment{
+  TenantID: ws.ID, Segment: *segment,
+  Page:      pageFrom(req.Params.Limit, req.Params.Offset),
+  CountOnly: false,
+ })
+ if err != nil {
+  return nil, err
+ }
+ items := make([]openapitenant.Subscriber, 0, len(page.Subscribers))
+ for _, v := range page.Subscribers {
+  items = append(items, subscriberViewToAPI(v))
+ }
+ return openapitenant.QuerySubscribers200JSONResponse{Items: items, Total: page.Total}, nil
 }
 
 // AddSubscriberToList takes its list id from the request body, not the path —
@@ -2748,16 +2762,16 @@ func (s *Server) QuerySubscribers(ctx context.Context, req openapitenant.QuerySu
 // handler it replaces; getting it from the path instead would check permission
 // against the wrong list.
 func (s *Server) AddSubscriberToList(ctx context.Context, req openapitenant.AddSubscriberToListRequestObject) (openapitenant.AddSubscriberToListResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requireListPerm(ctx, iamdomain.PermSubscribersManage, req.Body.ListId); err != nil {
-		return nil, err
-	}
-	if err := s.audience.Commands.AddToList.Handle(ctx, audiencecommand.AddToList{
-		TenantID: ws.ID, SubscriberID: req.Id, ListID: req.Body.ListId,
-	}); err != nil {
-		return nil, err
-	}
-	return openapitenant.AddSubscriberToList204Response{}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requireListPerm(ctx, iamdomain.PermSubscribersManage, req.Body.ListId); err != nil {
+  return nil, err
+ }
+ if err := s.audience.Commands.AddToList.Handle(ctx, audiencecommand.AddToList{
+  TenantID: ws.ID, SubscriberID: req.Id, ListID: req.Body.ListId,
+ }); err != nil {
+  return nil, err
+ }
+ return openapitenant.AddSubscriberToList204Response{}, nil
 }
 ```
 
@@ -2780,7 +2794,7 @@ response object. Match the deleted handlers in
   returns `openapitenant.UpdateSubscriber204Response{}`.
 - `DeleteSubscriber` — `requirePerm(ctx, iamdomain.PermSubscribersManage)`;
   returns `openapitenant.DeleteSubscriber204Response{}`.
-- `RemoveSubscriberFromList` and `ChangeSubscription` — 
+- `RemoveSubscriberFromList` and `ChangeSubscription` —
   `requireListPerm(ctx, iamdomain.PermSubscribersManage, req.ListId)`; here the
   list id comes from the **path**, unlike `AddSubscriberToList` above.
 
@@ -2790,10 +2804,10 @@ Add `derefAttributes` to `internal/api/audience_mapping.go`:
 // derefAttributes returns the pointed-to attribute map, or nil when the
 // optional property was absent.
 func derefAttributes(p *map[string]any) map[string]any {
-	if p == nil {
-		return nil
-	}
-	return *p
+ if p == nil {
+  return nil
+ }
+ return *p
 }
 ```
 
@@ -2812,16 +2826,16 @@ If nothing outside the deleted file uses it, delete it too.
 From `internal/api/server.go`, delete these nine lines:
 
 ```go
-			r.Post("/subscribers", s.handleCreateSubscriber)
-			r.Get("/subscribers", s.handleSearchSubscribers)
-			r.Post("/subscribers/query", s.handleQuerySubscribers)
-			r.Post("/subscribers/query/count", s.handleCountSubscribers)
-			r.Get("/subscribers/{id}", s.handleGetSubscriber)
-			r.Put("/subscribers/{id}", s.handleUpdateSubscriber)
-			r.Delete("/subscribers/{id}", s.handleDeleteSubscriber)
-			r.Post("/subscribers/{id}/lists", s.handleAddToList)
-			r.Delete("/subscribers/{id}/lists/{listId}", s.handleRemoveFromList)
-			r.Put("/subscribers/{id}/lists/{listId}", s.handleChangeSubscription)
+   r.Post("/subscribers", s.handleCreateSubscriber)
+   r.Get("/subscribers", s.handleSearchSubscribers)
+   r.Post("/subscribers/query", s.handleQuerySubscribers)
+   r.Post("/subscribers/query/count", s.handleCountSubscribers)
+   r.Get("/subscribers/{id}", s.handleGetSubscriber)
+   r.Put("/subscribers/{id}", s.handleUpdateSubscriber)
+   r.Delete("/subscribers/{id}", s.handleDeleteSubscriber)
+   r.Post("/subscribers/{id}/lists", s.handleAddToList)
+   r.Delete("/subscribers/{id}/lists/{listId}", s.handleRemoveFromList)
+   r.Put("/subscribers/{id}/lists/{listId}", s.handleChangeSubscription)
 ```
 
 - [ ] **Step 6: Unpark the subscriber paths**
@@ -2877,6 +2891,7 @@ The last four operations. Completing them means `*Server` satisfies
 `StrictServerInterface` with no stubs.
 
 **Files:**
+
 - Modify: `internal/api/audience_mapping.go` (job status mapping)
 - Modify: `internal/api/audience_api.go` (four strict methods)
 - Delete: `internal/api/jobs_handlers.go`
@@ -2884,6 +2899,7 @@ The last four operations. Completing them means `*Server` satisfies
 - Modify: `internal/api/jobs_handlers_test.go`
 
 **Interfaces:**
+
 - Consumes: `openapitenant.JobStatus`, `RowFailure`, `JobAccepted`, `StartExportRequest`; `segmentNodeFromAPI` (Task 7).
 - Produces:
   - `func jobStatusToAPI(v audiencequery.JobStatusView) openapitenant.JobStatus`
@@ -2895,22 +2911,22 @@ Add to `internal/api/jobs_handlers_test.go`:
 
 ```go
 func TestJobWireShape(t *testing.T) {
-	t.Parallel()
-	env := newAudienceTestEnv(t)
+ t.Parallel()
+ env := newAudienceTestEnv(t)
 
-	accepted := env.post(t, "/export", map[string]any{"selection": "all"})
-	require.Equal(t, http.StatusAccepted, accepted.status)
-	jobID, ok := accepted.body["jobId"].(string)
-	require.True(t, ok, "the accepted body is {jobId}, not {job_id}")
-	require.NotEmpty(t, jobID)
+ accepted := env.post(t, "/export", map[string]any{"selection": "all"})
+ require.Equal(t, http.StatusAccepted, accepted.status)
+ jobID, ok := accepted.body["jobId"].(string)
+ require.True(t, ok, "the accepted body is {jobId}, not {job_id}")
+ require.NotEmpty(t, jobID)
 
-	status := env.get(t, "/jobs/"+jobID)
-	require.Equal(t, http.StatusOK, status.status)
-	require.Equal(t, jobID, status.body["id"], "the job is unwrapped, not {job:...}")
-	require.NotContains(t, status.body, "job")
-	require.Contains(t, status.body, "createdCount")
-	require.Contains(t, status.body, "failures")
-	require.NotContains(t, status.body, "CreatedCount")
+ status := env.get(t, "/jobs/"+jobID)
+ require.Equal(t, http.StatusOK, status.status)
+ require.Equal(t, jobID, status.body["id"], "the job is unwrapped, not {job:...}")
+ require.NotContains(t, status.body, "job")
+ require.Contains(t, status.body, "createdCount")
+ require.Contains(t, status.body, "failures")
+ require.NotContains(t, status.body, "CreatedCount")
 }
 ```
 
@@ -2933,21 +2949,21 @@ Append to `internal/api/audience_mapping.go`:
 ```go
 // jobStatusToAPI projects an import/export job's read model onto the wire type.
 func jobStatusToAPI(v audiencequery.JobStatusView) openapitenant.JobStatus {
-	failures := make([]openapitenant.RowFailure, 0, len(v.Failures))
-	for _, f := range v.Failures {
-		failures = append(failures, openapitenant.RowFailure{Row: f.Row, Reason: f.Reason})
-	}
-	return openapitenant.JobStatus{
-		Id:           v.ID,
-		Kind:         openapitenant.JobStatusKind(v.Kind),
-		Status:       v.Status,
-		FileName:     v.FileName,
-		CreatedCount: v.CreatedCount,
-		UpdatedCount: v.UpdatedCount,
-		FailedCount:  v.FailedCount,
-		RowCount:     v.RowCount,
-		Failures:     failures,
-	}
+ failures := make([]openapitenant.RowFailure, 0, len(v.Failures))
+ for _, f := range v.Failures {
+  failures = append(failures, openapitenant.RowFailure{Row: f.Row, Reason: f.Reason})
+ }
+ return openapitenant.JobStatus{
+  Id:           v.ID,
+  Kind:         openapitenant.JobStatusKind(v.Kind),
+  Status:       v.Status,
+  FileName:     v.FileName,
+  CreatedCount: v.CreatedCount,
+  UpdatedCount: v.UpdatedCount,
+  FailedCount:  v.FailedCount,
+  RowCount:     v.RowCount,
+  Failures:     failures,
+ }
 }
 ```
 
@@ -2960,120 +2976,120 @@ Append to `internal/api/audience_api.go`:
 // multipart/form-data body as a *multipart.Reader, so the file and the repeated
 // listIds parts are read here rather than through r.ParseMultipartForm.
 func (s *Server) StartImport(ctx context.Context, req openapitenant.StartImportRequestObject) (openapitenant.StartImportResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	principal, err := s.requirePerm(ctx, iamdomain.PermSubscribersImport)
-	if err != nil {
-		return nil, err
-	}
+ ws := tenantFromContext(ctx)
+ principal, err := s.requirePerm(ctx, iamdomain.PermSubscribersImport)
+ if err != nil {
+  return nil, err
+ }
 
-	var (
-		fileName string
-		fileData []byte
-		listIDs  []string
-	)
-	for {
-		part, perr := req.Body.NextPart()
-		if errors.Is(perr, io.EOF) {
-			break
-		}
-		if perr != nil {
-			return nil, apperr.NewIncorrectInput("invalid_upload", "expected a multipart/form-data upload")
-		}
-		switch part.FormName() {
-		case "file":
-			fileName = part.FileName()
-			fileData, perr = io.ReadAll(io.LimitReader(part, maxUploadBytes))
-			if perr != nil {
-				return nil, perr
-			}
-		case "listIds":
-			value, perr := io.ReadAll(io.LimitReader(part, 1<<12))
-			if perr != nil {
-				return nil, perr
-			}
-			listIDs = append(listIDs, string(value))
-		}
-		_ = part.Close()
-	}
-	if len(fileData) == 0 {
-		return nil, apperr.NewIncorrectInput("missing_file", "a CSV or ZIP file is required")
-	}
+ var (
+  fileName string
+  fileData []byte
+  listIDs  []string
+ )
+ for {
+  part, perr := req.Body.NextPart()
+  if errors.Is(perr, io.EOF) {
+   break
+  }
+  if perr != nil {
+   return nil, apperr.NewIncorrectInput("invalid_upload", "expected a multipart/form-data upload")
+  }
+  switch part.FormName() {
+  case "file":
+   fileName = part.FileName()
+   fileData, perr = io.ReadAll(io.LimitReader(part, maxUploadBytes))
+   if perr != nil {
+    return nil, perr
+   }
+  case "listIds":
+   value, perr := io.ReadAll(io.LimitReader(part, 1<<12))
+   if perr != nil {
+    return nil, perr
+   }
+   listIDs = append(listIDs, string(value))
+  }
+  _ = part.Close()
+ }
+ if len(fileData) == 0 {
+  return nil, apperr.NewIncorrectInput("missing_file", "a CSV or ZIP file is required")
+ }
 
-	res, err := s.audience.Commands.StartImport.Handle(ctx, audiencecommand.StartImport{
-		TenantID: ws.ID, RequestedBy: principal.ActorID(), FileName: fileName,
-		FileBytes: fileData, TargetListIDs: listIDs,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return openapitenant.StartImport202JSONResponse{JobId: res.JobID}, nil
+ res, err := s.audience.Commands.StartImport.Handle(ctx, audiencecommand.StartImport{
+  TenantID: ws.ID, RequestedBy: principal.ActorID(), FileName: fileName,
+  FileBytes: fileData, TargetListIDs: listIDs,
+ })
+ if err != nil {
+  return nil, err
+ }
+ return openapitenant.StartImport202JSONResponse{JobId: res.JobID}, nil
 }
 
 func (s *Server) StartExport(ctx context.Context, req openapitenant.StartExportRequestObject) (openapitenant.StartExportResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	principal, err := s.requirePerm(ctx, iamdomain.PermSubscribersExport)
-	if err != nil {
-		return nil, err
-	}
-	var segment *audiencedomain.Segment
-	if req.Body.Segment != nil {
-		seg, serr := audiencedomain.NewSegment(segmentNodeFromAPI(*req.Body.Segment))
-		if serr != nil {
-			return nil, serr
-		}
-		segment = seg
-	}
-	res, err := s.audience.Commands.StartExport.Handle(ctx, audiencecommand.StartExport{
-		TenantID: ws.ID, RequestedBy: principal.ActorID(),
-		Selection: req.Body.Selection, ListID: derefString(req.Body.ListId), Segment: segment,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return openapitenant.StartExport202JSONResponse{JobId: res.JobID}, nil
+ ws := tenantFromContext(ctx)
+ principal, err := s.requirePerm(ctx, iamdomain.PermSubscribersExport)
+ if err != nil {
+  return nil, err
+ }
+ var segment *audiencedomain.Segment
+ if req.Body.Segment != nil {
+  seg, serr := audiencedomain.NewSegment(segmentNodeFromAPI(*req.Body.Segment))
+  if serr != nil {
+   return nil, serr
+  }
+  segment = seg
+ }
+ res, err := s.audience.Commands.StartExport.Handle(ctx, audiencecommand.StartExport{
+  TenantID: ws.ID, RequestedBy: principal.ActorID(),
+  Selection: req.Body.Selection, ListID: derefString(req.Body.ListId), Segment: segment,
+ })
+ if err != nil {
+  return nil, err
+ }
+ return openapitenant.StartExport202JSONResponse{JobId: res.JobID}, nil
 }
 
 // GetJobStatus is readable by anyone who may import or export — the job list is
 // shared between both flows.
 func (s *Server) GetJobStatus(ctx context.Context, req openapitenant.GetJobStatusRequestObject) (openapitenant.GetJobStatusResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	p, ok := principalFromContext(ctx)
-	if !ok {
-		return nil, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
-	}
-	if !p.Can(iamdomain.PermSubscribersImport) && !p.Can(iamdomain.PermSubscribersExport) {
-		return nil, iamdomain.Forbidden(iamdomain.PermSubscribersImport)
-	}
-	view, err := s.audience.Queries.GetJobStatus.Handle(ctx, audiencequery.GetJobStatus{
-		TenantID: ws.ID, JobID: req.Id,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return openapitenant.GetJobStatus200JSONResponse(jobStatusToAPI(view)), nil
+ ws := tenantFromContext(ctx)
+ p, ok := principalFromContext(ctx)
+ if !ok {
+  return nil, apperr.NewAuthorization("unauthenticated", "a workspace session is required")
+ }
+ if !p.Can(iamdomain.PermSubscribersImport) && !p.Can(iamdomain.PermSubscribersExport) {
+  return nil, iamdomain.Forbidden(iamdomain.PermSubscribersImport)
+ }
+ view, err := s.audience.Queries.GetJobStatus.Handle(ctx, audiencequery.GetJobStatus{
+  TenantID: ws.ID, JobID: req.Id,
+ })
+ if err != nil {
+  return nil, err
+ }
+ return openapitenant.GetJobStatus200JSONResponse(jobStatusToAPI(view)), nil
 }
 
 // DownloadExport streams the generated CSV. The generated response object
 // carries the body reader, its length, and the Content-Disposition header, so
 // the strict server writes the non-JSON response without a ResponseWriter.
 func (s *Server) DownloadExport(ctx context.Context, req openapitenant.DownloadExportRequestObject) (openapitenant.DownloadExportResponseObject, error) {
-	ws := tenantFromContext(ctx)
-	if _, err := s.requirePerm(ctx, iamdomain.PermSubscribersExport); err != nil {
-		return nil, err
-	}
-	res, err := s.audience.Queries.ExportFile.Handle(ctx, audiencequery.ExportFile{
-		TenantID: ws.ID, JobID: req.Id,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return openapitenant.DownloadExport200TextcsvResponse{
-		Body:          bytes.NewReader(res.Data),
-		ContentLength: int64(len(res.Data)),
-		Headers: openapitenant.DownloadExport200ResponseHeaders{
-			ContentDisposition: `attachment; filename="` + res.FileName + `"`,
-		},
-	}, nil
+ ws := tenantFromContext(ctx)
+ if _, err := s.requirePerm(ctx, iamdomain.PermSubscribersExport); err != nil {
+  return nil, err
+ }
+ res, err := s.audience.Queries.ExportFile.Handle(ctx, audiencequery.ExportFile{
+  TenantID: ws.ID, JobID: req.Id,
+ })
+ if err != nil {
+  return nil, err
+ }
+ return openapitenant.DownloadExport200TextcsvResponse{
+  Body:          bytes.NewReader(res.Data),
+  ContentLength: int64(len(res.Data)),
+  Headers: openapitenant.DownloadExport200ResponseHeaders{
+   ContentDisposition: `attachment; filename="` + res.FileName + `"`,
+  },
+ }, nil
 }
 ```
 
@@ -3094,10 +3110,10 @@ Add the imports this needs: `bytes`, `errors`, `io`, `audiencedomain`, and
 Delete `internal/api/jobs_handlers.go`. From `internal/api/server.go`, delete:
 
 ```go
-			r.Post("/import", s.handleStartImport)
-			r.Post("/export", s.handleStartExport)
-			r.Get("/jobs/{id}", s.handleJobStatus)
-			r.Get("/jobs/{id}/download", s.handleDownloadExport)
+   r.Post("/import", s.handleStartImport)
+   r.Post("/export", s.handleStartExport)
+   r.Get("/jobs/{id}", s.handleJobStatus)
+   r.Get("/jobs/{id}/download", s.handleDownloadExport)
 ```
 
 - [ ] **Step 6: Unpark the remaining paths**
@@ -3152,6 +3168,7 @@ unwrapped with lowerCamelCase counters."
 ### Task 9: Route the frontend through the generated client
 
 **Files:**
+
 - Create: `frontend/src/lib/tenant-client.ts`
 - Modify: `frontend/src/lib/api.ts` (audience methods, lines ~204–280)
 - Modify: `frontend/src/lib/api-types.ts` (delete the audience types, re-export from generated)
@@ -3159,6 +3176,7 @@ unwrapped with lowerCamelCase counters."
 - Modify: `frontend/src/routes/t/$slug/lists/index.tsx`, `lists/$id.tsx`, `subscribers/index.tsx`, `subscribers/$id.tsx`, `import-export/index.tsx`, `import-export/index.test.tsx`, `campaigns/$id.tsx`, `public-pages/$id.tsx`, `access/index.tsx`, `components/visual-editor/ui/MergeTagPicker.tsx`
 
 **Interfaces:**
+
 - Consumes: `frontend/src/lib/api-schema.gen.ts` (Task 4); `ApiError`, `normalizeError` from `errors.ts` (Task 2).
 - Produces:
   - `export function tenantApi(slug: string): Client<paths>`
@@ -3424,10 +3442,12 @@ the spec fails the build at every affected call site."
 ### Task 10: Full-stack verification and documentation
 
 **Files:**
+
 - Modify: `CLAUDE.md` (a Contract section)
 - Modify: `docs/architecture.md` (note the spec-first pipeline)
 
 **Interfaces:**
+
 - Consumes: everything from Tasks 1–9.
 - Produces: no code.
 
