@@ -4,7 +4,18 @@
 
 import i18n from "@/i18n"
 
-export type ErrorEnvelope = { error?: string; message?: string }
+// An RFC 9457 problem document (internal/api/problem.go). `code` is the stable
+// slug the UI branches on; `detail` is the human-readable message.
+export type ProblemDocument = {
+  type?: string
+  title?: string
+  status?: number
+  detail?: string
+  instance?: string
+  code?: string
+  requestId?: string
+  errors?: Array<{ field: string; code: string; detail?: string }>
+}
 
 export class ApiError extends Error {
   readonly status: number
@@ -43,9 +54,9 @@ export function normalizeError(
   let message = ""
   let data: Record<string, unknown> | null = null
   if (body && typeof body === "object") {
-    const env = body as ErrorEnvelope
-    slug = env.error ?? ""
-    message = env.message ?? ""
+    const problem = body as ProblemDocument
+    slug = problem.code ?? ""
+    message = problem.detail ?? problem.title ?? ""
     data = body as Record<string, unknown>
   } else if (typeof body === "string") {
     message = body

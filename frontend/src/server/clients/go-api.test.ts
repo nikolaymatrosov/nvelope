@@ -41,7 +41,7 @@ describe("createGoApiClient", () => {
     const fetchImpl = fakeFetch(() =>
       new Response(
         JSON.stringify({
-          error: "stale_row",
+          code: "stale_row",
           kind: "stale_row",
           currentUpdatedAt: "2026-05-21T00:00:00Z",
         }),

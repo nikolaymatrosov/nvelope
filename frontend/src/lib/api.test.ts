@@ -78,8 +78,8 @@ describe("api client — multipart import", () => {
 })
 
 describe("api client — error normalization", () => {
-  it("raises ApiError with status and slug from the envelope", async () => {
-    mockFetch(409, { error: "duplicate_email", message: "Email in use." })
+  it("raises ApiError with status and slug from the problem document", async () => {
+    mockFetch(409, { code: "duplicate_email", detail: "Email in use." })
     await expect(api.createSubscriber("acme", {
       email: "a@b.com",
       name: "",
@@ -229,8 +229,8 @@ describe("api client — visual editor (Phase 7)", () => {
 
   it("surfaces the 409 stale_row payload via ApiError", async () => {
     mockFetch(409, {
-      error: "stale_row",
-      message: "Row changed in another tab",
+      code: "stale_row",
+      detail: "Row changed in another tab",
       currentUpdatedAt: "2026-05-20T12:35:01Z",
     })
     await expect(

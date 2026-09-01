@@ -25,14 +25,17 @@ export class GoApiUnreachable extends Error {
 
 // GoApiError carries a non-2xx response verbatim so the route can forward
 // the status, slug, and any extra fields (e.g. `currentUpdatedAt` from the
-// 409 stale_row payload) to the SPA unchanged.
+// 409 stale_row payload) to the SPA unchanged. The body arrives as an RFC
+// 9457 problem document (internal/api/problem.go): `code` is the stable
+// slug, and extension members (e.g. `currentUpdatedAt`) are forwarded
+// verbatim as top-level keys on the body.
 export class GoApiError extends Error {
   readonly status: number
   readonly body: unknown
   constructor(status: number, body: unknown) {
     const slug =
-      typeof body === "object" && body !== null && "error" in body
-        ? String((body).error)
+      typeof body === "object" && body !== null && "code" in body
+        ? String(body.code)
         : `http_${status}`
     super(`Go API responded ${status}: ${slug}`)
     this.status = status
