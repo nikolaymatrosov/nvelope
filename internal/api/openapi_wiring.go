@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -43,9 +44,50 @@ func (s *Server) mountGeneratedTenantAPI(r chi.Router) {
 	})
 
 	openapitenant.HandlerWithOptions(strict, openapitenant.ChiServerOptions{
-		BaseRouter:       r,
-		Middlewares:      []openapitenant.MiddlewareFunc{s.openapiRequestValidator(spec)},
+		BaseRouter: r,
+		// The same Middlewares slice wraps every generated operation (oapi-
+		// codegen has no per-route hook here), so limitImportUploadSize is
+		// itself responsible for scoping its effect to POST /import — see its
+		// doc comment. It is listed *after* the request validator, not
+		// before: oapi-codegen's ServerInterfaceWrapper applies middleware by
+		// repeatedly re-wrapping the handler (handler = middleware(handler)),
+		// so the last entry ends up outermost and therefore runs first. That
+		// ordering is what lets it cap r.Body before the validator's
+		// ValidateSecurityRequirements ever reads it.
+		Middlewares: []openapitenant.MiddlewareFunc{
+			s.openapiRequestValidator(spec),
+			limitImportUploadSize,
+		},
 		ErrorHandlerFunc: s.parameterBindingError,
+	})
+}
+
+// limitImportUploadSize bounds the whole POST /import request body before
+// the OpenAPI request validator ever touches it.
+//
+// kin-openapi's ValidateSecurityRequirements unconditionally reads the whole
+// body into memory before calling AuthenticationFunc — even though this
+// document's AuthenticationFunc is the noop installed by
+// openapiRequestValidator — because it must hand every security scheme a
+// fresh io.Reader. Without this, routing /import through the generated mount
+// put an unbounded io.ReadAll ahead of both StartImport's own permission
+// check and its LimitReader: a caller with no import permission at all could
+// force the server to buffer an arbitrarily large body before ever being
+// told no.
+//
+// http.MaxBytesReader closes that gap at the transport boundary, the same
+// way handleUploadMedia already bounds a media upload before
+// ParseMultipartForm runs (internal/api/media_handlers.go). It deliberately
+// is not installed as a blanket r.Use(...) covering every generated route —
+// most have no body worth bounding this way, since a JSON body is already
+// capped by kin-openapi's schema validation rather than by size — so it
+// checks the request itself and only acts on POST /import.
+func limitImportUploadSize(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/import") {
+			r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+uploadBodySlack)
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -167,17 +209,40 @@ func (s *Server) openapiRequestValidator(spec *openapi3.T) openapitenant.Middlew
 
 // validationErrorHandler renders a request-validation failure as a problem
 // document with a populated errors array.
-// It switches on the status the middleware suggests, because not every
-// rejection is a validation failure: the middleware also refuses requests it
-// could not route or authenticate, and rendering those as "validation_failed"
-// would be a lie.
+//
+// It first checks for a wrapped *http.MaxBytesError ahead of everything
+// else, regardless of the status the middleware suggests: limitImportUploadSize's
+// http.MaxBytesReader makes kin-openapi's own io.ReadAll of an oversize body
+// fail, and because this document declares document-level security,
+// ValidateSecurityRequirements — which unconditionally reads the whole body
+// before the (noop) AuthenticationFunc ever runs — is what hits that failure
+// first. It always wraps whatever went wrong into a *SecurityRequirementsError
+// (StatusCode 401) even when there is exactly one security requirement to
+// try, so without this check an oversize upload would render as
+// "unauthenticated" — actively misleading, not merely imprecise. Both
+// SecurityRequirementsError and RequestError implement an Unwrap reachable by
+// errors.As, so this one check catches the failure wherever in the chain it
+// was wrapped. An oversize upload must not look like an invalid or
+// unauthenticated one.
+//
+// Anything else switches on the status the middleware suggests, because not
+// every rejection is a validation failure: the middleware also refuses
+// requests it could not route or authenticate, and rendering those as
+// "validation_failed" would be a lie.
 func (s *Server) validationErrorHandler(_ context.Context, err error, w http.ResponseWriter,
 	r *http.Request, opts oapimiddleware.ErrorHandlerOpts) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		writeProblem(w, r, http.StatusRequestEntityTooLarge, "payload_too_large",
+			fmt.Sprintf("the request body exceeds the %d byte limit", tooLarge.Limit), nil)
+		return
+	}
+
 	switch opts.StatusCode {
 	case http.StatusBadRequest:
-		// The only status the middleware assigns to a real body or parameter
-		// violation. The hand-written handlers answer a rejected body with 422,
-		// and the contract keeps that.
+		// The only other status the middleware assigns to a real body or
+		// parameter violation. The hand-written handlers answer a rejected
+		// body with 422, and the contract keeps that.
 		writeProblem(w, r, http.StatusUnprocessableEntity, "validation_failed",
 			"the request body or parameters failed validation",
 			fieldErrorsFrom(err))
@@ -191,9 +256,14 @@ func (s *Server) validationErrorHandler(_ context.Context, err error, w http.Res
 			"no operation matches this request", nil)
 
 	case http.StatusUnauthorized:
-		// A declared security requirement was refused. Unreachable while
-		// openapiRequestValidator installs NoopAuthenticationFunc — see the
-		// comment there — but it must never be mislabelled as a body problem.
+		// A declared security requirement was refused. Reaching here with
+		// NoopAuthenticationFunc installed (see openapiRequestValidator) is
+		// otherwise unreachable in production — except that
+		// ValidateSecurityRequirements always reports its failure through
+		// this same *SecurityRequirementsError shape, even when the failure
+		// was actually a body read error and had nothing to do with
+		// authentication; the *http.MaxBytesError check above is what keeps
+		// that case from being mislabelled "unauthenticated" here.
 		writeProblem(w, r, http.StatusUnauthorized, "unauthenticated",
 			"a workspace session is required", nil)
 

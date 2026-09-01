@@ -28,6 +28,13 @@ import (
 // few megabytes (research.md Decision 2).
 const maxUploadBytes = 32 << 20
 
+// uploadBodySlack is added to maxUploadBytes when bounding the *whole*
+// POST /import request body (see limitImportUploadSize in openapi_wiring.go),
+// to account for the multipart boilerplate — headers, boundaries, the
+// listIds parts — around the file bytes themselves. Mirrors the same +4096
+// handleUploadMedia applies for the same reason.
+const uploadBodySlack = 4096
+
 // ListLists serves GET /lists.
 func (s *Server) ListLists(ctx context.Context,
 	req openapitenant.ListListsRequestObject) (openapitenant.ListListsResponseObject, error) {

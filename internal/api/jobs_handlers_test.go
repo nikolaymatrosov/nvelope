@@ -114,8 +114,82 @@ func TestJobWireShape(t *testing.T) {
 	require.Equal(t, jobID, body["id"], "the job is unwrapped, not {job:...}")
 	require.NotContains(t, body, "job")
 	require.Contains(t, body, "createdCount")
-	require.Contains(t, body, "failures")
 	require.NotContains(t, body, "CreatedCount")
+	// A pending job has no failures yet — the mapping must normalise the nil
+	// Go slice to `[]`, not `null` (the schema declares failures required).
+	// require.Contains alone would also pass for a JSON null, since the key
+	// is present either way.
+	require.Equal(t, []any{}, body["failures"])
+}
+
+// TestImportRejectsOversizeUpload pins that an upload over the 32 MiB bound
+// is rejected outright rather than silently truncated. Before the fix, the
+// bound was only enforced by io.LimitReader inside StartImport itself, which
+// truncates silently — and reaching StartImport at all meant kin-openapi's
+// request validator had already buffered the whole oversize body in memory
+// first (ValidateSecurityRequirements reads the body unconditionally, ahead
+// of both the size cap and the permission check). limitImportUploadSize now
+// bounds r.Body before the validator ever sees it, so the failure surfaces
+// as a 413 — not the 422 a validation_failed body would get, and not a
+// silently short import.
+func TestImportRejectsOversizeUpload(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	// Comfortably over maxUploadBytes + uploadBodySlack even after multipart
+	// framing overhead.
+	oversize := bytes.Repeat([]byte("a"), maxUploadBytes+1<<20)
+	status, body := ts.uploadCSV(base+"/import", "big.csv", oversize, nil)
+	require.Equal(t, http.StatusRequestEntityTooLarge, status)
+	require.Equal(t, "payload_too_large", body["code"])
+}
+
+// TestGetJobStatusRequiresImportOrExportPermission pins the one permission
+// check in this file with no structural enforcement behind it: requirePerm
+// only expresses a single permission, so GetJobStatus inlines an OR
+// (PermSubscribersImport || PermSubscribersExport) by hand. A member with
+// neither permission must be denied, and — the case that actually exercises
+// the OR rather than just one arm of it — a member with only the export
+// permission (no import permission at all) must still be let in.
+func TestGetJobStatusRequiresImportOrExportPermission(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, body := ts.request(http.MethodPost, base+"/export",
+		map[string]any{"selection": string(audiencedomain.ExportAll)})
+	require.Equal(t, http.StatusAccepted, status)
+	jobID, ok := body["jobId"].(string)
+	require.True(t, ok, "the accepted body is {jobId}")
+
+	member, memberEmail := ts.addMember(slug)
+	ts.enterWorkspaceOn(member, slug)
+	memberID := ts.workspaceUserID(slug, memberEmail)
+
+	// A member with no role holds neither subscribers:import nor
+	// subscribers:export.
+	status, _ = ts.do(member, http.MethodGet, base+"/jobs/"+jobID, nil)
+	require.Equal(t, http.StatusForbidden, status, "no import or export permission")
+
+	// Granting only subscribers:export — never subscribers:import — must be
+	// enough: that is the OR, not just "the Owner can see everything".
+	_, roleBody := ts.request(http.MethodPost, base+"/roles", map[string]any{
+		"name": "Exporter", "permissions": []string{"subscribers:export"},
+	})
+	roleID := roleBody["id"].(string)
+	status, _ = ts.request(http.MethodPut, base+"/users/"+memberID+"/role",
+		map[string]any{"role_id": roleID})
+	require.Equal(t, http.StatusNoContent, status)
+
+	status, _ = ts.do(member, http.MethodGet, base+"/jobs/"+jobID, nil)
+	require.Equal(t, http.StatusOK, status, "subscribers:export alone satisfies the OR")
 }
 
 func TestImportCSVEndpoint(t *testing.T) {
