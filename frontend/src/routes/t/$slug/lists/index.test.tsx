@@ -103,6 +103,34 @@ describe("ListsView", () => {
 })
 
 describe("ListDetail", () => {
+  it("trims the name and echoes the fields the form does not edit", async () => {
+    // PUT /lists/{id} replaces the whole row, so anything the form omits is
+    // reset server-side — `tags` is optional in the generated request type but
+    // the handler still does `deref(req.Body.Tags, nil)`. Pin both halves:
+    // the trim, and every echoed field.
+    const tagged = { ...sampleList, tags: ["weekly", "marketing"] }
+    vi.mocked(api.getList).mockResolvedValue(ok(tagged))
+    vi.mocked(api.querySubscribers).mockResolvedValue(
+      ok({ items: [], total: 0 }),
+    )
+    vi.mocked(api.updateList).mockResolvedValue(ok(undefined))
+    renderWithClient(<ListDetail />)
+
+    const nameField = await screen.findByLabelText(/name/i)
+    fireEvent.change(nameField, { target: { value: "  Newsletter v2  " } })
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+
+    await waitFor(() =>
+      expect(api.updateList).toHaveBeenCalledWith("acme", "list-1", {
+        name: "Newsletter v2",
+        description: "Weekly digest",
+        visibility: "private",
+        optIn: "single",
+        tags: ["weekly", "marketing"],
+      }),
+    )
+  })
+
   it("requires confirmation before deleting a list", async () => {
     vi.mocked(api.getList).mockResolvedValue(ok(sampleList))
     vi.mocked(api.querySubscribers).mockResolvedValue(

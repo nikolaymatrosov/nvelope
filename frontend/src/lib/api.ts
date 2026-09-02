@@ -277,12 +277,12 @@ export const api = {
     slug: string,
     id: string,
     listId: string,
-    status: string,
+    status: SubscriptionStatus,
   ) =>
     unwrap(
       tenantApi(slug).PUT("/subscribers/{id}/lists/{listId}", {
         params: { path: { id, listId } },
-        body: { status: status as SubscriptionStatus },
+        body: { status },
       }),
     ),
 

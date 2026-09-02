@@ -126,10 +126,17 @@ export type ExportSelection = "all" | "list" | "segment"
 
 export type StartExportInput = components["schemas"]["StartExportRequest"]
 
-export const TERMINAL_JOB_STATUSES = ["completed", "failed", "cancelled"]
+// Typed against the generated status union, so a status the server cannot
+// actually emit fails to compile. That is how "cancelled" — which no longer
+// exists in the contract — was found and removed. The union is lowercase by
+// definition, so there is nothing left to normalize either.
+export const TERMINAL_JOB_STATUSES: Array<JobStatusView["status"]> = [
+  "completed",
+  "failed",
+]
 
-export function isTerminalJobStatus(status: string): boolean {
-  return TERMINAL_JOB_STATUSES.includes(status.toLowerCase())
+export function isTerminalJobStatus(status: JobStatusView["status"]): boolean {
+  return TERMINAL_JOB_STATUSES.includes(status)
 }
 
 // ── IAM plane — Roles, API keys, Audit (PascalCase) ──────────────────────────

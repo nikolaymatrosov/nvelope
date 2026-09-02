@@ -131,7 +131,12 @@
     "valuePlaceholder": "Value",
     "attrKeyPlaceholder": "Attribute key",
     "listIdPlaceholder": "List id",
-    "statusPlaceholder": "Status",
+    "memberStatus": {
+      "any": "Any status",
+      "unconfirmed": "Unconfirmed",
+      "confirmed": "Confirmed",
+      "unsubscribed": "Unsubscribed"
+    },
     "removeCondition": "Remove condition",
     "matchPrefix": "Match",
     "matchSuffix": "of the following",

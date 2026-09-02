@@ -57,11 +57,16 @@ export function ListDetail() {
       ).data,
   })
 
-  // updateList's generated request type requires visibility/optIn/tags
-  // (OpenAPI `default:` becomes required in the generated TS type — see
-  // lists/index.tsx). This form only edits name/description, so the current
-  // list's other fields are echoed back unchanged rather than reset to a
-  // hardcoded default.
+  // This form only edits name/description, but PUT /lists/{id} replaces the
+  // whole row, so the list's other fields are echoed back unchanged rather
+  // than reset. Two separate reasons they appear here:
+  //   - visibility/optIn are *required* by the generated request type, because
+  //     openapi-typescript treats a spec `default:` as required (see
+  //     lists/index.tsx). description is in that group too, but this form
+  //     edits it anyway.
+  //   - tags is optional in the type, but omitting it still clears the column:
+  //     the handler does `Tags: deref(req.Body.Tags, nil)`
+  //     (internal/api/audience_api.go:124).
   const update = useMutation({
     mutationFn: (v: {
       name: string
@@ -69,7 +74,7 @@ export function ListDetail() {
       visibility: List["visibility"]
       optIn: List["optIn"]
       tags: List["tags"]
-    }) => api.updateList(slug, id, v),
+    }) => api.updateList(slug, id, { ...v, name: v.name.trim() }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists(slug) })
       toast.success(t("detail.updateSuccess"))

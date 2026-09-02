@@ -9,6 +9,7 @@ import type {
   FieldName,
   SegmentNode,
   SegmentOp,
+  SubscriptionStatus,
 } from "@/lib/api-types"
 import {
   Select,
@@ -33,6 +34,15 @@ const OPS: Array<SegmentOp> = [
   "lte",
 ]
 const FIELDS: Array<FieldName> = ["email", "name", "state"]
+// MemberCondition.status is optional — omitted means "any membership of this
+// list, whatever its status" — so the picker carries an explicit Any entry.
+// Radix cannot represent that as an empty item value, hence the sentinel.
+const MEMBER_STATUSES: Array<SubscriptionStatus> = [
+  "unconfirmed",
+  "confirmed",
+  "unsubscribed",
+]
+const ANY_STATUS = "any"
 
 type LeafKind = "field" | "attr" | "member"
 
@@ -168,21 +178,38 @@ function LeafEditor({
               onChange({ member: { ...node.member!, listId: e.target.value } })
             }
           />
-          <Input
-            className="w-36"
-            placeholder={t("segmentBuilder.statusPlaceholder")}
-            value={node.member.status ?? ""}
-            onChange={(e) =>
+          {/* A Select, not free text: SubscriptionStatus is a closed
+              three-value enum, so typing e.g. "subscribed" would only build a
+              body the Go validator rejects. `find` also lets the Any sentinel
+              fall out as `undefined` — the omitted-status case — without an
+              assertion. */}
+          <Select
+            value={node.member.status ?? ANY_STATUS}
+            onValueChange={(v) =>
               onChange({
                 member: {
                   ...node.member!,
-                  status: e.target.value as NonNullable<
-                    SegmentNode["member"]
-                  >["status"],
+                  status: MEMBER_STATUSES.find((s) => s === v),
                 },
               })
             }
-          />
+          >
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value={ANY_STATUS}>
+                  {t("segmentBuilder.memberStatus.any")}
+                </SelectItem>
+                {MEMBER_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {t(`segmentBuilder.memberStatus.${s}`)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </>
       )}
     </div>

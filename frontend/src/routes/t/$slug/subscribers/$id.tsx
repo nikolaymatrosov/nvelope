@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Trash2Icon, XIcon } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
-import type { Subscriber } from "@/lib/api-types"
+import type { Subscriber, SubscriptionStatus } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { errorMessage } from "@/lib/errors"
@@ -34,10 +34,29 @@ export const Route = createFileRoute("/t/$slug/subscribers/$id")({
   component: SubscriberDetail,
 })
 
-const STATES = ["enabled", "disabled"]
+// Annotated with the generated enums rather than inferred as Array<string>:
+// that makes a value the server would reject a compile error here, at the
+// point it is written down. ("blocklisted" is a third SubscriberState, but it
+// is set by the bounce pipeline, not by hand.)
+const STATES: Array<Subscriber["state"]> = ["enabled", "disabled"]
 // The real domain values (there is no "subscribed" or "pending" status
 // server-side): unconfirmed (awaiting confirmation), confirmed, unsubscribed.
-const SUB_STATES = ["unconfirmed", "confirmed", "unsubscribed"]
+const SUB_STATES: Array<SubscriptionStatus> = [
+  "unconfirmed",
+  "confirmed",
+  "unsubscribed",
+]
+
+// Radix hands `onValueChange` a bare string. Narrow it against the option list
+// that produced it instead of asserting with `as`: the assertion would be a
+// promise TypeScript cannot check, and an unchecked one is how the hardcoded
+// "subscribed" status — which the Go validator always rejected — survived.
+function optionOf<T extends string>(
+  options: Array<T>,
+  value: string,
+): T | undefined {
+  return options.find((option) => option === value)
+}
 
 export function SubscriberDetail() {
   const { slug, id } = Route.useParams()
@@ -193,7 +212,10 @@ function EditSubscriberCard({
           <FormField label={t("edit.state")}>
             <Select
               value={state}
-              onValueChange={(v) => setState(v as Subscriber["state"])}
+              onValueChange={(v) => {
+                const next = optionOf(STATES, v)
+                if (next) setState(next)
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -266,7 +288,7 @@ function MembershipsCard({
   })
 
   const changeStatus = useMutation({
-    mutationFn: (v: { listId: string; status: string }) =>
+    mutationFn: (v: { listId: string; status: SubscriptionStatus }) =>
       api.changeSubscription(slug, subscriber.id, v.listId, v.status),
     onSuccess: () => {
       toast.success(t("memberships.statusSuccess"))
@@ -300,9 +322,10 @@ function MembershipsCard({
                 </span>
                 <Select
                   value={m.status}
-                  onValueChange={(status) =>
-                    changeStatus.mutate({ listId: m.listId, status })
-                  }
+                  onValueChange={(v) => {
+                    const status = optionOf(SUB_STATES, v)
+                    if (status) changeStatus.mutate({ listId: m.listId, status })
+                  }}
                 >
                   <SelectTrigger className="w-40">
                     <SelectValue />

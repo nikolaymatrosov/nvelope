@@ -22,6 +22,12 @@ async function capture(
     init: {
       method: input.method,
       body: input.body ? await input.clone().text() : undefined,
+      // Carried through so the session-cookie contract is assertable: the
+      // browser only sends the workspace cookie because tenant-client sets
+      // `credentials: "include"`, and reading it off the built Request is the
+      // only way to see it once openapi-fetch has folded init into a Request.
+      credentials: input.credentials,
+      headers: Object.fromEntries(input.headers),
     },
   }
 }
@@ -319,6 +325,20 @@ describe("audience client", () => {
     await expect(api.getList("acme", "missing")).rejects.toMatchObject({
       status: 404,
       slug: "list_not_found",
+    })
+  })
+
+  it("sends the workspace session cookie and a JSON content type", async () => {
+    const calls = mockFetch(201, { id: "list-2" })
+    await api.createList("acme", {
+      name: "Promotions",
+      description: "",
+      visibility: "private",
+      optIn: "single",
+    })
+    expect(calls[0].init.credentials).toBe("include")
+    expect(calls[0].init.headers).toMatchObject({
+      "content-type": "application/json",
     })
   })
 

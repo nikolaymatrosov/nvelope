@@ -131,7 +131,12 @@
     "valuePlaceholder": "Значение",
     "attrKeyPlaceholder": "Ключ атрибута",
     "listIdPlaceholder": "ID списка",
-    "statusPlaceholder": "Статус",
+    "memberStatus": {
+      "any": "Любой статус",
+      "unconfirmed": "Не подтверждён",
+      "confirmed": "Подтверждён",
+      "unsubscribed": "Отписан"
+    },
     "removeCondition": "Удалить условие",
     "matchPrefix": "Соответствует",
     "matchSuffix": "из следующего",

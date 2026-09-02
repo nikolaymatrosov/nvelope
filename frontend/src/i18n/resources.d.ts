@@ -685,6 +685,12 @@ export default interface Resources {
       "matchAny": "any",
       "matchPrefix": "Match",
       "matchSuffix": "of the following",
+      "memberStatus": {
+        "any": "Any status",
+        "confirmed": "Confirmed",
+        "unconfirmed": "Unconfirmed",
+        "unsubscribed": "Unsubscribed"
+      },
       "op": {
         "contains": "contains",
         "eq": "equals",
@@ -696,7 +702,6 @@ export default interface Resources {
         "neq": "not equals"
       },
       "removeCondition": "Remove condition",
-      "statusPlaceholder": "Status",
       "valuePlaceholder": "Value"
     },
     "state": {
