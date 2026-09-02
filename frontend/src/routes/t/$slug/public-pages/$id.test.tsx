@@ -66,7 +66,7 @@ beforeEach(() => {
   canMock = () => true
   routeParams = { slug: "acme", id: "new" }
   vi.mocked(api.listLists).mockResolvedValue(
-    ok({ lists: [{ ID: "l1", Name: "Customers" }], total: 1 }) as never,
+    ok({ items: [{ id: "l1", name: "Customers" }], total: 1 }) as never,
   )
   vi.mocked(api.listSendingDomains).mockResolvedValue(
     ok({

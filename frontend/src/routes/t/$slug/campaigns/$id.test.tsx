@@ -113,7 +113,7 @@ function setupOwner() {
     }),
   )
   vi.mocked(api.listRoles).mockResolvedValue(ok({ roles: [] }))
-  vi.mocked(api.listLists).mockResolvedValue(ok({ lists: [], total: 0 }))
+  vi.mocked(api.listLists).mockResolvedValue(ok({ items: [], total: 0 }))
 }
 
 afterEach(() => {

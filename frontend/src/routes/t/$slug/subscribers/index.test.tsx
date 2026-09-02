@@ -41,14 +41,14 @@ vi.mock("@/lib/api", () => ({
 const ok = <T,>(data: T) => ({ status: 200, ok: true, data })
 
 const sampleSubscriber = {
-  ID: "sub-1",
-  Email: "ann@example.com",
-  Name: "Ann",
-  State: "enabled",
-  Attributes: {},
-  Memberships: [],
-  CreatedAt: "2026-01-01T00:00:00Z",
-  UpdatedAt: "2026-01-01T00:00:00Z",
+  id: "sub-1",
+  email: "ann@example.com",
+  name: "Ann",
+  state: "enabled" as const,
+  attributes: {},
+  memberships: [],
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
 }
 
 // An Owner has every permission, so management actions are visible.
@@ -76,9 +76,9 @@ describe("SubscribersView — create", () => {
   it("creates a subscriber through the dialog", async () => {
     setupOwner()
     vi.mocked(api.searchSubscribers).mockResolvedValue(
-      ok({ subscribers: [], total: 0 }),
+      ok({ items: [], total: 0 }),
     )
-    vi.mocked(api.listLists).mockResolvedValue(ok({ lists: [], total: 0 }))
+    vi.mocked(api.listLists).mockResolvedValue(ok({ items: [], total: 0 }))
     vi.mocked(api.createSubscriber).mockResolvedValue(ok({ id: "sub-2" }))
     renderWithClient(<SubscribersView />)
 
@@ -98,7 +98,7 @@ describe("SubscribersView — create", () => {
         email: "new@example.com",
         name: "",
         attributes: {},
-        list_ids: [],
+        listIds: [],
       }),
     )
   })
@@ -106,9 +106,9 @@ describe("SubscribersView — create", () => {
   it("surfaces a duplicate-email conflict", async () => {
     setupOwner()
     vi.mocked(api.searchSubscribers).mockResolvedValue(
-      ok({ subscribers: [], total: 0 }),
+      ok({ items: [], total: 0 }),
     )
-    vi.mocked(api.listLists).mockResolvedValue(ok({ lists: [], total: 0 }))
+    vi.mocked(api.listLists).mockResolvedValue(ok({ items: [], total: 0 }))
     vi.mocked(api.createSubscriber).mockRejectedValue(
       new ApiError(409, "duplicate_email", "exists", "/t/acme/api/subscribers"),
     )
@@ -133,11 +133,9 @@ describe("SubscribersView — create", () => {
 
 describe("SubscriberDetail — delete", () => {
   it("requires confirmation before deleting", async () => {
-    vi.mocked(api.getSubscriber).mockResolvedValue(
-      ok({ subscriber: sampleSubscriber }),
-    )
-    vi.mocked(api.listLists).mockResolvedValue(ok({ lists: [], total: 0 }))
-    vi.mocked(api.deleteSubscriber).mockResolvedValue(ok(null))
+    vi.mocked(api.getSubscriber).mockResolvedValue(ok(sampleSubscriber))
+    vi.mocked(api.listLists).mockResolvedValue(ok({ items: [], total: 0 }))
+    vi.mocked(api.deleteSubscriber).mockResolvedValue(ok(undefined))
     renderWithClient(<SubscriberDetail />)
 
     fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }))

@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import { DownloadIcon, UploadIcon } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
-import type { ExportSelection, JobStatusView, Node } from "@/lib/api-types"
+import type { ExportSelection, JobStatusView, SegmentNode } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { errorMessage } from "@/lib/errors"
@@ -104,15 +104,15 @@ function PermissionNotice({
 
 function JobProgress({ job }: { job: JobStatusView }) {
   const { t } = useTranslation("importExport")
-  const done = job.CreatedCount + job.UpdatedCount + job.FailedCount
-  const pct = job.RowCount > 0 ? Math.round((done / job.RowCount) * 100) : 0
+  const done = job.createdCount + job.updatedCount + job.failedCount
+  const pct = job.rowCount > 0 ? Math.round((done / job.rowCount) * 100) : 0
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between text-sm">
         <span>{t("job.status")}</span>
-        <Badge variant="secondary">{job.Status}</Badge>
+        <Badge variant="secondary">{job.status}</Badge>
       </div>
-      {job.RowCount > 0 && <Progress value={pct} />}
+      {job.rowCount > 0 && <Progress value={pct} />}
     </div>
   )
 }
@@ -123,24 +123,24 @@ function JobSummary({ job }: { job: JobStatusView }) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
         <Badge variant="secondary">
-          {t("job.createdCount", { count: job.CreatedCount })}
+          {t("job.createdCount", { count: job.createdCount })}
         </Badge>
         <Badge variant="secondary">
-          {t("job.updatedCount", { count: job.UpdatedCount })}
+          {t("job.updatedCount", { count: job.updatedCount })}
         </Badge>
         <Badge variant="secondary">
-          {t("job.failedCount", { count: job.FailedCount })}
+          {t("job.failedCount", { count: job.failedCount })}
         </Badge>
         <Badge variant="secondary">
-          {t("job.rowCount", { count: job.RowCount })}
+          {t("job.rowCount", { count: job.rowCount })}
         </Badge>
       </div>
-      {job.Failures.length > 0 && (
+      {job.failures.length > 0 && (
         <div className="flex flex-col gap-1 rounded-lg border p-3">
           <p className="text-sm font-medium">{t("job.rowFailures")}</p>
-          {job.Failures.map((f) => (
-            <p key={f.Row} className="text-xs text-muted-foreground">
-              {t("job.rowFailure", { row: f.Row, reason: f.Reason })}
+          {job.failures.map((f) => (
+            <p key={f.row} className="text-xs text-muted-foreground">
+              {t("job.rowFailure", { row: f.row, reason: f.reason })}
             </p>
           ))}
         </div>
@@ -162,13 +162,13 @@ export function ImportPanel({ slug }: { slug: string }) {
   const listsQuery = useQuery({
     queryKey: queryKeys.lists(slug),
     queryFn: async () =>
-      (await api.listLists(slug, { limit: 100, offset: 0 })).data.lists,
+      (await api.listLists(slug, { limit: 100, offset: 0 })).data.items,
   })
 
   const start = useMutation({
     mutationFn: () => api.startImport(slug, file as File, listIds),
     onSuccess: (res) => {
-      setJobId(res.data.job_id)
+      setJobId(res.data.jobId)
       toast.success(t("import.started"))
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -199,20 +199,20 @@ export function ImportPanel({ slug }: { slug: string }) {
             <div className="flex flex-col gap-2 rounded-lg border p-3">
               {listsQuery.data.map((list) => (
                 <label
-                  key={list.ID}
+                  key={list.id}
                   className="flex items-center gap-2 text-sm"
                 >
                   <Checkbox
-                    checked={listIds.includes(list.ID)}
+                    checked={listIds.includes(list.id)}
                     onCheckedChange={(checked) =>
                       setListIds((prev) =>
                         checked
-                          ? [...prev, list.ID]
-                          : prev.filter((x) => x !== list.ID),
+                          ? [...prev, list.id]
+                          : prev.filter((x) => x !== list.id),
                       )
                     }
                   />
-                  {list.Name}
+                  {list.name}
                 </label>
               ))}
             </div>
@@ -235,7 +235,7 @@ export function ImportPanel({ slug }: { slug: string }) {
         {job && (
           <div className="flex flex-col gap-3">
             <JobProgress job={job} />
-            {job.Status === "completed" && <JobSummary job={job} />}
+            {job.status === "completed" && <JobSummary job={job} />}
           </div>
         )}
       </CardContent>
@@ -249,25 +249,25 @@ export function ExportPanel({ slug }: { slug: string }) {
   const { t } = useTranslation("importExport")
   const [selection, setSelection] = useState<ExportSelection>("all")
   const [listId, setListId] = useState("")
-  const [segment, setSegment] = useState<Node>(emptyGroup())
+  const [segment, setSegment] = useState<SegmentNode>(emptyGroup())
   const [jobId, setJobId] = useState<string | null>(null)
   const { job, isTerminal } = useJobStatus(slug, jobId)
 
   const listsQuery = useQuery({
     queryKey: queryKeys.lists(slug),
     queryFn: async () =>
-      (await api.listLists(slug, { limit: 100, offset: 0 })).data.lists,
+      (await api.listLists(slug, { limit: 100, offset: 0 })).data.items,
   })
 
   const start = useMutation({
     mutationFn: () =>
       api.startExport(slug, {
         selection,
-        list_id: selection === "list" ? listId : undefined,
+        listId: selection === "list" ? listId : undefined,
         segment: selection === "segment" ? segment : undefined,
       }),
     onSuccess: (res) => {
-      setJobId(res.data.job_id)
+      setJobId(res.data.jobId)
       toast.success(t("export.started"))
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -313,8 +313,8 @@ export function ExportPanel({ slug }: { slug: string }) {
               <SelectContent>
                 <SelectGroup>
                   {(listsQuery.data ?? []).map((l) => (
-                    <SelectItem key={l.ID} value={l.ID}>
-                      {l.Name}
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -343,9 +343,9 @@ export function ExportPanel({ slug }: { slug: string }) {
         {job && (
           <div className="flex flex-col gap-3">
             <JobProgress job={job} />
-            {job.Status === "completed" && (
+            {job.status === "completed" && (
               <Button asChild variant="outline">
-                <a href={api.downloadExportUrl(slug, job.ID)}>
+                <a href={api.downloadExportUrl(slug, job.id)}>
                   <DownloadIcon /> {t("export.downloadCsv")}
                 </a>
               </Button>

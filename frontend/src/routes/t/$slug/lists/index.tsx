@@ -40,27 +40,27 @@ export function ListsView() {
   const limit = DEFAULT_PAGE_SIZE
 
   const columns: Array<ColumnDef<List, unknown>> = [
-    { accessorKey: "Name", header: t("columns.name") },
+    { accessorKey: "name", header: t("columns.name") },
     {
-      accessorKey: "Description",
+      accessorKey: "description",
       header: t("columns.description"),
       cell: ({ row }) => (
         <span className="text-muted-foreground">
-          {row.original.Description || "—"}
+          {row.original.description || "—"}
         </span>
       ),
     },
     {
-      accessorKey: "Visibility",
+      accessorKey: "visibility",
       header: t("columns.visibility"),
       cell: ({ row }) => (
-        <Badge variant="secondary">{row.original.Visibility}</Badge>
+        <Badge variant="secondary">{row.original.visibility}</Badge>
       ),
     },
     {
-      accessorKey: "CreatedAt",
+      accessorKey: "createdAt",
       header: t("columns.created"),
-      cell: ({ row }) => formatDate(row.original.CreatedAt),
+      cell: ({ row }) => formatDate(row.original.createdAt),
     },
   ]
 
@@ -101,16 +101,16 @@ export function ListsView() {
         {(data) => (
           <DataTable
             columns={columns}
-            rows={data.lists}
+            rows={data.items}
             total={data.total}
             limit={limit}
             offset={offset}
             onPageChange={setOffset}
-            getRowId={(row) => row.ID}
+            getRowId={(row) => row.id}
             onRowClick={(row) =>
               navigate({
                 to: "/t/$slug/lists/$id",
-                params: { slug, id: row.ID },
+                params: { slug, id: row.id },
               })
             }
           />
@@ -140,7 +140,17 @@ function CreateListDialog({
 
   const create = useMutation({
     mutationFn: (v: { name: string; description: string }) =>
-      api.createList(slug, { name: v.name.trim(), description: v.description }),
+      api.createList(slug, {
+        name: v.name.trim(),
+        description: v.description,
+        // The generated CreateListRequest marks these required because the
+        // spec declares OpenAPI `default:` values — that's a generator
+        // artifact (openapi-typescript treats `default:` as required), not a
+        // server requirement; the Go side still defaults them. We send the
+        // same defaults explicitly here.
+        visibility: "private",
+        optIn: "single",
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists(slug) })
       toast.success(t("create.success"))

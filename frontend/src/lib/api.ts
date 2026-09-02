@@ -3,12 +3,19 @@
 // so the browser sends the session cookie same-origin; the Vite dev server
 // proxies /api and /t/{slug}/api to the Go API service.
 //
-// Every method resolves to `ApiResult<T>` on success and raises `ApiError`
-// (normalized by src/lib/errors.ts) on any non-2xx response. Tenant-scoped
-// methods take `slug` as their first argument so a call site cannot omit it
-// (tenant-isolation safety, Principle I).
+// Every method resolves to `{ status, ok, data }` on success and raises
+// `ApiError` (normalized by src/lib/errors.ts) on any non-2xx response.
+// Tenant-scoped methods take `slug` as their first argument so a call site
+// cannot omit it (tenant-isolation safety, Principle I).
+//
+// Two transports live behind that one contract: the audience plane (lists,
+// subscribers, import/export jobs) goes through the generated openapi-fetch
+// client in ./tenant-client, so its paths and wire shapes are checked against
+// api/openapi/tenant.yaml; everything else still uses the hand-rolled
+// `request()` below until its plane is migrated too.
 
 import { ApiError, normalizeError } from "./errors"
+import { tenantApi, unwrap } from "./tenant-client"
 import type {
   APIKey,
   AuditRecord,
@@ -29,13 +36,10 @@ import type {
   InvoiceSummary,
   InvoiceView,
   IssuedAPIKey,
-  JobStatusView,
-  List,
   MediaAssetView,
   MediaUploadResult,
   Membership,
   MergeTagsResponse,
-  Node,
   Page,
   Permission,
   PlanView,
@@ -48,12 +52,13 @@ import type {
   SaveSubscriptionPageInput,
   SaveVisualCampaignInput,
   SaveVisualTemplateInput,
+  SegmentNode,
   SessionResult,
   StartExportInput,
   SubscribeResult,
-  Subscriber,
   SubscriptionPageView,
   SubscriptionResponse,
+  SubscriptionStatus,
   SuppressionEntry,
   SuppressionListResponse,
   SuppressionReason,
@@ -201,81 +206,100 @@ export const api = {
     request<SessionResult>("POST", tp(slug, "/session/totp"), { code }),
 
   // ── Lists ──────────────────────────────────────────────────────────────────
+  // Routed through the generated openapi-fetch client (tenant.yaml) rather
+  // than the hand-rolled `request()` transport above — see tenant-client.ts.
+  // Method names and argument order are unchanged from the hand-written
+  // client; only the internals (and the response/request wire shapes) moved.
   createList: (slug: string, body: CreateListInput) =>
-    request<{ id: string }>("POST", tp(slug, "/lists"), body),
+    unwrap(tenantApi(slug).POST("/lists", { body })),
   listLists: (slug: string, page?: Page) =>
-    request<{ lists: Array<List>; total: number }>(
-      "GET",
-      tp(slug, `/lists${pageQuery(page)}`),
-    ),
+    unwrap(tenantApi(slug).GET("/lists", { params: { query: page ?? {} } })),
   getList: (slug: string, id: string) =>
-    request<{ list: List }>("GET", tp(slug, `/lists/${id}`)),
+    unwrap(tenantApi(slug).GET("/lists/{id}", { params: { path: { id } } })),
   updateList: (slug: string, id: string, body: UpdateListInput) =>
-    request("PUT", tp(slug, `/lists/${id}`), body),
+    unwrap(
+      tenantApi(slug).PUT("/lists/{id}", { params: { path: { id } }, body }),
+    ),
   deleteList: (slug: string, id: string) =>
-    request("DELETE", tp(slug, `/lists/${id}`)),
+    unwrap(tenantApi(slug).DELETE("/lists/{id}", { params: { path: { id } } })),
 
   // ── Subscribers ────────────────────────────────────────────────────────────
   createSubscriber: (slug: string, body: CreateSubscriberInput) =>
-    request<{ id: string }>("POST", tp(slug, "/subscribers"), body),
+    unwrap(tenantApi(slug).POST("/subscribers", { body })),
   searchSubscribers: (slug: string, q: string, page?: Page) =>
-    request<{ subscribers: Array<Subscriber>; total: number }>(
-      "GET",
-      tp(
-        slug,
-        `/subscribers?q=${encodeURIComponent(q)}${
-          page ? `&limit=${page.limit}&offset=${page.offset}` : ""
-        }`,
-      ),
+    unwrap(
+      tenantApi(slug).GET("/subscribers", {
+        params: { query: { q, ...(page ?? {}) } },
+      }),
     ),
-  querySubscribers: (slug: string, segment: Node, page?: Page) =>
-    request<{ subscribers: Array<Subscriber>; total: number }>(
-      "POST",
-      tp(slug, `/subscribers/query${pageQuery(page)}`),
-      { segment },
+  querySubscribers: (slug: string, segment: SegmentNode, page?: Page) =>
+    unwrap(
+      tenantApi(slug).POST("/subscribers/query", {
+        params: { query: page ?? {} },
+        body: { segment },
+      }),
     ),
-  countSubscribers: (slug: string, segment: Node) =>
-    request<{ total: number }>(
-      "POST",
-      tp(slug, "/subscribers/query/count"),
-      { segment },
+  countSubscribers: (slug: string, segment: SegmentNode) =>
+    unwrap(
+      tenantApi(slug).POST("/subscribers/query/count", { body: { segment } }),
     ),
   getSubscriber: (slug: string, id: string) =>
-    request<{ subscriber: Subscriber }>(
-      "GET",
-      tp(slug, `/subscribers/${id}`),
+    unwrap(
+      tenantApi(slug).GET("/subscribers/{id}", { params: { path: { id } } }),
     ),
   updateSubscriber: (slug: string, id: string, body: UpdateSubscriberInput) =>
-    request("PUT", tp(slug, `/subscribers/${id}`), body),
+    unwrap(
+      tenantApi(slug).PUT("/subscribers/{id}", {
+        params: { path: { id } },
+        body,
+      }),
+    ),
   deleteSubscriber: (slug: string, id: string) =>
-    request("DELETE", tp(slug, `/subscribers/${id}`)),
+    unwrap(
+      tenantApi(slug).DELETE("/subscribers/{id}", {
+        params: { path: { id } },
+      }),
+    ),
   addToList: (slug: string, id: string, listId: string) =>
-    request("POST", tp(slug, `/subscribers/${id}/lists`), { list_id: listId }),
+    unwrap(
+      tenantApi(slug).POST("/subscribers/{id}/lists", {
+        params: { path: { id } },
+        body: { listId },
+      }),
+    ),
   removeFromList: (slug: string, id: string, listId: string) =>
-    request("DELETE", tp(slug, `/subscribers/${id}/lists/${listId}`)),
+    unwrap(
+      tenantApi(slug).DELETE("/subscribers/{id}/lists/{listId}", {
+        params: { path: { id, listId } },
+      }),
+    ),
   changeSubscription: (
     slug: string,
     id: string,
     listId: string,
     status: string,
   ) =>
-    request("PUT", tp(slug, `/subscribers/${id}/lists/${listId}`), { status }),
+    unwrap(
+      tenantApi(slug).PUT("/subscribers/{id}/lists/{listId}", {
+        params: { path: { id, listId } },
+        body: { status: status as SubscriptionStatus },
+      }),
+    ),
 
   // ── Import / export jobs ───────────────────────────────────────────────────
   startImport: (slug: string, file: File, listIds: Array<string>) => {
     const form = new FormData()
     form.append("file", file)
-    for (const id of listIds) form.append("list_ids", id)
-    return requestMultipart<{ job_id: string }>(
-      "POST",
-      tp(slug, "/import"),
-      form,
-    )
+    for (const id of listIds) form.append("listIds", id)
+    // `as never`: openapi-typescript models a multipart body as the decoded
+    // object shape, not as the FormData the browser must actually send. There
+    // is nothing to type-check here — the part names above are the contract.
+    return unwrap(tenantApi(slug).POST("/import", { body: form as never }))
   },
   startExport: (slug: string, body: StartExportInput) =>
-    request<{ job_id: string }>("POST", tp(slug, "/export"), { ...body }),
+    unwrap(tenantApi(slug).POST("/export", { body })),
   jobStatus: (slug: string, id: string) =>
-    request<JobStatusView>("GET", tp(slug, `/jobs/${id}`)),
+    unwrap(tenantApi(slug).GET("/jobs/{id}", { params: { path: { id } } })),
   downloadExportUrl: (slug: string, id: string) =>
     BASE + tp(slug, `/jobs/${id}/download`),
 

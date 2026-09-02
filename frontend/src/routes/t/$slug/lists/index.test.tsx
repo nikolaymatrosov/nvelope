@@ -36,14 +36,14 @@ vi.mock("@/lib/api", () => ({
 const ok = <T,>(data: T) => ({ status: 200, ok: true, data })
 
 const sampleList = {
-  ID: "list-1",
-  Name: "Newsletter",
-  Description: "Weekly digest",
-  Visibility: "private",
-  OptIn: "single",
-  Tags: [],
-  CreatedAt: "2026-01-01T00:00:00Z",
-  UpdatedAt: "2026-01-01T00:00:00Z",
+  id: "list-1",
+  name: "Newsletter",
+  description: "Weekly digest",
+  visibility: "private" as const,
+  optIn: "single" as const,
+  tags: [],
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
 }
 
 // An Owner has every permission, so management actions are visible.
@@ -70,7 +70,7 @@ afterEach(() => {
 describe("ListsView", () => {
   it("renders existing lists", async () => {
     vi.mocked(api.listLists).mockResolvedValue(
-      ok({ lists: [sampleList], total: 1 }),
+      ok({ items: [sampleList], total: 1 }),
     )
     renderWithClient(<ListsView />)
     expect(await screen.findByText("Newsletter")).toBeDefined()
@@ -78,7 +78,7 @@ describe("ListsView", () => {
 
   it("creates a list through the dialog", async () => {
     setupOwner()
-    vi.mocked(api.listLists).mockResolvedValue(ok({ lists: [], total: 0 }))
+    vi.mocked(api.listLists).mockResolvedValue(ok({ items: [], total: 0 }))
     vi.mocked(api.createList).mockResolvedValue(ok({ id: "list-2" }))
     renderWithClient(<ListsView />)
 
@@ -95,6 +95,8 @@ describe("ListsView", () => {
       expect(api.createList).toHaveBeenCalledWith("acme", {
         name: "Promotions",
         description: "",
+        visibility: "private",
+        optIn: "single",
       }),
     )
   })
@@ -102,11 +104,11 @@ describe("ListsView", () => {
 
 describe("ListDetail", () => {
   it("requires confirmation before deleting a list", async () => {
-    vi.mocked(api.getList).mockResolvedValue(ok({ list: sampleList }))
+    vi.mocked(api.getList).mockResolvedValue(ok(sampleList))
     vi.mocked(api.querySubscribers).mockResolvedValue(
-      ok({ subscribers: [], total: 0 }),
+      ok({ items: [], total: 0 }),
     )
-    vi.mocked(api.deleteList).mockResolvedValue(ok(null))
+    vi.mocked(api.deleteList).mockResolvedValue(ok(undefined))
     renderWithClient(<ListDetail />)
 
     fireEvent.click(await screen.findByRole("button", { name: /delete list/i }))

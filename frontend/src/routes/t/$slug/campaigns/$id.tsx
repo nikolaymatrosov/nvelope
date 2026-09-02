@@ -185,7 +185,7 @@ function CampaignEditor({
   const listsQuery = useQuery({
     queryKey: queryKeys.lists(slug),
     queryFn: async () =>
-      (await api.listLists(slug, { limit: 200, offset: 0 })).data.lists,
+      (await api.listLists(slug, { limit: 200, offset: 0 })).data.items,
   })
 
   async function invalidate() {
@@ -804,20 +804,20 @@ function CampaignEditor({
                   <div className="flex flex-col gap-2">
                     {lists.map((list) => (
                       <label
-                        key={list.ID}
+                        key={list.id}
                         className="flex items-center gap-2 text-sm"
                       >
                         <Checkbox
-                          checked={listIds.includes(list.ID)}
+                          checked={listIds.includes(list.id)}
                           onCheckedChange={(checked) =>
                             setListIds((prev) =>
                               checked
-                                ? [...prev, list.ID]
-                                : prev.filter((x) => x !== list.ID),
+                                ? [...prev, list.id]
+                                : prev.filter((x) => x !== list.id),
                             )
                           }
                         />
-                        {list.Name}
+                        {list.name}
                       </label>
                     ))}
                   </div>

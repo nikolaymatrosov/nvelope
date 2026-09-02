@@ -4,18 +4,49 @@ import { ApiError } from "./errors"
 
 type Captured = { url: string; init: RequestInit }
 
+// The hand-rolled platform/workspace/etc. transport (src/lib/api.ts's
+// `request()`) calls `fetch(url, init)` with a plain string. The generated
+// tenant client (openapi-fetch, src/lib/tenant-client.ts) instead builds a
+// `Request` object itself and calls `fetch(request, requestInitExt)` — so this
+// helper normalizes both calling conventions to the same `{ url, init }`
+// shape callers already assert against.
+async function capture(
+  input: string | Request,
+  init?: RequestInit,
+): Promise<Captured> {
+  if (typeof input === "string") return { url: input, init: init ?? {} }
+
+  const url = new URL(input.url)
+  return {
+    url: url.pathname + url.search,
+    init: {
+      method: input.method,
+      body: input.body ? await input.clone().text() : undefined,
+    },
+  }
+}
+
 function mockFetch(status: number, body: unknown): Array<Captured> {
   const calls: Array<Captured> = []
   vi.stubGlobal(
     "fetch",
-    vi.fn((url: string, init: RequestInit) => {
-      calls.push({ url, init })
-      return Promise.resolve(
-        new Response(body === null ? null : JSON.stringify(body), {
-          status,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
+    vi.fn(async (input: string | Request, init?: RequestInit) => {
+      const captured = await capture(input, init)
+      calls.push(captured)
+
+      const res = new Response(body === null ? null : JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      })
+      // A real fetch sets `Response.url` to the absolute final request URL; a
+      // hand-built Response leaves it "". tenant-client's unwrap() derives
+      // ApiError.path from it — and errors.ts routes a lapsed workspace
+      // session off that path — so model it faithfully rather than letting the
+      // mock silently exercise the empty-url fallback.
+      Object.defineProperty(res, "url", {
+        value: new URL(captured.url, window.location.href).toString(),
+      })
+      return res
     }),
   )
   return calls
@@ -41,17 +72,17 @@ describe("api client — verb & path correctness", () => {
   })
 
   it("builds a paged lists path", async () => {
-    const calls = mockFetch(200, { lists: [], total: 0 })
+    const calls = mockFetch(200, { items: [], total: 0 })
     await api.listLists("acme", { limit: 25, offset: 50 })
     expect(calls[0].url).toBe("/t/acme/api/lists?limit=25&offset=50")
   })
 
   it("sends the segment in the query body", async () => {
-    const calls = mockFetch(200, { subscribers: [], total: 0 })
-    await api.querySubscribers("acme", { Conj: "and", Children: [] })
+    const calls = mockFetch(200, { items: [], total: 0 })
+    await api.querySubscribers("acme", { conj: "and", children: [] })
     expect(calls[0].url).toBe("/t/acme/api/subscribers/query")
     expect(JSON.parse(calls[0].init.body as string)).toEqual({
-      segment: { Conj: "and", Children: [] },
+      segment: { conj: "and", children: [] },
     })
   })
 
@@ -63,17 +94,37 @@ describe("api client — verb & path correctness", () => {
   })
 })
 
+// The parts of a serialized multipart/form-data body, in wire order.
+function multipartParts(body: string): Array<{ name: string; value: string }> {
+  const boundary = body.slice(0, body.indexOf("\r\n"))
+  return body
+    .split(boundary)
+    .filter((part) => part.includes("Content-Disposition"))
+    .map((part) => ({
+      name: /name="([^"]+)"/.exec(part)![1],
+      value: part.slice(part.indexOf("\r\n\r\n") + 4).replace(/\r\n$/, ""),
+    }))
+}
+
 describe("api client — multipart import", () => {
-  it("sends file and repeated list_ids fields", async () => {
-    const calls = mockFetch(202, { job_id: "job-1" })
+  it("sends file and repeated listIds fields", async () => {
+    const calls = mockFetch(202, { jobId: "job-1" })
     const file = new File(["email\na@b.com"], "people.csv", {
       type: "text/csv",
     })
     await api.startImport("acme", file, ["list-1", "list-2"])
     expect(calls[0].url).toBe("/t/acme/api/import")
-    const form = calls[0].init.body as FormData
-    expect(form.get("file")).toBeInstanceOf(File)
-    expect(form.getAll("list_ids")).toEqual(["list-1", "list-2"])
+
+    const parts = multipartParts(calls[0].init.body as string)
+    // The uploaded file's bytes and filename do not survive here: jsdom's File
+    // is invisible to Node's multipart serializer (two separate
+    // implementations of the same web APIs), so it encodes an empty part. What
+    // the field *names* are is the contract that changed in this migration —
+    // `list_ids` became `listIds` — and that is faithfully on the wire.
+    expect(parts.map((p) => p.name)).toEqual(["file", "listIds", "listIds"])
+    expect(
+      parts.filter((p) => p.name === "listIds").map((p) => p.value),
+    ).toEqual(["list-1", "list-2"])
   })
 })
 
@@ -84,7 +135,7 @@ describe("api client — error normalization", () => {
       email: "a@b.com",
       name: "",
       attributes: {},
-      list_ids: [],
+      listIds: [],
     })).rejects.toMatchObject({
       status: 409,
       slug: "duplicate_email",
@@ -247,14 +298,35 @@ describe("api client — visual editor (Phase 7)", () => {
   })
 })
 
-describe("api client — PascalCase responses pass through unchanged", () => {
-  it("returns audience view fields verbatim", async () => {
-    mockFetch(200, {
-      lists: [{ ID: "l1", Name: "Newsletter", Tags: [] }],
-      total: 1,
+describe("audience client", () => {
+  it("requests the tenant base path and returns the items envelope", async () => {
+    const calls = mockFetch(200, { items: [{ id: "1", name: "L" }], total: 1 })
+    const res = await api.listLists("acme", { limit: 10, offset: 0 })
+
+    expect(calls[0].url).toContain("/t/acme/api/lists")
+    expect(res.data.items).toHaveLength(1)
+    expect(res.data.total).toBe(1)
+  })
+
+  it("throws an ApiError carrying the problem code", async () => {
+    mockFetch(404, {
+      type: "https://nvelope.dev/probs/list_not_found",
+      title: "List not found",
+      status: 404,
+      detail: "no such list",
+      code: "list_not_found",
     })
-    const res = await api.listLists("acme")
-    expect(res.data.lists[0].ID).toBe("l1")
-    expect(res.data.lists[0].Name).toBe("Newsletter")
+    await expect(api.getList("acme", "missing")).rejects.toMatchObject({
+      status: 404,
+      slug: "list_not_found",
+    })
+  })
+
+  it("carries the tenant path on the error so a lapsed session can be routed", async () => {
+    mockFetch(401, { code: "session_expired", detail: "Session expired" })
+    await expect(api.getList("acme", "list-1")).rejects.toMatchObject({
+      status: 401,
+      path: "/t/acme/api/lists/list-1",
+    })
   })
 })

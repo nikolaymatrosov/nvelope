@@ -226,7 +226,7 @@ function ListRolesDialog({
   const listsQuery = useQuery({
     queryKey: queryKeys.lists(slug),
     queryFn: async () =>
-      (await api.listLists(slug, { limit: 100, offset: 0 })).data.lists,
+      (await api.listLists(slug, { limit: 100, offset: 0 })).data.items,
     enabled: open,
   })
 
@@ -267,8 +267,8 @@ function ListRolesDialog({
               <SelectContent>
                 <SelectGroup>
                   {(listsQuery.data ?? []).map((l) => (
-                    <SelectItem key={l.ID} value={l.ID}>
-                      {l.Name}
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
                     </SelectItem>
                   ))}
                 </SelectGroup>

@@ -1,13 +1,13 @@
 // Recursive segment / query builder (FR-015, research.md Decision 9). Emits the
-// backend `Node` tree with PascalCase keys — the audience domain struct has no
-// json tags, so the API decodes `Conj`, `Children`, `Field`, `Attr`, `Member`.
+// backend `SegmentNode` tree with lowerCamelCase keys, generated from
+// api/openapi/tenant.yaml and re-exported by src/lib/api-types.ts.
 
 import { PlusIcon, Trash2Icon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import type {
   Conjunction,
   FieldName,
-  Node,
+  SegmentNode,
   SegmentOp,
 } from "@/lib/api-types"
 import {
@@ -36,27 +36,27 @@ const FIELDS: Array<FieldName> = ["email", "name", "state"]
 
 type LeafKind = "field" | "attr" | "member"
 
-export function emptyGroup(): Node {
-  return { Conj: "and", Children: [] }
+export function emptyGroup(): SegmentNode {
+  return { conj: "and", children: [] }
 }
 
-function emptyField(): Node {
-  return { Field: { Field: "email", Op: "eq", Value: "" } }
+function emptyField(): SegmentNode {
+  return { field: { field: "email", op: "eq", value: "" } }
 }
 
-function isGroup(node: Node): boolean {
-  return node.Children !== undefined || node.Conj !== undefined
+function isGroup(node: SegmentNode): boolean {
+  return node.children !== undefined || node.conj !== undefined
 }
 
-function leafKind(node: Node): LeafKind {
-  if (node.Attr) return "attr"
-  if (node.Member) return "member"
+function leafKind(node: SegmentNode): LeafKind {
+  if (node.attr) return "attr"
+  if (node.member) return "member"
   return "field"
 }
 
-function emptyLeaf(kind: LeafKind): Node {
-  if (kind === "attr") return { Attr: { Key: "", Op: "eq", Value: "" } }
-  if (kind === "member") return { Member: { ListID: "", Status: "subscribed" } }
+function emptyLeaf(kind: LeafKind): SegmentNode {
+  if (kind === "attr") return { attr: { key: "", op: "eq", value: "" } }
+  if (kind === "member") return { member: { listId: "" } }
   return emptyField()
 }
 
@@ -64,8 +64,8 @@ function LeafEditor({
   node,
   onChange,
 }: {
-  node: Node
-  onChange: (next: Node) => void
+  node: SegmentNode
+  onChange: (next: SegmentNode) => void
 }) {
   const { t } = useTranslation()
   const kind = leafKind(node)
@@ -93,12 +93,12 @@ function LeafEditor({
         </SelectContent>
       </Select>
 
-      {kind === "field" && node.Field && (
+      {kind === "field" && node.field && (
         <>
           <Select
-            value={node.Field.Field}
+            value={node.field.field}
             onValueChange={(v) =>
-              onChange({ Field: { ...node.Field!, Field: v as FieldName } })
+              onChange({ field: { ...node.field!, field: v } })
             }
           >
             <SelectTrigger className="w-32">
@@ -115,65 +115,72 @@ function LeafEditor({
             </SelectContent>
           </Select>
           <OpSelect
-            op={node.Field.Op}
-            onChange={(op) => onChange({ Field: { ...node.Field!, Op: op } })}
+            op={node.field.op}
+            onChange={(op) => onChange({ field: { ...node.field!, op } })}
           />
-          {node.Field.Op !== "exists" && (
+          {node.field.op !== "exists" && (
             <Input
               className="w-40"
               placeholder={t("segmentBuilder.valuePlaceholder")}
-              value={node.Field.Value}
+              value={node.field.value ?? ""}
               onChange={(e) =>
-                onChange({ Field: { ...node.Field!, Value: e.target.value } })
+                onChange({ field: { ...node.field!, value: e.target.value } })
               }
             />
           )}
         </>
       )}
 
-      {kind === "attr" && node.Attr && (
+      {kind === "attr" && node.attr && (
         <>
           <Input
             className="w-36"
             placeholder={t("segmentBuilder.attrKeyPlaceholder")}
-            value={node.Attr.Key}
+            value={node.attr.key}
             onChange={(e) =>
-              onChange({ Attr: { ...node.Attr!, Key: e.target.value } })
+              onChange({ attr: { ...node.attr!, key: e.target.value } })
             }
           />
           <OpSelect
-            op={node.Attr.Op}
-            onChange={(op) => onChange({ Attr: { ...node.Attr!, Op: op } })}
+            op={node.attr.op}
+            onChange={(op) => onChange({ attr: { ...node.attr!, op } })}
           />
-          {node.Attr.Op !== "exists" && (
+          {node.attr.op !== "exists" && (
             <Input
               className="w-40"
               placeholder={t("segmentBuilder.valuePlaceholder")}
-              value={String(node.Attr.Value ?? "")}
+              value={String(node.attr.value ?? "")}
               onChange={(e) =>
-                onChange({ Attr: { ...node.Attr!, Value: e.target.value } })
+                onChange({ attr: { ...node.attr!, value: e.target.value } })
               }
             />
           )}
         </>
       )}
 
-      {kind === "member" && node.Member && (
+      {kind === "member" && node.member && (
         <>
           <Input
             className="w-44"
             placeholder={t("segmentBuilder.listIdPlaceholder")}
-            value={node.Member.ListID}
+            value={node.member.listId}
             onChange={(e) =>
-              onChange({ Member: { ...node.Member!, ListID: e.target.value } })
+              onChange({ member: { ...node.member!, listId: e.target.value } })
             }
           />
           <Input
             className="w-36"
             placeholder={t("segmentBuilder.statusPlaceholder")}
-            value={node.Member.Status}
+            value={node.member.status ?? ""}
             onChange={(e) =>
-              onChange({ Member: { ...node.Member!, Status: e.target.value } })
+              onChange({
+                member: {
+                  ...node.member!,
+                  status: e.target.value as NonNullable<
+                    SegmentNode["member"]
+                  >["status"],
+                },
+              })
             }
           />
         </>
@@ -213,23 +220,23 @@ function GroupEditor({
   onChange,
   depth,
 }: {
-  node: Node
-  onChange: (next: Node) => void
+  node: SegmentNode
+  onChange: (next: SegmentNode) => void
   depth: number
 }) {
   const { t } = useTranslation()
-  const children = node.Children ?? []
+  const children = node.children ?? []
 
-  function setChild(index: number, next: Node) {
+  function setChild(index: number, next: SegmentNode) {
     const copy = children.slice()
     copy[index] = next
-    onChange({ ...node, Children: copy })
+    onChange({ ...node, children: copy })
   }
   function removeChild(index: number) {
-    onChange({ ...node, Children: children.filter((_, i) => i !== index) })
+    onChange({ ...node, children: children.filter((_, i) => i !== index) })
   }
-  function addChild(next: Node) {
-    onChange({ ...node, Children: [...children, next] })
+  function addChild(next: SegmentNode) {
+    onChange({ ...node, children: [...children, next] })
   }
 
   return (
@@ -244,8 +251,8 @@ function GroupEditor({
           {t("segmentBuilder.matchPrefix")}
         </span>
         <Select
-          value={node.Conj ?? "and"}
-          onValueChange={(v) => onChange({ ...node, Conj: v as Conjunction })}
+          value={node.conj ?? "and"}
+          onValueChange={(v) => onChange({ ...node, conj: v as Conjunction })}
         >
           <SelectTrigger className="w-24">
             <SelectValue />
@@ -322,8 +329,8 @@ export function SegmentBuilder({
   value,
   onChange,
 }: {
-  value: Node
-  onChange: (next: Node) => void
+  value: SegmentNode
+  onChange: (next: SegmentNode) => void
 }) {
   return <GroupEditor node={value} onChange={onChange} depth={0} />
 }

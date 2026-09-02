@@ -2,9 +2,13 @@
 // backend's query read models and command inputs.
 //
 // Casing convention (research.md Decision 2): platform-plane and tenant
-// settings/invitation responses are snake_case; audience and IAM responses are
-// PascalCase (those Go view structs carry no `json:` tags). Field names below
-// match exactly what each endpoint emits — do not rename them.
+// settings/invitation responses are snake_case; IAM responses are PascalCase
+// (those Go view structs carry no `json:` tags). Field names below match
+// exactly what each endpoint emits — do not rename them. The audience plane
+// (Lists & Subscribers) is generated from the OpenAPI spec — see the import
+// below.
+
+import type { components } from "./api-schema.gen"
 
 // ── Platform plane (snake_case) ──────────────────────────────────────────────
 
@@ -74,131 +78,53 @@ export type SessionState = "active" | "totp_pending"
 
 export type SessionResult = { state: SessionState }
 
-// ── Audience plane — Lists & Subscribers (PascalCase) ────────────────────────
+// ── Audience plane — Lists & Subscribers ──────────────────────────────────────
+//
+// Generated from api/openapi/tenant.yaml (make generate). Do not hand-edit
+// these shapes — change the spec and regenerate. Re-exported under their
+// existing names so screens keep their imports; `Membership` is re-exported
+// as `SubscriberMembership` because that's the name that already existed here
+// (a subscriber's confirmation status on one list) — the platform-plane
+// `Membership` above (workspace tenancy) is a distinct, unrelated type and is
+// left untouched.
 
-export type List = {
-  ID: string
-  Name: string
-  Description: string
-  Visibility: string
-  OptIn: string
-  Tags: Array<string>
-  CreatedAt: string
-  UpdatedAt: string
-}
+export type List = components["schemas"]["List"]
+export type Subscriber = components["schemas"]["Subscriber"]
+export type SubscriberMembership = components["schemas"]["Membership"]
+export type CreateListInput = components["schemas"]["CreateListRequest"]
+export type UpdateListInput = components["schemas"]["UpdateListRequest"]
+export type CreateSubscriberInput = components["schemas"]["CreateSubscriberRequest"]
+export type UpdateSubscriberInput = components["schemas"]["UpdateSubscriberRequest"]
+// A subscription's lifecycle status: unconfirmed (awaiting confirmation),
+// confirmed, or unsubscribed. Note these are the real domain values — there
+// is no "subscribed" or "pending" status server-side.
+export type SubscriptionStatus = components["schemas"]["SubscriptionStatus"]
 
-export type CreateListInput = {
-  name: string
-  description: string
-  visibility?: string
-  optin?: string
-  tags?: Array<string>
-}
-
-export type UpdateListInput = {
-  name: string
-  description: string
-  visibility?: string
-  optin?: string
-  tags?: Array<string>
-}
-
-export type SubscriberMembership = {
-  ListID: string
-  Status: string
-}
-
-export type Subscriber = {
-  ID: string
-  Email: string
-  Name: string
-  State: string
-  Attributes: Record<string, unknown>
-  Memberships: Array<SubscriberMembership>
-  CreatedAt: string
-  UpdatedAt: string
-}
-
-export type CreateSubscriberInput = {
-  email: string
-  name: string
-  attributes: Record<string, unknown>
-  list_ids: Array<string>
-}
-
-export type UpdateSubscriberInput = {
-  name: string
-  attributes: Record<string, unknown>
-  state: string
-}
-
-// ── Segment query (PascalCase keys — the domain struct has no json tags) ─────
+// ── Segment query ──────────────────────────────────────────────────────────
 
 export type Conjunction = "and" | "or"
 
-export type SegmentOp =
-  | "eq"
-  | "neq"
-  | "exists"
-  | "contains"
-  | "gt"
-  | "lt"
-  | "gte"
-  | "lte"
+export type SegmentOp = components["schemas"]["SegmentOp"]
 
 export type FieldName = "email" | "name" | "state"
 
-export type FieldCondition = {
-  Field: FieldName
-  Op: SegmentOp
-  Value: string
-}
+export type FieldCondition = components["schemas"]["FieldCondition"]
 
-export type AttrCondition = {
-  Key: string
-  Op: SegmentOp
-  Value: unknown
-}
+export type AttrCondition = components["schemas"]["AttrCondition"]
 
-export type MemberCondition = {
-  ListID: string
-  Status: string
-}
+export type MemberCondition = components["schemas"]["MemberCondition"]
 
-export type Node = {
-  Conj?: Conjunction
-  Children?: Array<Node>
-  Field?: FieldCondition
-  Attr?: AttrCondition
-  Member?: MemberCondition
-}
+export type SegmentNode = components["schemas"]["SegmentNode"]
 
-// ── Jobs — Import & Export (PascalCase) ──────────────────────────────────────
+// ── Jobs — Import & Export ────────────────────────────────────────────────────
 
-export type RowFailure = {
-  Row: number
-  Reason: string
-}
+export type RowFailure = components["schemas"]["RowFailure"]
 
-export type JobStatusView = {
-  ID: string
-  Kind: string
-  Status: string
-  FileName: string
-  CreatedCount: number
-  UpdatedCount: number
-  FailedCount: number
-  RowCount: number
-  Failures: Array<RowFailure>
-}
+export type JobStatusView = components["schemas"]["JobStatus"]
 
 export type ExportSelection = "all" | "list" | "segment"
 
-export type StartExportInput = {
-  selection: ExportSelection
-  list_id?: string
-  segment?: Node
-}
+export type StartExportInput = components["schemas"]["StartExportRequest"]
 
 export const TERMINAL_JOB_STATUSES = ["completed", "failed", "cancelled"]
 
@@ -415,7 +341,7 @@ export type CampaignView = {
   failed_count: number
   recipient_count: number
   list_ids: Array<string>
-  segments: Array<Node> | null
+  segments: Array<SegmentNode> | null
   created_at: string
   updated_at: string
   started_at?: string
@@ -433,7 +359,7 @@ export type CreateCampaignInput = {
   from_local_part: string
   sending_domain_id?: string
   list_ids: Array<string>
-  segments?: Array<Node>
+  segments?: Array<SegmentNode>
   max_send_errors?: number
 }
 
@@ -508,7 +434,7 @@ export type UpdateCampaignInput = {
   from_local_part: string
   sending_domain_id?: string
   list_ids: Array<string>
-  segments?: Array<Node>
+  segments?: Array<SegmentNode>
 }
 
 // ── Billing & Metering (Phase 5, camelCase) ──────────────────────────────────

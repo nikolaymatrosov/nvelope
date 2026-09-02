@@ -23,15 +23,15 @@ vi.mock("@/lib/api", () => ({
 const ok = <T,>(data: T) => ({ status: 200, ok: true, data })
 
 const completedJob = {
-  ID: "job-1",
-  Kind: "import",
-  Status: "completed",
-  FileName: "people.csv",
-  CreatedCount: 3,
-  UpdatedCount: 1,
-  FailedCount: 0,
-  RowCount: 4,
-  Failures: [],
+  id: "job-1",
+  kind: "import" as const,
+  status: "completed" as const,
+  fileName: "people.csv",
+  createdCount: 3,
+  updatedCount: 1,
+  failedCount: 0,
+  rowCount: 4,
+  failures: [],
 }
 
 afterEach(() => {
@@ -41,8 +41,8 @@ afterEach(() => {
 
 describe("ImportPanel", () => {
   it("uploads a file and shows the result summary", async () => {
-    vi.mocked(api.listLists).mockResolvedValue(ok({ lists: [], total: 0 }))
-    vi.mocked(api.startImport).mockResolvedValue(ok({ job_id: "job-1" }))
+    vi.mocked(api.listLists).mockResolvedValue(ok({ items: [], total: 0 }))
+    vi.mocked(api.startImport).mockResolvedValue(ok({ jobId: "job-1" }))
     vi.mocked(api.jobStatus).mockResolvedValue(ok(completedJob))
     renderWithClient(<ImportPanel slug="acme" />)
 
@@ -63,10 +63,10 @@ describe("ImportPanel", () => {
 
 describe("ExportPanel", () => {
   it("starts an export and offers a download when complete", async () => {
-    vi.mocked(api.listLists).mockResolvedValue(ok({ lists: [], total: 0 }))
-    vi.mocked(api.startExport).mockResolvedValue(ok({ job_id: "job-1" }))
+    vi.mocked(api.listLists).mockResolvedValue(ok({ items: [], total: 0 }))
+    vi.mocked(api.startExport).mockResolvedValue(ok({ jobId: "job-1" }))
     vi.mocked(api.jobStatus).mockResolvedValue(
-      ok({ ...completedJob, Kind: "export" }),
+      ok({ ...completedJob, kind: "export" as const }),
     )
     renderWithClient(<ExportPanel slug="acme" />)
 
@@ -75,7 +75,7 @@ describe("ExportPanel", () => {
     await waitFor(() =>
       expect(api.startExport).toHaveBeenCalledWith("acme", {
         selection: "all",
-        list_id: undefined,
+        listId: undefined,
         segment: undefined,
       }),
     )

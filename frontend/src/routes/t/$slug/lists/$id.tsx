@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
-import type { Node, Subscriber } from "@/lib/api-types"
+import type { List, SegmentNode, Subscriber } from "@/lib/api-types"
 import type { ColumnDef } from "@/components/common/data-table"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -28,8 +28,8 @@ export const Route = createFileRoute("/t/$slug/lists/$id")({
   component: ListDetail,
 })
 
-function memberSegment(listId: string): Node {
-  return { Member: { ListID: listId, Status: "subscribed" } }
+function memberSegment(listId: string): SegmentNode {
+  return { member: { listId } }
 }
 
 export function ListDetail() {
@@ -43,7 +43,7 @@ export function ListDetail() {
 
   const listQuery = useQuery({
     queryKey: queryKeys.list(slug, id),
-    queryFn: async () => (await api.getList(slug, id)).data.list,
+    queryFn: async () => (await api.getList(slug, id)).data,
   })
 
   const subscribersQuery = useQuery({
@@ -57,9 +57,19 @@ export function ListDetail() {
       ).data,
   })
 
+  // updateList's generated request type requires visibility/optIn/tags
+  // (OpenAPI `default:` becomes required in the generated TS type — see
+  // lists/index.tsx). This form only edits name/description, so the current
+  // list's other fields are echoed back unchanged rather than reset to a
+  // hardcoded default.
   const update = useMutation({
-    mutationFn: (v: { name: string; description: string }) =>
-      api.updateList(slug, id, { name: v.name.trim(), description: v.description }),
+    mutationFn: (v: {
+      name: string
+      description: string
+      visibility: List["visibility"]
+      optIn: List["optIn"]
+      tags: List["tags"]
+    }) => api.updateList(slug, id, v),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists(slug) })
       toast.success(t("detail.updateSuccess"))
@@ -78,18 +88,18 @@ export function ListDetail() {
   })
 
   const columns: Array<ColumnDef<Subscriber, unknown>> = [
-    { accessorKey: "Email", header: t("subscriberColumns.email") },
+    { accessorKey: "email", header: t("subscriberColumns.email") },
     {
-      accessorKey: "Name",
+      accessorKey: "name",
       header: t("subscriberColumns.name"),
-      cell: ({ row }) => row.original.Name || "—",
+      cell: ({ row }) => row.original.name || "—",
     },
     {
       id: "state",
       header: t("subscriberColumns.subscription"),
       cell: ({ row }) => {
-        const m = row.original.Memberships.find((x) => x.ListID === id)
-        return <Badge variant="secondary">{m?.Status ?? "—"}</Badge>
+        const m = row.original.memberships.find((x) => x.listId === id)
+        return <Badge variant="secondary">{m?.status ?? "—"}</Badge>
       },
     },
   ]
@@ -109,11 +119,18 @@ export function ListDetail() {
       <AsyncState query={listQuery}>
         {(list) => (
           <EditListCard
-            key={list.ID}
-            defaultName={list.Name}
-            defaultDescription={list.Description}
+            key={list.id}
+            defaultName={list.name}
+            defaultDescription={list.description}
             pending={update.isPending}
-            onSave={(v) => update.mutate(v)}
+            onSave={(v) =>
+              update.mutate({
+                ...v,
+                visibility: list.visibility,
+                optIn: list.optIn,
+                tags: list.tags,
+              })
+            }
             onDelete={() => setConfirmOpen(true)}
           />
         )}
@@ -132,16 +149,16 @@ export function ListDetail() {
           {(data) => (
             <DataTable
               columns={columns}
-              rows={data.subscribers}
+              rows={data.items}
               total={data.total}
               limit={limit}
               offset={offset}
               onPageChange={setOffset}
-              getRowId={(row) => row.ID}
+              getRowId={(row) => row.id}
               onRowClick={(row) =>
                 navigate({
                   to: "/t/$slug/subscribers/$id",
-                  params: { slug, id: row.ID },
+                  params: { slug, id: row.id },
                 })
               }
             />

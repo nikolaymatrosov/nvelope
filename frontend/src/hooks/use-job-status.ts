@@ -18,7 +18,7 @@ export function useJobStatus(slug: string, jobId: string | null) {
     refetchInterval: (q) => {
       const data = q.state.data
       if (!data) return POLL_INTERVAL_MS
-      return isTerminalJobStatus(data.Status) ? false : POLL_INTERVAL_MS
+      return isTerminalJobStatus(data.status) ? false : POLL_INTERVAL_MS
     },
   })
 
@@ -27,8 +27,8 @@ export function useJobStatus(slug: string, jobId: string | null) {
     job,
     isPolling:
       jobId !== null &&
-      (job === undefined || !isTerminalJobStatus(job.Status)),
-    isTerminal: job !== undefined && isTerminalJobStatus(job.Status),
+      (job === undefined || !isTerminalJobStatus(job.status)),
+    isTerminal: job !== undefined && isTerminalJobStatus(job.status),
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,

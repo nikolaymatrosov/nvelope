@@ -103,7 +103,7 @@ export function SubscriptionPageEdit() {
 
   const listsQuery = useQuery({
     queryKey: queryKeys.lists(slug),
-    queryFn: async () => (await api.listLists(slug)).data.lists,
+    queryFn: async () => (await api.listLists(slug)).data.items,
   })
 
   const sendingDomainsQuery = useQuery({
@@ -188,7 +188,7 @@ type SubscriptionPageFormProps = {
   initial: FormValues
   onSaved: (saved: SubscriptionPageView) => Promise<void> | void
   listsLoading: boolean
-  lists: Array<{ ID: string; Name: string }>
+  lists: Array<{ id: string; name: string }>
   domainsLoading: boolean
   domains: Array<{ id: string; domain: string; status: string }>
   fieldsLoading: boolean
@@ -382,9 +382,9 @@ function SubscriptionPageForm({
                 {(field) => (
                   <ul className="flex flex-col gap-2" data-testid="bound-lists">
                     {lists.map((list) => {
-                      const checked = field.state.value.includes(list.ID)
+                      const checked = field.state.value.includes(list.id)
                       return (
-                        <li key={list.ID}>
+                        <li key={list.id}>
                           <label className="flex items-center gap-2 text-sm">
                             <Checkbox
                               checked={checked}
@@ -392,16 +392,16 @@ function SubscriptionPageForm({
                                 if (c) {
                                   field.handleChange([
                                     ...field.state.value,
-                                    list.ID,
+                                    list.id,
                                   ])
                                 } else {
                                   field.handleChange(
-                                    field.state.value.filter((x) => x !== list.ID),
+                                    field.state.value.filter((x) => x !== list.id),
                                   )
                                 }
                               }}
                             />
-                            {list.Name}
+                            {list.name}
                           </label>
                         </li>
                       )

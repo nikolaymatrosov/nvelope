@@ -35,7 +35,9 @@ export const Route = createFileRoute("/t/$slug/subscribers/$id")({
 })
 
 const STATES = ["enabled", "disabled"]
-const SUB_STATES = ["subscribed", "unsubscribed"]
+// The real domain values (there is no "subscribed" or "pending" status
+// server-side): unconfirmed (awaiting confirmation), confirmed, unsubscribed.
+const SUB_STATES = ["unconfirmed", "confirmed", "unsubscribed"]
 
 export function SubscriberDetail() {
   const { slug, id } = Route.useParams()
@@ -46,13 +48,13 @@ export function SubscriberDetail() {
 
   const subscriberQuery = useQuery({
     queryKey: queryKeys.subscriber(slug, id),
-    queryFn: async () => (await api.getSubscriber(slug, id)).data.subscriber,
+    queryFn: async () => (await api.getSubscriber(slug, id)).data,
   })
 
   const listsQuery = useQuery({
     queryKey: queryKeys.lists(slug),
     queryFn: async () =>
-      (await api.listLists(slug, { limit: 100, offset: 0 })).data.lists,
+      (await api.listLists(slug, { limit: 100, offset: 0 })).data.items,
   })
 
   function invalidate() {
@@ -88,7 +90,7 @@ export function SubscriberDetail() {
         {(subscriber) => (
           <div className="flex flex-col gap-6">
             <EditSubscriberCard
-              key={subscriber.ID}
+              key={subscriber.id}
               slug={slug}
               subscriber={subscriber}
               onSaved={invalidate}
@@ -130,14 +132,14 @@ function EditSubscriberCard({
 }) {
   const { t } = useTranslation("subscribers")
   const [attributes, setAttributes] = useState<Record<string, unknown>>(
-    subscriber.Attributes,
+    subscriber.attributes,
   )
   const [attrsValid, setAttrsValid] = useState(true)
-  const [state, setState] = useState(subscriber.State)
+  const [state, setState] = useState(subscriber.state)
 
   const update = useMutation({
     mutationFn: (v: { name: string }) =>
-      api.updateSubscriber(slug, subscriber.ID, {
+      api.updateSubscriber(slug, subscriber.id, {
         name: v.name.trim(),
         attributes,
         state,
@@ -150,7 +152,7 @@ function EditSubscriberCard({
   })
 
   const form = useForm({
-    defaultValues: { name: subscriber.Name },
+    defaultValues: { name: subscriber.name },
     onSubmit: async ({ value }) => {
       if (!attrsValid) return
       await update.mutateAsync(value).catch(() => {})
@@ -160,7 +162,7 @@ function EditSubscriberCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{subscriber.Email}</CardTitle>
+        <CardTitle>{subscriber.email}</CardTitle>
       </CardHeader>
       <CardContent>
         <form
@@ -189,7 +191,10 @@ function EditSubscriberCard({
             )}
           </form.Field>
           <FormField label={t("edit.state")}>
-            <Select value={state} onValueChange={setState}>
+            <Select
+              value={state}
+              onValueChange={(v) => setState(v as Subscriber["state"])}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -231,17 +236,17 @@ function MembershipsCard({
 }: {
   slug: string
   subscriber: Subscriber
-  lists: Array<{ ID: string; Name: string }>
+  lists: Array<{ id: string; name: string }>
   onChanged: () => void
 }) {
   const { t } = useTranslation("subscribers")
   const [addListId, setAddListId] = useState("")
   const listName = (id: string) =>
-    lists.find((l) => l.ID === id)?.Name ?? id
+    lists.find((l) => l.id === id)?.name ?? id
 
   const addTo = useMutation({
     mutationFn: (listId: string) =>
-      api.addToList(slug, subscriber.ID, listId),
+      api.addToList(slug, subscriber.id, listId),
     onSuccess: () => {
       toast.success(t("memberships.addSuccess"))
       setAddListId("")
@@ -252,7 +257,7 @@ function MembershipsCard({
 
   const removeFrom = useMutation({
     mutationFn: (listId: string) =>
-      api.removeFromList(slug, subscriber.ID, listId),
+      api.removeFromList(slug, subscriber.id, listId),
     onSuccess: () => {
       toast.success(t("memberships.removeSuccess"))
       onChanged()
@@ -262,7 +267,7 @@ function MembershipsCard({
 
   const changeStatus = useMutation({
     mutationFn: (v: { listId: string; status: string }) =>
-      api.changeSubscription(slug, subscriber.ID, v.listId, v.status),
+      api.changeSubscription(slug, subscriber.id, v.listId, v.status),
     onSuccess: () => {
       toast.success(t("memberships.statusSuccess"))
       onChanged()
@@ -270,8 +275,8 @@ function MembershipsCard({
     onError: (e) => toast.error(errorMessage(e)),
   })
 
-  const memberListIds = new Set(subscriber.Memberships.map((m) => m.ListID))
-  const available = lists.filter((l) => !memberListIds.has(l.ID))
+  const memberListIds = new Set(subscriber.memberships.map((m) => m.listId))
+  const available = lists.filter((l) => !memberListIds.has(l.id))
 
   return (
     <Card>
@@ -279,24 +284,24 @@ function MembershipsCard({
         <CardTitle>{t("memberships.title")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {subscriber.Memberships.length === 0 ? (
+        {subscriber.memberships.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {t("memberships.empty")}
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            {subscriber.Memberships.map((m) => (
+            {subscriber.memberships.map((m) => (
               <div
-                key={m.ListID}
+                key={m.listId}
                 className="flex items-center gap-2 rounded-lg border p-2"
               >
                 <span className="flex-1 text-sm font-medium">
-                  {listName(m.ListID)}
+                  {listName(m.listId)}
                 </span>
                 <Select
-                  value={m.Status}
+                  value={m.status}
                   onValueChange={(status) =>
-                    changeStatus.mutate({ listId: m.ListID, status })
+                    changeStatus.mutate({ listId: m.listId, status })
                   }
                 >
                   <SelectTrigger className="w-40">
@@ -317,7 +322,7 @@ function MembershipsCard({
                   variant="ghost"
                   size="icon-sm"
                   aria-label={t("memberships.removeFromList")}
-                  onClick={() => removeFrom.mutate(m.ListID)}
+                  onClick={() => removeFrom.mutate(m.listId)}
                 >
                   <XIcon />
                 </Button>
@@ -335,8 +340,8 @@ function MembershipsCard({
               <SelectContent>
                 <SelectGroup>
                   {available.map((l) => (
-                    <SelectItem key={l.ID} value={l.ID}>
-                      {l.Name}
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -353,8 +358,8 @@ function MembershipsCard({
         )}
 
         <p className="text-xs text-muted-foreground">
-          <Badge variant="secondary">{subscriber.Memberships.length}</Badge>{" "}
-          {t("memberships.count", { count: subscriber.Memberships.length })}
+          <Badge variant="secondary">{subscriber.memberships.length}</Badge>{" "}
+          {t("memberships.count", { count: subscriber.memberships.length })}
         </p>
       </CardContent>
     </Card>

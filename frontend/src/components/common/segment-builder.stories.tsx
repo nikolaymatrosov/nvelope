@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { expect, fn, userEvent } from "storybook/test"
 import { SegmentBuilder, emptyGroup } from "./segment-builder"
-import type { Node } from "@/lib/api-types"
+import type { SegmentNode } from "@/lib/api-types"
 import type { Meta, StoryObj } from "@storybook/react-vite"
 
 // Stateful harness so added/removed conditions round-trip through the recursive
@@ -10,10 +10,10 @@ function Harness({
   initial,
   onChange,
 }: {
-  initial: Node
-  onChange?: (next: Node) => void
+  initial: SegmentNode
+  onChange?: (next: SegmentNode) => void
 }) {
-  const [value, setValue] = useState<Node>(initial)
+  const [value, setValue] = useState<SegmentNode>(initial)
   return (
     <SegmentBuilder
       value={value}
@@ -25,15 +25,15 @@ function Harness({
   )
 }
 
-const populated: Node = {
-  Conj: "or",
-  Children: [
-    { Field: { Field: "name", Op: "contains", Value: "ann" } },
+const populated: SegmentNode = {
+  conj: "or",
+  children: [
+    { field: { field: "name", op: "contains", value: "ann" } },
     {
-      Conj: "and",
-      Children: [
-        { Field: { Field: "state", Op: "eq", Value: "subscribed" } },
-        { Attr: { Key: "plan", Op: "eq", Value: "pro" } },
+      conj: "and",
+      children: [
+        { field: { field: "state", op: "eq", value: "confirmed" } },
+        { attr: { key: "plan", op: "eq", value: "pro" } },
       ],
     },
   ],
@@ -72,11 +72,11 @@ export const AddCondition: Story = {
     )
     await expect(args.onChange).toHaveBeenCalled()
     const next = args.onChange.mock.calls[0][0]
-    await expect(next.Children).toHaveLength(1)
-    await expect(next.Children?.[0].Field).toEqual({
-      Field: "email",
-      Op: "eq",
-      Value: "",
+    await expect(next.children).toHaveLength(1)
+    await expect(next.children?.[0].field).toEqual({
+      field: "email",
+      op: "eq",
+      value: "",
     })
   },
 }
@@ -86,8 +86,8 @@ export const RemoveCondition: Story = {
   render: (args) => (
     <Harness
       initial={{
-        Conj: "and",
-        Children: [{ Field: { Field: "email", Op: "eq", Value: "a@b.com" } }],
+        conj: "and",
+        children: [{ field: { field: "email", op: "eq", value: "a@b.com" } }],
       }}
       onChange={args.onChange}
     />
@@ -98,6 +98,6 @@ export const RemoveCondition: Story = {
     )
     await expect(args.onChange).toHaveBeenCalled()
     const next = args.onChange.mock.calls[0][0]
-    await expect(next.Children).toHaveLength(0)
+    await expect(next.children).toHaveLength(0)
   },
 }

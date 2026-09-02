@@ -19,16 +19,16 @@ function wrapper() {
   )
 }
 
-const job = (status: string) => ({
-  ID: "job-1",
-  Kind: "import",
-  Status: status,
-  FileName: "people.csv",
-  CreatedCount: 0,
-  UpdatedCount: 0,
-  FailedCount: 0,
-  RowCount: 0,
-  Failures: [],
+const job = (status: "pending" | "running" | "completed" | "failed") => ({
+  id: "job-1",
+  kind: "import" as const,
+  status,
+  fileName: "people.csv",
+  createdCount: 0,
+  updatedCount: 0,
+  failedCount: 0,
+  rowCount: 0,
+  failures: [],
 })
 
 afterEach(() => vi.clearAllMocks())

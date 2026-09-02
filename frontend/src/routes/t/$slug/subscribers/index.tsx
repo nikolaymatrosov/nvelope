@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PlusIcon, SearchIcon } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
-import type { Node, Subscriber } from "@/lib/api-types"
+import type { SegmentNode, Subscriber } from "@/lib/api-types"
 import type { ColumnDef } from "@/components/common/data-table"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -39,23 +39,23 @@ export const Route = createFileRoute("/t/$slug/subscribers/")({
 function useSubscriberColumns(): Array<ColumnDef<Subscriber, unknown>> {
   const { t } = useTranslation("subscribers")
   return [
-    { accessorKey: "Email", header: t("list.columns.email") },
+    { accessorKey: "email", header: t("list.columns.email") },
     {
-      accessorKey: "Name",
+      accessorKey: "name",
       header: t("list.columns.name"),
-      cell: ({ row }) => row.original.Name || "—",
+      cell: ({ row }) => row.original.name || "—",
     },
     {
-      accessorKey: "State",
+      accessorKey: "state",
       header: t("list.columns.state"),
       cell: ({ row }) => (
-        <Badge variant="secondary">{row.original.State}</Badge>
+        <Badge variant="secondary">{row.original.state}</Badge>
       ),
     },
     {
       id: "lists",
       header: t("list.columns.lists"),
-      cell: ({ row }) => row.original.Memberships.length,
+      cell: ({ row }) => row.original.memberships.length,
     },
   ]
 }
@@ -147,16 +147,16 @@ function SearchPanel({ slug }: { slug: string }) {
         {(data) => (
           <DataTable
             columns={columns}
-            rows={data.subscribers}
+            rows={data.items}
             total={data.total}
             limit={limit}
             offset={offset}
             onPageChange={setOffset}
-            getRowId={(row) => row.ID}
+            getRowId={(row) => row.id}
             onRowClick={(row) =>
               navigate({
                 to: "/t/$slug/subscribers/$id",
-                params: { slug, id: row.ID },
+                params: { slug, id: row.id },
               })
             }
           />
@@ -170,15 +170,15 @@ function SegmentPanel({ slug }: { slug: string }) {
   const navigate = useNavigate()
   const { t } = useTranslation("subscribers")
   const columns = useSubscriberColumns()
-  const [draft, setDraft] = useState<Node>(emptyGroup())
-  const [active, setActive] = useState<Node | null>(null)
+  const [draft, setDraft] = useState<SegmentNode>(emptyGroup())
+  const [active, setActive] = useState<SegmentNode | null>(null)
   const [offset, setOffset] = useState(0)
   const limit = DEFAULT_PAGE_SIZE
 
   const segmentQuery = useQuery({
     queryKey: queryKeys.subscribersQuery(slug, active, { limit, offset }),
     queryFn: async () =>
-      (await api.querySubscribers(slug, active as Node, { limit, offset })).data,
+      (await api.querySubscribers(slug, active as SegmentNode, { limit, offset })).data,
     enabled: active !== null,
   })
 
@@ -209,16 +209,16 @@ function SegmentPanel({ slug }: { slug: string }) {
               </p>
               <DataTable
                 columns={columns}
-                rows={data.subscribers}
+                rows={data.items}
                 total={data.total}
                 limit={limit}
                 offset={offset}
                 onPageChange={setOffset}
-                getRowId={(row) => row.ID}
+                getRowId={(row) => row.id}
                 onRowClick={(row) =>
                   navigate({
                     to: "/t/$slug/subscribers/$id",
-                    params: { slug, id: row.ID },
+                    params: { slug, id: row.id },
                   })
                 }
               />
@@ -249,7 +249,7 @@ function CreateSubscriberDialog({
   const listsQuery = useQuery({
     queryKey: queryKeys.lists(slug),
     queryFn: async () =>
-      (await api.listLists(slug, { limit: 100, offset: 0 })).data.lists,
+      (await api.listLists(slug, { limit: 100, offset: 0 })).data.items,
     enabled: open,
   })
 
@@ -259,7 +259,7 @@ function CreateSubscriberDialog({
         email: v.email.trim(),
         name: v.name.trim(),
         attributes,
-        list_ids: listIds,
+        listIds,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -359,20 +359,20 @@ function CreateSubscriberDialog({
               <div className="flex flex-col gap-2 rounded-lg border p-3">
                 {listsQuery.data.map((list) => (
                   <label
-                    key={list.ID}
+                    key={list.id}
                     className="flex items-center gap-2 text-sm"
                   >
                     <Checkbox
-                      checked={listIds.includes(list.ID)}
+                      checked={listIds.includes(list.id)}
                       onCheckedChange={(checked) =>
                         setListIds((prev) =>
                           checked
-                            ? [...prev, list.ID]
-                            : prev.filter((x) => x !== list.ID),
+                            ? [...prev, list.id]
+                            : prev.filter((x) => x !== list.id),
                         )
                       }
                     />
-                    {list.Name}
+                    {list.name}
                   </label>
                 ))}
               </div>
