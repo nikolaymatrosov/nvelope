@@ -567,6 +567,41 @@ Run against `ydbplatform/local-ydb:26.3.1.23` while planning the auth port.
   rows and no error for a missing one.
 - `QueryRow` on zero rows: `errors.Is(err, query.ErrNoRows)` is true.
 
+### Plan B3 planning spike
+
+Run against `ydbplatform/local-ydb:26.3.1.23` while planning the tenant port,
+on tables with the planned `000004_tenant` columns (`role`, `status`, `name`
+and `timezone` are accepted as column names). Five passing runs; one more run
+hung and one failed with `No such container` while Ryuk was reaping the
+previous run's container (environmental).
+
+- `FROM a AS m JOIN b AS u ON u.id = m.user_id WHERE m.tenant_id = $t`:
+  PASS. Joined columns (`u.id, u.email, u.name, m.role`) scan by position.
+- `JOIN` with a `VIEW` on the left side
+  (`FROM a VIEW idx AS m JOIN b AS t ON t.id = m.tenant_id`): PASS.
+- `ORDER BY m.created_at` on a left-side column that is not in the
+  projection: PASS, in both joins.
+- `UPSERT INTO ... VALUES (...)` twice on one key: PASS (one row, holding the
+  second write's values).
+- `UPDATE ... WHERE <key> AND <guard> RETURNING id` through `tx.QueryRow`
+  inside `DoTx`: one row when the guard matches. When it does not match,
+  including for another tenant's id, there are zero rows and
+  `errors.Is(err, query.ErrNoRows)` is true. Returning an error from the
+  closure after an earlier `INSERT` rolls that `INSERT` back, and `errors.Is`
+  matches the closure's error on what `DoTx` returns.
+- `VIEW` on a `GLOBAL UNIQUE SYNC` `token_hash` index with extra `status` and
+  `expires_at > CurrentUtcTimestamp()` predicates: PASS.
+- SELECT-then-INSERT inside `DoTx` for a membership that already exists: no
+  conflict, and the existing role is kept.
+- Pending-invitation uniqueness without a partial index. Eight concurrent
+  `DoTx` closures ran, each doing
+  `SELECT ... WHERE tenant_id = $t AND email_key = $k AND status = "pending"u LIMIT 1`
+  and an `INSERT` when no row came back, on a table keyed `(tenant_id, id)`.
+  In every run exactly one inserted. The other seven were aborted by the
+  serializable conflict, retried by the SDK (one retry each), and then saw the
+  pending row. No `PRECONDITION_FAILED` occurred, and exactly one pending row
+  remained.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -585,6 +620,10 @@ These are known limits, marked in code with `ponytail:` comments.
   `dbtest_ddl_probe` tables, so tests must not assert an exact table set.
 - One worker invocation runs one job (batch size 1). Throughput scales through
   container instances, not batching.
+- YDB has no partial index, so the pending-invitation check
+  (`YDBInvitations.Create`) reads every invitation row of the tenant, whatever
+  its status. That is fine for one organisation's invitation history. The
+  upgrade path is a `GLOBAL SYNC` index on `(tenant_id, email_key)`.
 
 ## Implementation phasing
 
