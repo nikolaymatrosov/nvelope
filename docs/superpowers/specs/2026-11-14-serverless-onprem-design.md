@@ -122,8 +122,14 @@ Each container is built from an existing image. There are no new binaries.
 - One baseline YQL migration in `internal/db/ydbmigrations/000001_baseline.up.sql`
   covering the in-scope tables (about 38 of the 45). The 21-migration Postgres
   history is not replayed.
-- Runner: the `golang-migrate/v4` that is already installed (v4.19), with its
-  `ydb` database driver.
+- Runner: `golang-migrate` v4.19.1 has **no** `ydb` driver (checked during
+  planning). The default is a small in-repo runner:
+  - embedded `*.up.sql` files are applied in order with
+    `db.Query().Exec`;
+  - applied versions are recorded in a `schema_migrations` table.
+
+  If spike V4 shows that query-service `Exec` cannot run a multi-statement DDL
+  file, the fallback is `pressly/goose` v3.30.1, which has a `ydb` dialect.
 - **IDs are generated in Go** (`uuid.NewString()`, v4). Today 36 tables default
   to `gen_random_uuid()`, so pg adapters that depend on `RETURNING id` from a DB
   default must pass the ID explicitly in the YDB variant. Random keys spread
@@ -168,10 +174,12 @@ SaaS keeps the Redis implementations.
 - Every worker changes from `Work(ctx, *river.Job[T]) error` to
   `Work(ctx, args T) error`. Workers read nothing from `river.Job` except
   `Args` (verified).
-- `jobs.River[T]` is one generic wrapper that adapts such a worker to
-  `river.AddWorker` for SaaS.
-- `jobs.Snooze(d)` is a project-owned error. The River wrapper maps it to
-  `river.JobSnooze(d)`. The YMQ dispatcher maps it to a delayed re-send.
+- `jobs.AddWorker(workers, w)` is one generic wrapper that registers such a
+  worker with River for SaaS. It mirrors the signature of `river.AddWorker`.
+- Snooze stays `river.JobSnooze(d)`. It returns `*rivertype.JobSnoozeError`,
+  which River already understands. The YMQ dispatcher detects it with
+  `errors.As` and turns it into a delayed re-send. A project-owned snooze type
+  would add a mapping layer and buy nothing.
 - This step changes no behavior and lands first, independently.
 
 ### YMQ enqueuer
@@ -188,9 +196,24 @@ SaaS keeps the Redis implementations.
 - Client: `aws-sdk-go-v2/service/sqs` against the YMQ endpoint, using static
   access keys from Lockbox.
 - **`UniqueOpts{ByArgs: true}` is not reproduced** (6 sites in `jobs.go`).
-  Standard YMQ queues rely on worker idempotency instead. The plan checks each
-  of the 6 kinds (V3). Any kind that is not idempotent gets a FIFO queue with
-  `MessageDeduplicationId = hash(kind, args)`.
+  Standard YMQ queues are used. V3 was resolved during planning:
+
+  | Kind | Serverless handling |
+  |------|---------------------|
+  | `billing.sweep`, `billing.charge`, `usage.rollup` | not wired (billing is out of scope) |
+  | `auth.verification_cleanup` | not wired (table TTL replaces it) |
+  | `analytics.refresh` | duplicates are harmless: an idempotent recompute, and the cron interval is far longer than one refresh |
+  | `domain.verify` via `EnqueueVerifyUnique` | **needs a debounce** (below) |
+
+  `domain.verify` needs the debounce because the sweep relies on uniqueness to
+  avoid stacking chains (`cmd/scheduler` `sweepPendingDomains`). Without it,
+  every sweep would start one more self-snoozing chain per pending domain.
+
+  The fix lands in Plan C, test-first: `VerifyWorker.Work` returns `nil`
+  without polling when
+  `now - LastCheckedAt <= interval/2`. Of any two chains, one always exits at
+  its next run, so exactly one survives. SaaS behavior is unchanged, because
+  River's uniqueness already prevents the duplicate.
 
 ### `POST /jobs` (Message Queue trigger, batch size 1)
 
@@ -201,7 +224,7 @@ the container timeout minus a safety margin.
 | Outcome | Action | HTTP |
 |---------|--------|------|
 | `nil` | — (the trigger deletes the message) | 200 |
-| `jobs.Snooze(d)` | send a copy with `DelaySeconds = min(d, 900s)` and `not_before = now + d` | 200 |
+| `*rivertype.JobSnoozeError{Duration: d}` (from `river.JobSnooze`) | send a copy with `DelaySeconds = min(d, 900s)` and `not_before = now + d` | 200 |
 | `not_before` in the future | re-send with the remaining delay, capped at 900 s | 200 |
 | any other error, unknown `kind`, undecodable body | log with kind and args | 500 → redelivered after the visibility timeout, then DLQ |
 
@@ -211,6 +234,13 @@ Each route enqueues the same jobs `cmd/scheduler` enqueues today:
 
 - `domain-verify-sweep`
 - `analytics-refresh` for the single tenant
+
+`cmd/scheduler` selects pending domains and active tenants with raw SQL on the
+pool (`sweepPendingDomains`, `enqueueAnalyticsRefresh`). The cron handlers need
+the same reads as small YDB queries; they land in Plan C.
+
+The campaign workers already accept `nil` for the billing ports `quota` and
+`usage` ("a deployment without billing"), so serverless wiring passes `nil`.
 
 Billing sweep, usage rollup and verification cleanup are not wired: billing is
 out of scope, and TTL replaces the cleanup.
@@ -286,7 +316,7 @@ Migrations:
 - A `terraform_data` resource, re-triggered on `image_tag` change, runs a
   local-exec that calls the private `worker POST /admin/migrate` with a
   `yc iam create-token` bearer token. The operator therefore needs `yc`.
-- `/admin/migrate` runs `golang-migrate up` against YDB and is idempotent.
+- `/admin/migrate` runs the YDB migration runner and is idempotent.
 
 Upgrade: bump `image_tag`, then `terraform apply`.
 
@@ -318,18 +348,27 @@ by release version.
 These are spikes. Each can change one detail of this design, but none changes
 its shape.
 
-- **V1** YQL `ILIKE` availability in serverless YDB. Fallback: an
-  `email_lower` column.
-- **V2** `yandex` Terraform provider support for Postbox resources and for the
-  YDB topic consumer used by the Data Streams trigger.
-- **V3** Idempotency of each of the 6 `ByArgs`-unique job kinds. Whether
-  Message Queue triggers accept FIFO queues, in case a FIFO queue is needed.
-- **V4** That `golang-migrate`'s `ydb` driver handles the baseline DDL,
-  including TTL and unique indexes. Fallback: run plain DDL through `ydb-go-sdk`
-  in `/admin/migrate`.
-- **V5** Serverless YDB per-query limits (result rows, duration) for export and
-  recipient resolution. Page through results where needed.
-- **V6** Transaction closure audit: all 129 sites are retry-safe.
+- **V1** YQL `ILIKE` availability in YDB. Fallback: an `email_lower`
+  column. *(Plan A spike against local YDB.)*
+- **V2** `yandex` Terraform provider support for Postbox resources, for
+  `yandex_ydb_topic`, and for Message Queue, timer and Data Streams triggers
+  that target a Serverless Container. *(Plan A docs check.)*
+- **V3** Resolved during planning. See the table under "YMQ enqueuer".
+- **V4** Whether query-service `Exec` runs one multi-statement DDL file with a
+  TTL table and a `GLOBAL UNIQUE SYNC` index, plus `RETURNING` and
+  `CurrentUtcTimestamp()`. `golang-migrate` has no `ydb` driver, so this
+  decides between the in-repo runner and `goose`. *(Plan A spike against local
+  YDB.)*
+- **V5** Serverless YDB per-query limits (result rows, duration, transaction
+  size) for export and recipient resolution. Page through results where
+  needed. *(Plan A docs check.)*
+- **V6** Retry-safety audit. Two sets of closures are checked:
+  - every closure passed to a repository `Update*` method outside the pg
+    adapters (about 40 sites, in `*/app/command` and `*_worker.go`);
+  - the bodies of the 129 `WithTenant` closures in the pg adapters, for any
+    non-`tx` side effect.
+
+  *(Plan A audit.)*
 
 ## Ceilings
 
@@ -349,13 +388,16 @@ These are known limits, marked in code with `ponytail:` comments.
 
 The plan is split into three plans. Each one merges to `main` on its own.
 
-- **Plan A: SaaS-safe groundwork.** V1–V6 spikes; worker decoupling
-  (`Work(ctx, args)`, `jobs.River[T]`, `jobs.Snooze`); the contract-test
-  harness, with pg only and no behavior change.
-- **Plan B: YDB adapters.** `ydbtx`, the baseline schema, then per-context
-  adapters in this order: tenant, iam, auth, audience, sending, campaign,
-  deliverability, media. Each context switches on the `ydb` leg of its contract
-  suite. Then `ydbthrottle`.
+- **Plan A: SaaS-safe groundwork.** Worker decoupling (`Work(ctx, args)`,
+  `jobs.AddWorker`); the `dbtest.YDB` local-YDB test container; the V1, V2, V4,
+  V5 and V6 spikes and audit, with findings recorded in this spec.
+- **Plan B: YDB adapters.** `ydbtx`, the migration runner and baseline schema,
+  then per-context adapters in this order: sending, tenant, iam, auth,
+  audience, campaign, deliverability, media. Each context converts its
+  `*_pg_test.go` into a pg+ydb contract suite in the same task that adds its
+  YDB adapter. The harness shape is fixed by the first context (sending, the
+  smallest). Building it earlier, with only one implementation, would be a
+  speculative abstraction. Then `ydbthrottle`.
 - **Plan C: Serverless runtime and packaging.** YMQ enqueuer; `/jobs`, `/cron`,
   `/feedback` and `/admin/migrate`; the serverless composition root;
   single-tenant bootstrap; `/api/platform/config` and the frontend flags; the
