@@ -14,6 +14,10 @@ import (
 )
 
 // Window is one fixed-window allowance: at most Max hits on Key per Size.
+// A given Key must always be used with a single Size: rows are keyed by
+// (throttle_key, window_start), so a second size whose window starts coincide
+// would share the row, and a shorter size would shorten expire_at and let TTL
+// delete it early.
 type Window struct {
 	Key  string
 	Max  int
@@ -61,7 +65,7 @@ func (c *Counter) Allow(ctx context.Context, windows ...Window) (allowed bool, r
 	}
 	for _, w := range windows {
 		if w.Key == "" || w.Max <= 0 || w.Size <= 0 {
-			return false, 0, fmt.Errorf("ydbthrottle: invalid window %+v: key, max and size are required", w)
+			return false, 0, errors.New("ydbthrottle: invalid window: key, max and size are required")
 		}
 	}
 	now := c.now().UTC()
@@ -95,7 +99,7 @@ func (c *Counter) Allow(ctx context.Context, windows ...Window) (allowed bool, r
 				Param("$hits").Uint64(hits[i]+1).
 				Param("$expire_at").Timestamp(start.Add(w.Size)).
 				Build())); err != nil {
-				return fmt.Errorf("ydbthrottle: counting a hit on %q: %w", w.Key, err)
+				return fmt.Errorf("ydbthrottle: counting a hit: %w", err)
 			}
 		}
 		return nil
@@ -117,11 +121,11 @@ func readHits(ctx context.Context, tx query.TxActor, key string, start time.Time
 		return 0, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("ydbthrottle: reading %q: %w", key, err)
+		return 0, fmt.Errorf("ydbthrottle: reading hits: %w", err)
 	}
 	var n uint64
 	if err := row.Scan(&n); err != nil {
-		return 0, fmt.Errorf("ydbthrottle: scanning %q: %w", key, err)
+		return 0, fmt.Errorf("ydbthrottle: scanning hits: %w", err)
 	}
 	return n, nil
 }
