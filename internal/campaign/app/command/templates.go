@@ -21,26 +21,32 @@ type CreateTemplate struct {
 // CreateTemplateResult carries the new template's id.
 type CreateTemplateResult struct {
 	TemplateID string
+	Warnings   []domain.RenderWarning
 }
 
 // CreateTemplateHandler handles the CreateTemplate command.
 type CreateTemplateHandler struct {
 	templates domain.TemplateRepository
+	policy    RawHTMLPolicy
 }
 
 // NewCreateTemplateHandler builds the handler, failing fast on a nil dependency.
-func NewCreateTemplateHandler(templates domain.TemplateRepository) CreateTemplateHandler {
-	if templates == nil {
-		panic("nil template repository")
+func NewCreateTemplateHandler(templates domain.TemplateRepository, policy RawHTMLPolicy) CreateTemplateHandler {
+	if templates == nil || policy == nil {
+		panic("nil dependency")
 	}
-	return CreateTemplateHandler{templates: templates}
+	return CreateTemplateHandler{templates: templates, policy: policy}
 }
 
 // Handle validates the request through the domain constructor and persists the
 // new template.
 func (h CreateTemplateHandler) Handle(ctx context.Context, cmd CreateTemplate) (CreateTemplateResult, error) {
+	bodyHTML, warnings, err := applyRawHTMLPolicy(ctx, h.policy, cmd.TenantID, cmd.BodyHTML)
+	if err != nil {
+		return CreateTemplateResult{}, err
+	}
 	tpl, err := domain.NewTemplate(cmd.TenantID, cmd.Name, domain.Kind(cmd.Kind),
-		cmd.Subject, cmd.BodyHTML, cmd.BodyText)
+		cmd.Subject, bodyHTML, cmd.BodyText)
 	if err != nil {
 		return CreateTemplateResult{}, err
 	}
@@ -48,7 +54,7 @@ func (h CreateTemplateHandler) Handle(ctx context.Context, cmd CreateTemplate) (
 	if err != nil {
 		return CreateTemplateResult{}, err
 	}
-	return CreateTemplateResult{TemplateID: id}, nil
+	return CreateTemplateResult{TemplateID: id, Warnings: warnings}, nil
 }
 
 // UpdateTemplate is the request to change a template's name and content.
@@ -61,25 +67,39 @@ type UpdateTemplate struct {
 	BodyText   string
 }
 
+// UpdateTemplateResult carries the sanitizer's warnings for the saved body.
+type UpdateTemplateResult struct {
+	Warnings []domain.RenderWarning
+}
+
 // UpdateTemplateHandler handles the UpdateTemplate command.
 type UpdateTemplateHandler struct {
 	templates domain.TemplateRepository
+	policy    RawHTMLPolicy
 }
 
 // NewUpdateTemplateHandler builds the handler, failing fast on a nil dependency.
-func NewUpdateTemplateHandler(templates domain.TemplateRepository) UpdateTemplateHandler {
-	if templates == nil {
-		panic("nil template repository")
+func NewUpdateTemplateHandler(templates domain.TemplateRepository, policy RawHTMLPolicy) UpdateTemplateHandler {
+	if templates == nil || policy == nil {
+		panic("nil dependency")
 	}
-	return UpdateTemplateHandler{templates: templates}
+	return UpdateTemplateHandler{templates: templates, policy: policy}
 }
 
-// Handle applies the new template content inside the tenant-bound transaction.
-func (h UpdateTemplateHandler) Handle(ctx context.Context, cmd UpdateTemplate) error {
-	return h.templates.Update(ctx, cmd.TenantID, cmd.TemplateID,
+// Handle sanitizes the raw body per the tenant's policy and applies the new
+// template content inside the tenant-bound transaction.
+func (h UpdateTemplateHandler) Handle(ctx context.Context, cmd UpdateTemplate) (UpdateTemplateResult, error) {
+	bodyHTML, warnings, err := applyRawHTMLPolicy(ctx, h.policy, cmd.TenantID, cmd.BodyHTML)
+	if err != nil {
+		return UpdateTemplateResult{}, err
+	}
+	if err := h.templates.Update(ctx, cmd.TenantID, cmd.TemplateID,
 		func(tpl *domain.Template) (*domain.Template, error) {
-			return tpl, tpl.Recompose(cmd.Name, cmd.Subject, cmd.BodyHTML, cmd.BodyText)
-		})
+			return tpl, tpl.Recompose(cmd.Name, cmd.Subject, bodyHTML, cmd.BodyText)
+		}); err != nil {
+		return UpdateTemplateResult{}, err
+	}
+	return UpdateTemplateResult{Warnings: warnings}, nil
 }
 
 // DeleteTemplate is the request to remove a template.

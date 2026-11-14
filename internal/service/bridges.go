@@ -9,6 +9,7 @@ import (
 	audiencedomain "github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	authdomain "github.com/nikolaymatrosov/nvelope/internal/auth/domain"
 	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
+	campaigncommand "github.com/nikolaymatrosov/nvelope/internal/campaign/app/command"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
 	tenantdomain "github.com/nikolaymatrosov/nvelope/internal/tenant/domain"
@@ -310,3 +311,25 @@ var _ authdomain.ResendThrottle = allowAllResendThrottle{}
 
 // Allow always admits the resend.
 func (allowAllResendThrottle) Allow(context.Context, string) (bool, error) { return true, nil }
+
+// rawHTMLPolicy adapts the tenant context's settings to the campaign
+// context's RawHTMLPolicy port.
+type rawHTMLPolicy struct {
+	settings tenantdomain.SettingsRepository
+}
+
+var _ campaigncommand.RawHTMLPolicy = (*rawHTMLPolicy)(nil)
+
+// NewRawHTMLPolicy builds the bridge over the tenant settings repository.
+func NewRawHTMLPolicy(settings tenantdomain.SettingsRepository) *rawHTMLPolicy {
+	return &rawHTMLPolicy{settings: settings}
+}
+
+// SanitizesRawHTML reports whether the tenant keeps raw-HTML sanitization on.
+func (p *rawHTMLPolicy) SanitizesRawHTML(ctx context.Context, tenantID string) (bool, error) {
+	s, err := p.settings.Get(ctx, tenantID)
+	if err != nil {
+		return false, err
+	}
+	return s.RawHTMLSanitization() != tenantdomain.RawHTMLOff, nil
+}

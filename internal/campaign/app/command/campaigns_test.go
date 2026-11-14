@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,7 +27,7 @@ func TestCreateCampaignInheritsTemplateContent(t *testing.T) {
 	templates := newFakeTemplateRepo()
 	tplID := seedTemplate(t, templates, domain.KindCampaign)
 
-	h := command.NewCreateCampaignHandler(campaigns, templates)
+	h := command.NewCreateCampaignHandler(campaigns, templates, fakeRawHTMLPolicy{sanitize: true})
 	res, err := h.Handle(context.Background(), command.CreateCampaign{
 		TenantID: "tenant-1", Name: "Spring", TemplateID: tplID,
 		FromName: "Acme", FromLocalPart: "news", SendingDomainID: "dom-1",
@@ -46,7 +47,7 @@ func TestCreateCampaignRejectsTransactionalTemplate(t *testing.T) {
 	templates := newFakeTemplateRepo()
 	tplID := seedTemplate(t, templates, domain.KindTransactional)
 
-	h := command.NewCreateCampaignHandler(campaigns, templates)
+	h := command.NewCreateCampaignHandler(campaigns, templates, fakeRawHTMLPolicy{sanitize: true})
 	_, err := h.Handle(context.Background(), command.CreateCampaign{
 		TenantID: "tenant-1", Name: "Spring", TemplateID: tplID,
 		FromName: "Acme", FromLocalPart: "news", SendingDomainID: "dom-1",
@@ -151,11 +152,12 @@ func TestUpdateCampaignDraftOnly(t *testing.T) {
 	campaigns := newFakeCampaignRepo()
 	id := addDraftCampaign(t, campaigns, "dom-1", []domain.Target{{ListID: "list-1"}})
 
-	h := command.NewUpdateCampaignHandler(campaigns)
-	require.NoError(t, h.Handle(context.Background(), command.UpdateCampaign{
+	h := command.NewUpdateCampaignHandler(campaigns, fakeRawHTMLPolicy{sanitize: true})
+	_, err := h.Handle(context.Background(), command.UpdateCampaign{
 		TenantID: "tenant-1", CampaignID: id, Name: "Renamed", Subject: "S",
 		BodyHTML: "<p>x</p>", FromName: "Acme", FromLocalPart: "news", SendingDomainID: "dom-1", ListIDs: []string{"list-1"},
-	}))
+	})
+	require.NoError(t, err)
 	require.Equal(t, "Renamed", campaigns.byID[id].Name())
 
 	// Start it, then editing must be rejected.
@@ -163,9 +165,64 @@ func TestUpdateCampaignDraftOnly(t *testing.T) {
 		&fakeCampaignEnqueuer{}).Handle(context.Background(),
 		command.StartCampaign{TenantID: "tenant-1", CampaignID: id}))
 
-	err := h.Handle(context.Background(), command.UpdateCampaign{
+	_, err = h.Handle(context.Background(), command.UpdateCampaign{
 		TenantID: "tenant-1", CampaignID: id, Name: "Nope", Subject: "S",
 		BodyHTML: "<p>x</p>", FromName: "Acme", FromLocalPart: "news", SendingDomainID: "dom-1", ListIDs: []string{"list-1"},
 	})
 	require.ErrorIs(t, err, domain.ErrCampaignNotEditable)
+}
+
+func TestCreateCampaignSanitizesRawHTML(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	h := command.NewCreateCampaignHandler(campaigns, newFakeTemplateRepo(), fakeRawHTMLPolicy{sanitize: true})
+	res, err := h.Handle(context.Background(), command.CreateCampaign{
+		TenantID: "tenant-1", Name: "Spring",
+		BodyHTML: `<style>p{color:red}</style><p onclick="x()">Hi</p><script>alert(1)</script>`,
+	})
+	require.NoError(t, err)
+	stored := campaigns.byID[res.CampaignID].BodyHTML()
+	require.Contains(t, stored, "<style>p{color:red}</style>", "the standard level keeps style blocks")
+	require.NotContains(t, stored, "<script")
+	require.NotContains(t, stored, "onclick")
+	require.Len(t, res.Warnings, 1)
+}
+
+func TestCreateCampaignStoresRawHTMLVerbatimWhenOff(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	h := command.NewCreateCampaignHandler(campaigns, newFakeTemplateRepo(), fakeRawHTMLPolicy{sanitize: false})
+	body := `<p>Hi</p><script>alert(1)</script>`
+	res, err := h.Handle(context.Background(), command.CreateCampaign{
+		TenantID: "tenant-1", Name: "Spring", BodyHTML: body,
+	})
+	require.NoError(t, err)
+	require.Equal(t, body, campaigns.byID[res.CampaignID].BodyHTML())
+	require.Empty(t, res.Warnings)
+}
+
+func TestCreateCampaignFailsClosedWhenPolicyUnreadable(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	boom := errors.New("settings unavailable")
+	h := command.NewCreateCampaignHandler(campaigns, newFakeTemplateRepo(), fakeRawHTMLPolicy{err: boom})
+	_, err := h.Handle(context.Background(), command.CreateCampaign{
+		TenantID: "tenant-1", Name: "Spring", BodyHTML: "<p>x</p>",
+	})
+	require.ErrorIs(t, err, boom)
+	require.Empty(t, campaigns.byID, "nothing is stored")
+}
+
+func TestUpdateCampaignSanitizesRawHTML(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	id := addDraftCampaign(t, campaigns, "dom-1", nil)
+	h := command.NewUpdateCampaignHandler(campaigns, fakeRawHTMLPolicy{sanitize: true})
+	res, err := h.Handle(context.Background(), command.UpdateCampaign{
+		TenantID: "tenant-1", CampaignID: id, Name: "N", Subject: "S",
+		BodyHTML: `<p>ok</p><iframe src="https://evil.example"></iframe>`,
+	})
+	require.NoError(t, err)
+	require.NotContains(t, campaigns.byID[id].BodyHTML(), "<iframe")
+	require.Len(t, res.Warnings, 1)
 }

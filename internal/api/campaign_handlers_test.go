@@ -366,3 +366,33 @@ func extractAttr(t *testing.T, html, prefix string) string {
 	require.Greater(t, end, 0)
 	return rest[:end]
 }
+
+func TestRawCampaignHTMLIsSanitizedOnSave(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, body := ts.request(http.MethodPost, base+"/campaigns", map[string]any{
+		"name": "Spring", "subject": "S", "list_ids": []string{},
+		"body_html": `<style>p{color:red}</style><p>Hi</p><script>fetch("/t/x/api/users")</script>`,
+	})
+	require.Equal(t, http.StatusCreated, status)
+	require.NotContains(t, body["body_html"], "<script")
+	require.Contains(t, body["body_html"], "<style>p{color:red}</style>")
+	require.NotEmpty(t, body["warnings"], "the caller learns what was stripped")
+
+	// With sanitization off (risk accepted) the same kind of body is stored verbatim.
+	status, _ = ts.request(http.MethodPut, base+"/settings/raw-html-sanitization",
+		map[string]any{"level": "off", "accept_risk": true})
+	require.Equal(t, http.StatusOK, status)
+	raw := `<p>Hi</p><script>alert(1)</script>`
+	status, body = ts.request(http.MethodPost, base+"/campaigns", map[string]any{
+		"name": "Raw", "subject": "S", "list_ids": []string{}, "body_html": raw,
+	})
+	require.Equal(t, http.StatusCreated, status)
+	require.Equal(t, raw, body["body_html"])
+	require.Nil(t, body["warnings"])
+}

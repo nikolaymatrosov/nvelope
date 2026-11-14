@@ -160,3 +160,13 @@ func (e *fakeCampaignEnqueuer) EnqueueStart(_ context.Context, _, campaignID str
 	e.starts = append(e.starts, campaignID)
 	return nil
 }
+
+// fakeRawHTMLPolicy is a RawHTMLPolicy with a fixed answer.
+type fakeRawHTMLPolicy struct {
+	sanitize bool
+	err      error
+}
+
+func (p fakeRawHTMLPolicy) SanitizesRawHTML(context.Context, string) (bool, error) {
+	return p.sanitize, p.err
+}

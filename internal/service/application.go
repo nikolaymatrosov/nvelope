@@ -444,6 +444,7 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 	// to PUT /campaigns/{id}/visual and the save command revalidates the doc
 	// against the merged subscriber-field slug set before sanitizing + persisting.
 	fields := fieldsProvider{repo: audienceadapters.NewFields(pool)}
+	rawPolicy := NewRawHTMLPolicy(tenantadapters.NewSettings(pool))
 	mediaRefs := tenantMediaRefValidator{prefix: cfg.ObjectStoragePublicBaseURL}
 
 	riverClient, err := jobs.NewInsertOnlyClient(pool)
@@ -492,15 +493,15 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 	app := campaignapp.Application{
 		Commands: campaignapp.Commands{
 			CreateTemplate: decorator.ApplyResultCommandDecorators(
-				campaigncommand.NewCreateTemplateHandler(templates), "CreateTemplate", logger),
-			UpdateTemplate: decorator.ApplyCommandDecorators(
-				campaigncommand.NewUpdateTemplateHandler(templates), "UpdateTemplate", logger),
+				campaigncommand.NewCreateTemplateHandler(templates, rawPolicy), "CreateTemplate", logger),
+			UpdateTemplate: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewUpdateTemplateHandler(templates, rawPolicy), "UpdateTemplate", logger),
 			DeleteTemplate: decorator.ApplyCommandDecorators(
 				campaigncommand.NewDeleteTemplateHandler(templates), "DeleteTemplate", logger),
 			CreateCampaign: decorator.ApplyResultCommandDecorators(
-				campaigncommand.NewCreateCampaignHandler(campaigns, templates), "CreateCampaign", logger),
-			UpdateCampaign: decorator.ApplyCommandDecorators(
-				campaigncommand.NewUpdateCampaignHandler(campaigns), "UpdateCampaign", logger),
+				campaigncommand.NewCreateCampaignHandler(campaigns, templates, rawPolicy), "CreateCampaign", logger),
+			UpdateCampaign: decorator.ApplyResultCommandDecorators(
+				campaigncommand.NewUpdateCampaignHandler(campaigns, rawPolicy), "UpdateCampaign", logger),
 			StartCampaign: decorator.ApplyCommandDecorators(
 				campaigncommand.NewStartCampaignHandler(campaigns, lookup, enqueuer), "StartCampaign", logger),
 			PauseCampaign: decorator.ApplyCommandDecorators(

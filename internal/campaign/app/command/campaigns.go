@@ -35,21 +35,23 @@ type CreateCampaign struct {
 // CreateCampaignResult carries the new campaign's id.
 type CreateCampaignResult struct {
 	CampaignID string
+	Warnings   []domain.RenderWarning
 }
 
 // CreateCampaignHandler handles the CreateCampaign command.
 type CreateCampaignHandler struct {
 	campaigns domain.CampaignRepository
 	templates domain.TemplateRepository
+	policy    RawHTMLPolicy
 }
 
 // NewCreateCampaignHandler builds the handler, failing fast on a nil dependency.
 func NewCreateCampaignHandler(campaigns domain.CampaignRepository,
-	templates domain.TemplateRepository) CreateCampaignHandler {
-	if campaigns == nil || templates == nil {
+	templates domain.TemplateRepository, policy RawHTMLPolicy) CreateCampaignHandler {
+	if campaigns == nil || templates == nil || policy == nil {
 		panic("nil dependency")
 	}
-	return CreateCampaignHandler{campaigns: campaigns, templates: templates}
+	return CreateCampaignHandler{campaigns: campaigns, templates: templates, policy: policy}
 }
 
 // Handle inherits any omitted content from the origin template, validates the
@@ -82,6 +84,10 @@ func (h CreateCampaignHandler) Handle(ctx context.Context, cmd CreateCampaign) (
 		tplThemeJSON = tpl.ThemeJSON()
 	}
 
+	bodyHTML, warnings, err := applyRawHTMLPolicy(ctx, h.policy, cmd.TenantID, bodyHTML)
+	if err != nil {
+		return CreateCampaignResult{}, err
+	}
 	c, err := domain.NewCampaign(cmd.TenantID, cmd.Name, subject, bodyHTML, bodyText,
 		cmd.FromName, cmd.FromLocalPart, cmd.SendingDomainID, cmd.TemplateID, cmd.MaxSendErrors)
 	if err != nil {
@@ -99,7 +105,7 @@ func (h CreateCampaignHandler) Handle(ctx context.Context, cmd CreateCampaign) (
 			return CreateCampaignResult{}, err
 		}
 	}
-	return CreateCampaignResult{CampaignID: id}, nil
+	return CreateCampaignResult{CampaignID: id, Warnings: warnings}, nil
 }
 
 // buildTargets projects raw list ids and segment queries onto domain targets.
@@ -134,30 +140,44 @@ type UpdateCampaign struct {
 	Segments        [][]byte
 }
 
+// UpdateCampaignResult carries the sanitizer's warnings for the saved body.
+type UpdateCampaignResult struct {
+	Warnings []domain.RenderWarning
+}
+
 // UpdateCampaignHandler handles the UpdateCampaign command.
 type UpdateCampaignHandler struct {
 	campaigns domain.CampaignRepository
+	policy    RawHTMLPolicy
 }
 
 // NewUpdateCampaignHandler builds the handler, failing fast on a nil dependency.
-func NewUpdateCampaignHandler(campaigns domain.CampaignRepository) UpdateCampaignHandler {
-	if campaigns == nil {
-		panic("nil campaign repository")
+func NewUpdateCampaignHandler(campaigns domain.CampaignRepository, policy RawHTMLPolicy) UpdateCampaignHandler {
+	if campaigns == nil || policy == nil {
+		panic("nil dependency")
 	}
-	return UpdateCampaignHandler{campaigns: campaigns}
+	return UpdateCampaignHandler{campaigns: campaigns, policy: policy}
 }
 
-// Handle applies the new content to a draft campaign and replaces its targets.
-func (h UpdateCampaignHandler) Handle(ctx context.Context, cmd UpdateCampaign) error {
+// Handle sanitizes the raw body per the tenant's policy, applies the new
+// content to a draft campaign, and replaces its targets.
+func (h UpdateCampaignHandler) Handle(ctx context.Context, cmd UpdateCampaign) (UpdateCampaignResult, error) {
+	bodyHTML, warnings, err := applyRawHTMLPolicy(ctx, h.policy, cmd.TenantID, cmd.BodyHTML)
+	if err != nil {
+		return UpdateCampaignResult{}, err
+	}
 	if err := h.campaigns.Update(ctx, cmd.TenantID, cmd.CampaignID,
 		func(c *domain.Campaign) (*domain.Campaign, error) {
-			return c, c.Recompose(cmd.Name, cmd.Subject, cmd.BodyHTML, cmd.BodyText,
+			return c, c.Recompose(cmd.Name, cmd.Subject, bodyHTML, cmd.BodyText,
 				cmd.FromName, cmd.FromLocalPart, cmd.SendingDomainID)
 		}); err != nil {
-		return err
+		return UpdateCampaignResult{}, err
 	}
-	return h.campaigns.SaveTargets(ctx, cmd.TenantID, cmd.CampaignID,
-		buildTargets(cmd.ListIDs, cmd.Segments))
+	if err := h.campaigns.SaveTargets(ctx, cmd.TenantID, cmd.CampaignID,
+		buildTargets(cmd.ListIDs, cmd.Segments)); err != nil {
+		return UpdateCampaignResult{}, err
+	}
+	return UpdateCampaignResult{Warnings: warnings}, nil
 }
 
 // StartCampaign is the request to begin sending a campaign.

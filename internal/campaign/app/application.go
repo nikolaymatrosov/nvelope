@@ -17,10 +17,10 @@ type Application struct {
 // Commands gathers the campaign context's state-changing handlers.
 type Commands struct {
 	CreateTemplate    decorator.ResultCommandHandler[command.CreateTemplate, command.CreateTemplateResult]
-	UpdateTemplate    decorator.CommandHandler[command.UpdateTemplate]
+	UpdateTemplate    decorator.ResultCommandHandler[command.UpdateTemplate, command.UpdateTemplateResult]
 	DeleteTemplate    decorator.CommandHandler[command.DeleteTemplate]
 	CreateCampaign    decorator.ResultCommandHandler[command.CreateCampaign, command.CreateCampaignResult]
-	UpdateCampaign    decorator.CommandHandler[command.UpdateCampaign]
+	UpdateCampaign    decorator.ResultCommandHandler[command.UpdateCampaign, command.UpdateCampaignResult]
 	StartCampaign     decorator.CommandHandler[command.StartCampaign]
 	PauseCampaign     decorator.CommandHandler[command.PauseCampaign]
 	ResumeCampaign    decorator.CommandHandler[command.ResumeCampaign]

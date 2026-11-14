@@ -76,7 +76,7 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "create template", err)
 		return
 	}
-	s.respondTemplate(w, r, ws.ID, res.TemplateID, http.StatusCreated)
+	s.respondTemplate(w, r, ws.ID, res.TemplateID, http.StatusCreated, res.Warnings...)
 }
 
 func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
@@ -117,14 +117,15 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	if err := s.campaign.Commands.UpdateTemplate.Handle(r.Context(), campaigncommand.UpdateTemplate{
+	res, err := s.campaign.Commands.UpdateTemplate.Handle(r.Context(), campaigncommand.UpdateTemplate{
 		TenantID: ws.ID, TemplateID: chi.URLParam(r, "id"), Name: req.Name,
 		Subject: req.Subject, BodyHTML: req.BodyHTML, BodyText: req.BodyText,
-	}); err != nil {
+	})
+	if err != nil {
 		s.fail(w, r, "update template", err)
 		return
 	}
-	s.respondTemplate(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK)
+	s.respondTemplate(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK, res.Warnings...)
 }
 
 func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +143,8 @@ func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 // respondTemplate fetches and writes a template view.
-func (s *Server) respondTemplate(w http.ResponseWriter, r *http.Request, tenantID, id string, status int) {
+func (s *Server) respondTemplate(w http.ResponseWriter, r *http.Request, tenantID, id string, status int,
+	warnings ...campaigndomain.RenderWarning) {
 	view, err := s.campaign.Queries.GetTemplate.Handle(r.Context(), campaignquery.GetTemplate{
 		TenantID: tenantID, TemplateID: id,
 	})
@@ -150,7 +152,15 @@ func (s *Server) respondTemplate(w http.ResponseWriter, r *http.Request, tenantI
 		s.fail(w, r, "get template", err)
 		return
 	}
-	writeJSON(w, status, view)
+	if len(warnings) == 0 {
+		writeJSON(w, status, view)
+		return
+	}
+	// Embedding flattens the view, so warnings is an additive top-level key.
+	writeJSON(w, status, struct {
+		campaignquery.TemplateView
+		Warnings []campaigndomain.RenderWarning `json:"warnings"`
+	}{view, warnings})
 }
 
 func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +195,7 @@ func (s *Server) handleCreateCampaign(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "create campaign", err)
 		return
 	}
-	s.respondCampaign(w, r, ws.ID, res.CampaignID, http.StatusCreated)
+	s.respondCampaign(w, r, ws.ID, res.CampaignID, http.StatusCreated, res.Warnings...)
 }
 
 func (s *Server) handleListCampaigns(w http.ResponseWriter, r *http.Request) {
@@ -231,16 +241,17 @@ func (s *Server) handleUpdateCampaign(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
 	}
-	if err := s.campaign.Commands.UpdateCampaign.Handle(r.Context(), campaigncommand.UpdateCampaign{
+	res, err := s.campaign.Commands.UpdateCampaign.Handle(r.Context(), campaigncommand.UpdateCampaign{
 		TenantID: ws.ID, CampaignID: chi.URLParam(r, "id"), Name: req.Name, Subject: req.Subject,
 		BodyHTML: req.BodyHTML, BodyText: req.BodyText, FromName: req.FromName,
 		FromLocalPart: req.FromLocalPart, SendingDomainID: req.SendingDomainID,
 		ListIDs: req.ListIDs, Segments: rawSegments(req.Segments),
-	}); err != nil {
+	})
+	if err != nil {
 		s.fail(w, r, "update campaign", err)
 		return
 	}
-	s.respondCampaign(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK)
+	s.respondCampaign(w, r, ws.ID, chi.URLParam(r, "id"), http.StatusOK, res.Warnings...)
 }
 
 func (s *Server) handleStartCampaign(w http.ResponseWriter, r *http.Request) {
@@ -595,7 +606,8 @@ func (s *Server) handleOptOutTemplateVisual(w http.ResponseWriter, r *http.Reque
 }
 
 // respondCampaign fetches and writes a campaign view.
-func (s *Server) respondCampaign(w http.ResponseWriter, r *http.Request, tenantID, id string, status int) {
+func (s *Server) respondCampaign(w http.ResponseWriter, r *http.Request, tenantID, id string, status int,
+	warnings ...campaigndomain.RenderWarning) {
 	view, err := s.campaign.Queries.GetCampaign.Handle(r.Context(), campaignquery.GetCampaign{
 		TenantID: tenantID, CampaignID: id,
 	})
@@ -603,7 +615,15 @@ func (s *Server) respondCampaign(w http.ResponseWriter, r *http.Request, tenantI
 		s.fail(w, r, "get campaign", err)
 		return
 	}
-	writeJSON(w, status, view)
+	if len(warnings) == 0 {
+		writeJSON(w, status, view)
+		return
+	}
+	// Embedding flattens the view, so warnings is an additive top-level key.
+	writeJSON(w, status, struct {
+		campaignquery.CampaignView
+		Warnings []campaigndomain.RenderWarning `json:"warnings"`
+	}{view, warnings})
 }
 
 // rawSegments projects JSON segment payloads onto the [][]byte the command
