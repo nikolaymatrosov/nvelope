@@ -37,7 +37,7 @@ const ydbUserColumns = `id, email, name, COALESCE(locale, ""u) AS locale, email_
 // registered.
 func (r *YDBUsers) Create(ctx context.Context, u *domain.User, passwordHash string) (*domain.User, error) {
 	id := uuid.NewString()
-	if err := insertYDBUser(ctx, r.driver.Query(), id, u, passwordHash); err != nil {
+	if err := InsertYDBUser(ctx, r.driver.Query(), id, u, passwordHash); err != nil {
 		return nil, err
 	}
 	return newlyCreatedUser(id, u), nil
@@ -52,14 +52,14 @@ func (r *YDBUsers) CreateWithSession(ctx context.Context, u *domain.User, passwo
 
 	id := uuid.NewString()
 	err := r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
-		if err := insertYDBUser(ctx, tx, id, u, passwordHash); err != nil {
+		if err := InsertYDBUser(ctx, tx, id, u, passwordHash); err != nil {
 			return err
 		}
 		session, tokenHash, err := issueSession(id)
 		if err != nil {
 			return err
 		}
-		return insertYDBSession(ctx, tx, session, tokenHash)
+		return InsertYDBSession(ctx, tx, session, tokenHash)
 	})
 	// The spike saw the conflict at the statement; this covers a YDB that reports it at commit.
 	if db.IsYDBConflict(err) {
@@ -79,7 +79,7 @@ func (r *YDBUsers) CreateWithVerification(ctx context.Context, u *domain.User, p
 
 	id := uuid.NewString()
 	err := r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
-		if err := insertYDBUser(ctx, tx, id, u, passwordHash); err != nil {
+		if err := InsertYDBUser(ctx, tx, id, u, passwordHash); err != nil {
 			return err
 		}
 		verification, tokenHash, err := issueVerification(id)
@@ -99,11 +99,13 @@ func (r *YDBUsers) CreateWithVerification(ctx context.Context, u *domain.User, p
 	return newlyCreatedUser(id, u), nil
 }
 
-// insertYDBUser inserts one platform_users row through q, which may be the
-// query client or a transaction. A conflict on the unique email_key index maps
-// to domain.ErrEmailTaken. YDB reports a primary-key collision the same way,
-// which a random UUID makes negligible.
-func insertYDBUser(ctx context.Context, q query.Executor, id string, u *domain.User, passwordHash string) error {
+// InsertYDBUser inserts one platform_users row through q, which may be the
+// query client or a transaction. It is the only writer of platform_users on
+// YDB. The serverless onboarding (internal/service) calls it inside its own
+// transaction, so email_key has a single derivation (ydbEmailKey). A conflict
+// on the unique email_key index maps to domain.ErrEmailTaken. YDB reports a
+// primary-key collision the same way, which a random UUID makes negligible.
+func InsertYDBUser(ctx context.Context, q query.Executor, id string, u *domain.User, passwordHash string) error {
 	err := q.Exec(ctx, `DECLARE $id AS Utf8;
 DECLARE $email AS Utf8;
 DECLARE $email_key AS Utf8;

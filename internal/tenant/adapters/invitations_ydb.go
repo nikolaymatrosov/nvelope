@@ -225,3 +225,33 @@ func scanYDBInvitation(row query.Row) (*domain.Invitation, error) {
 	}
 	return domain.HydrateInvitation(id, tenantID, email, status, invitedBy, createdAt, expiresAt), nil
 }
+
+// AcceptYDBInvitation marks a pending, unexpired invitation of the tenant
+// accepted by acceptedBy, inside tx. When the invitation is not (or no longer)
+// acceptable it returns domain.ErrInvitationNotFound, so the caller's whole
+// transaction rolls back with the opaque error. UPDATE ... RETURNING yields no
+// row when the guard does not match (spec "Plan B3 planning spike"), which
+// stands in for the Postgres RowsAffected check. The serverless onboarding
+// (internal/service) calls it.
+func AcceptYDBInvitation(ctx context.Context, tx query.TxActor, tenantID, invitationID, acceptedBy string) error {
+	_, err := tx.QueryRow(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+DECLARE $accepted_by AS Utf8;
+UPDATE invitations
+SET status = "accepted"u, accepted_by = $accepted_by, accepted_at = CurrentUtcTimestamp()
+WHERE tenant_id = $tenant_id AND id = $id
+    AND status = "pending"u AND expires_at > CurrentUtcTimestamp()
+RETURNING id;`,
+		query.WithParameters(ydb.ParamsBuilder().
+			Param("$tenant_id").Text(tenantID).
+			Param("$id").Text(invitationID).
+			Param("$accepted_by").Text(acceptedBy).
+			Build()))
+	if errors.Is(err, query.ErrNoRows) {
+		return domain.ErrInvitationNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("accepting invitation: %w", err)
+	}
+	return nil
+}

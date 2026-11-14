@@ -29,13 +29,13 @@ func NewYDBSessions(d *ydb.Driver) *YDBSessions {
 
 // Issue persists a new session, storing only the token's hash.
 func (r *YDBSessions) Issue(ctx context.Context, s *domain.Session, tokenHash string) error {
-	return insertYDBSession(ctx, r.driver.Query(), s, tokenHash)
+	return InsertYDBSession(ctx, r.driver.Query(), s, tokenHash)
 }
 
-// insertYDBSession persists a session through q, which may be the query client
-// or a transaction. A transaction lets YDBUsers issue a session atomically
-// with the user it belongs to.
-func insertYDBSession(ctx context.Context, q query.Executor, s *domain.Session, tokenHash string) error {
+// InsertYDBSession persists a session through q, which may be the query client
+// or a transaction. A transaction lets YDBUsers and the serverless onboarding
+// (internal/service) issue a session atomically with the user it belongs to.
+func InsertYDBSession(ctx context.Context, q query.Executor, s *domain.Session, tokenHash string) error {
 	err := q.Exec(ctx, `DECLARE $token_hash AS Utf8;
 DECLARE $id AS Utf8;
 DECLARE $platform_user_id AS Utf8;
