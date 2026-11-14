@@ -29,7 +29,7 @@ func NewYDBUsers(d *ydb.Driver) *YDBUsers {
 	return &YDBUsers{driver: d}
 }
 
-// ydbUserColumns is the projection scanUser reads, in order.
+// ydbUserColumns is the projection scanYDBUser reads, in order.
 const ydbUserColumns = `id, email, name, COALESCE(locale, ""u) AS locale, email_verified_at`
 
 // Create inserts a new user with an already-hashed password and returns the
@@ -61,6 +61,10 @@ func (r *YDBUsers) CreateWithSession(ctx context.Context, u *domain.User, passwo
 		}
 		return insertYDBSession(ctx, tx, session, tokenHash)
 	})
+	// The spike saw the conflict at the statement; this covers a YDB that reports it at commit.
+	if db.IsYDBConflict(err) {
+		return nil, domain.ErrEmailTaken
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +89,10 @@ func (r *YDBUsers) CreateWithVerification(ctx context.Context, u *domain.User, p
 		_, err = insertYDBVerificationToken(ctx, tx, verification, tokenHash)
 		return err
 	})
+	// The spike saw the conflict at the statement; this covers a YDB that reports it at commit.
+	if db.IsYDBConflict(err) {
+		return nil, domain.ErrEmailTaken
+	}
 	if err != nil {
 		return nil, err
 	}
