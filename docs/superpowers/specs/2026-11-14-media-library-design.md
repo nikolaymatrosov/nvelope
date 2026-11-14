@@ -35,9 +35,9 @@ track A deferred.
   - It works without extra code in the editor canvas, the media picker, and a
     browser tab, because all of them are same-origin and carry the session
     cookie.
-  - The only sandboxed surface, the visual-editor preview iframe, swaps
-    library URLs for presigned URLs before setting `srcdoc`. Its
-    `sandbox=""` stays.
+  - The two sandboxed surfaces — the visual-editor preview iframe and the
+    detail pages' stored-body preview — swap library URLs for presigned URLs
+    before setting `srcdoc`. Their `sandbox=""` stays.
   - Rejected: storing the private bucket URL. Every admin surface would need
     a mapping, and a copied URL answers 403.
   - Rejected: `sandbox="allow-same-origin"` on the preview so cookies flow.
@@ -160,8 +160,9 @@ ALTER TABLE media_assets
   - Media library, detail page, and picker: thumbnails use `preview_url`.
     Copy and insert use `url`.
   - Detail page: shows a "published" badge.
-  - `PreviewIframe`: before assigning `srcdoc`, replaces each library URL with
-    its `preview_url` from the media list query. That query is shared with
+  - `PreviewIframe` and `VisualBodyPreview`: before assigning `srcdoc`,
+    replace each library URL with its `preview_url` from the media list query
+    (a shared `usePreviewHtml` hook). That query is shared with
     the picker; `staleTime` is 30 min, under the 1 h signature. A URL whose
     asset is not in the list (deleted) is left alone and shows as broken,
     which is the correct signal.

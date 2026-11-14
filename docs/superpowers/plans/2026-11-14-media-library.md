@@ -3538,7 +3538,8 @@ git commit -m "feat(bff): validate tenant library URLs and render image width fo
 - Modify: `frontend/src/components/visual-editor/extensions/ImageBlock.tsx`
 - Modify: `frontend/src/components/visual-editor/plugins/imageUpload.ts`, `imageUpload.test.ts`
 - Modify: `frontend/src/components/visual-editor/ui/PreviewIframe.tsx`
-- Modify: `frontend/src/routes/t/$slug/branding/index.tsx`, `frontend/src/routes/t/$slug/campaigns/$id.tsx`
+- Modify: `frontend/src/components/visual-editor/VisualBodyPreview.tsx`, `VisualBodyPreview.stories.tsx`
+- Modify: `frontend/src/routes/t/$slug/branding/index.tsx`, `frontend/src/routes/t/$slug/campaigns/$id.tsx`, `frontend/src/routes/t/$slug/templates/$id.tsx`
 - Modify: `frontend/src/locales/en/media.json`, `frontend/src/locales/ru/media.json`, `frontend/src/i18n/resources.d.ts` (regenerated)
 
 **Interfaces:**
@@ -3547,6 +3548,7 @@ git commit -m "feat(bff): validate tenant library URLs and render image width fo
   - `EMAIL_CONTENT_WIDTH = 600`.
   - `imageDisplayWidth(naturalWidth?: number | null): number | null`.
   - `swapLibraryUrls(html: string, assets: ReadonlyArray<{ url: string; preview_url: string }>): string`.
+  - `usePreviewHtml(slug, html)`, the hook both sandboxed previews use.
   - `api.media.remove(slug, id, opts?: { unpublish?: boolean })`.
   - `applyImageBlockPick(editor, pos, mediaRef, alt, width)`.
 
@@ -3611,8 +3613,8 @@ export function imageDisplayWidth(naturalWidth?: number | null): number | null {
 }
 
 // swapLibraryUrls replaces each asset's library URL with its presigned
-// preview URL. The preview iframe is sandboxed with an opaque origin, so the
-// session cookie that library URLs need never reaches them from inside it.
+// preview URL. Preview iframes are sandboxed with an opaque origin, so the
+// session cookie that library URLs need never reaches them from inside one.
 export function swapLibraryUrls(
   html: string,
   assets: ReadonlyArray<{ url: string; preview_url: string }>,
@@ -3621,6 +3623,28 @@ export function swapLibraryUrls(
   for (const a of assets) out = out.split(a.url).join(a.preview_url)
   return out
 }
+
+// usePreviewHtml returns html with library URLs swapped for the media
+// listing's presigned URLs, for a sandboxed preview iframe. The listing is
+// cached for 30 minutes, under the 1-hour signature. If the listing is
+// unavailable, html is returned unchanged (images show as broken).
+export function usePreviewHtml<T extends string | undefined>(slug: string, html: T): T {
+  const media = useQuery({
+    queryKey: queryKeys.media(slug),
+    queryFn: async () => (await api.media.list(slug)).data,
+    staleTime: 30 * 60 * 1000,
+  })
+  if (html === undefined) return html
+  return swapLibraryUrls(html, media.data?.items ?? []) as T
+}
+```
+
+Add these imports at the top of `media-urls.ts`:
+
+```ts
+import { useQuery } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+import { queryKeys } from "@/lib/query"
 ```
 
 In `frontend/src/lib/api-types.ts`:
@@ -3797,28 +3821,25 @@ export function applyImageBlockPick(
 - The call becomes `replacePlaceholder(view, pendingRef, res.data.url, imageDisplayWidth(res.data.width))`.
 - Import `imageDisplayWidth` from `@/lib/media-urls`.
 
-`frontend/src/components/visual-editor/ui/PreviewIframe.tsx`:
-- Import `queryKeys` from `@/lib/query` and `swapLibraryUrls` from `@/lib/media-urls`.
-- Below the render-preview query, add:
+`frontend/src/components/visual-editor/ui/PreviewIframe.tsx`: import `usePreviewHtml` from `@/lib/media-urls`, and replace the existing `srcdoc` effect with:
 
 ```tsx
   // Library URLs need the session cookie, which the sandboxed (opaque-origin)
-  // iframe never sends, so they are swapped for the listing's presigned URLs.
-  const media = useQuery({
-    queryKey: queryKeys.media(slug),
-    queryFn: async () => (await api.media.list(slug)).data,
-    staleTime: 30 * 60 * 1000,
-  })
-
+  // iframe never sends, so they are swapped for presigned preview URLs.
+  const html = usePreviewHtml(slug, query.data?.bodyHtml)
   useEffect(() => {
-    const html = query.data?.bodyHtml
     const iframe = iframeRef.current
     if (!iframe || html === undefined) return
-    iframe.srcdoc = swapLibraryUrls(html, media.data?.items ?? [])
-  }, [query.data, media.data])
+    iframe.srcdoc = html
+  }, [html])
 ```
 
-(this replaces the existing `srcdoc` effect.)
+`frontend/src/components/visual-editor/VisualBodyPreview.tsx` shows a draft's stored `body_html`, which holds library URLs, in a `sandbox=""` iframe. Give it a `slug` prop:
+- The signature becomes `VisualBodyPreview({ slug, html, actions }: { slug: string; html: string; actions?: ReactNode })`.
+- Add `const previewHtml = usePreviewHtml(slug, html)`.
+- Use `srcDoc={previewHtml}`.
+- In its two callers, `frontend/src/routes/t/$slug/campaigns/$id.tsx` and `frontend/src/routes/t/$slug/templates/$id.tsx`, pass `slug={slug}`. Both routes already have `slug` in scope; check with `grep -n "VisualBodyPreview" -A3`.
+- Pass `slug="acme"` in `VisualBodyPreview.stories.tsx`.
 
 `frontend/src/routes/t/$slug/branding/index.tsx`: `setForm((f) => ({ ...f, logo_url: asset.url }))`.
 
