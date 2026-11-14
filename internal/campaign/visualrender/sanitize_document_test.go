@@ -94,3 +94,30 @@ func TestSanitizeDocument_Empty(t *testing.T) {
 	require.Empty(t, out)
 	require.Nil(t, warnings)
 }
+
+func TestSanitizeDocument_KeepsMergeTags(t *testing.T) {
+	t.Parallel()
+	in := `<p>Hi {{ subscriber.first_name }} {{{rows}}}</p>` +
+		`<a href="{{ campaign.unsubscribe_url }}">U</a><a href="{{url}}">V</a>`
+	out, warnings := SanitizeDocument(in)
+	require.Contains(t, out, `href="{{ campaign.unsubscribe_url }}"`)
+	require.Contains(t, out, `href="{{url}}"`)
+	require.Contains(t, out, `{{ subscriber.first_name }}`)
+	require.Contains(t, out, `{{{rows}}}`)
+	require.Empty(t, warnings)
+
+	again, _ := SanitizeDocument(out)
+	require.Equal(t, out, again)
+}
+
+func TestSanitizeDocument_UnsafePlaceholderNotProtected(t *testing.T) {
+	t.Parallel()
+	out, _ := SanitizeDocument(`<a href="{{ x"onmouseover="alert(1) }}">x</a>`)
+	require.NotContains(t, out, "onmouseover")
+}
+
+func TestSanitizeDocument_LiteralSentinelCarriesNothing(t *testing.T) {
+	t.Parallel()
+	out, _ := SanitizeDocument(`<p>nvelope-merge-tag-0-x nvelope-merge-tag-99-x</p>`)
+	require.Equal(t, `<p>nvelope-merge-tag-0-x nvelope-merge-tag-99-x</p>`, out)
+}
