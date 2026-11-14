@@ -203,6 +203,26 @@ func TestUsersCreateWithSession(t *testing.T) {
 	})
 }
 
+func TestUsersCreateWithSessionRollsBackOnError(t *testing.T) {
+	t.Parallel()
+	eachBackend(t, func(t *testing.T, b backend) {
+		repo := b.users(t)
+		ctx := context.Background()
+
+		u, addr := newUser(t, "Ada")
+		wantErr := errors.New("session issuance failed")
+		_, err := repo.CreateWithSession(ctx, u, "hash",
+			func(string) (*domain.Session, string, error) {
+				return nil, "", wantErr
+			})
+		require.ErrorIs(t, err, wantErr)
+
+		// The user insert was rolled back with the failed session issuance.
+		_, err = repo.LookupByEmail(ctx, addr)
+		require.ErrorIs(t, err, domain.ErrUserNotFound)
+	})
+}
+
 func TestUsersCreateWithVerification(t *testing.T) {
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, b backend) {
