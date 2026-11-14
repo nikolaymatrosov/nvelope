@@ -46,8 +46,7 @@ lint-arch:
 	go-cleanarch $(CLEANARCH_FLAGS) internal/iam
 	go-cleanarch $(CLEANARCH_FLAGS) internal/audience
 	@echo '[arch] domain packages import no transport or driver code'
-	@! $(GO) list -deps ./internal/auth/domain/... ./internal/tenant/domain/... \
-		./internal/iam/domain/... ./internal/audience/domain/... \
+	@! $(GO) list -deps ./internal/.../domain/... \
 		| grep -E 'net/http|jackc/pgx|ydb-platform|go-chi'
 	@echo '[arch] the transport layer imports no driver or adapter code'
 	@! $(GO) list -deps ./internal/api/... \
