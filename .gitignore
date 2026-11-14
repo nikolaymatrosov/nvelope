@@ -20,3 +20,5 @@ Thumbs.db
 *.swp
 
 node_modules/
+# Local agent worktrees
+.claude/worktrees/
