@@ -483,6 +483,7 @@ function CampaignEditor({
               </form.Field>
               {editorMode === "visual" ? (
                 <VisualBodyPreview
+                  slug={slug}
                   html={campaign.body_html}
                   actions={
                     canManage && (
@@ -560,7 +561,7 @@ function CampaignEditor({
                           onPick={(asset: MediaAssetView) => {
                             const ta = bodyHtmlRef.current
                             const value = field.state.value
-                            const insert = asset.public_url
+                            const insert = asset.url
                             if (ta) {
                               const selStart = ta.selectionStart
                               const selEnd = ta.selectionEnd

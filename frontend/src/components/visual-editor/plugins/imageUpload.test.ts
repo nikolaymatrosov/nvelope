@@ -75,8 +75,9 @@ describe("imageUpload plugin", () => {
       ok: true,
       data: {
         id: "asset-1",
-        public_url: "https://media.example/tenants/acme/cat.png",
+        url: "https://media.example/tenants/acme/cat.png",
         filename: "cat.png",
+        width: 1200,
       },
     })
     const notify = vi.fn()
@@ -99,6 +100,11 @@ describe("imageUpload plugin", () => {
       mediaRef: "https://media.example/tenants/acme/cat.png",
       alt: "cat.png",
     })
+    let width: unknown
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "image") width = node.attrs.width
+    })
+    expect(width).toBe(600)
   })
 
   it("rejects oversize files up-front without inserting a node", async () => {
@@ -208,7 +214,7 @@ describe("imageUpload plugin", () => {
       ok: true,
       data: {
         id: "asset-1",
-        public_url: "https://media.example/tenants/acme/cat.png",
+        url: "https://media.example/tenants/acme/cat.png",
         filename: "cat.png",
       },
     })
@@ -235,7 +241,7 @@ describe("imageUpload plugin", () => {
       ok: true,
       data: {
         id: "asset-1",
-        public_url: "https://media.example/tenants/acme/x.png",
+        url: "https://media.example/tenants/acme/x.png",
         filename: "x.png",
       },
     })

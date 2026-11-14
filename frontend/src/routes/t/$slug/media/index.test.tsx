@@ -43,7 +43,9 @@ function asset(overrides: Partial<MediaAssetView> = {}): MediaAssetView {
     filename: "hero.png",
     content_type: "image/png",
     size_bytes: 1234,
-    public_url: "https://example.test/media/acme/hero.png",
+    url: "https://example.test/media/acme/hero.png",
+    preview_url: "https://example.test/media/acme/hero.png?signature=test",
+    published: false,
     created_at: "2026-05-01T00:00:00Z",
     ...overrides,
   }
@@ -122,7 +124,7 @@ describe("MediaLibrary", () => {
   it("uploads a valid file and invalidates the listing on success", async () => {
     vi.mocked(api.media.list).mockResolvedValue(ok({ items: [] }))
     vi.mocked(api.media.upload).mockResolvedValue(
-      ok({ id: "a1", public_url: "https://example.test/x.png", filename: "x.png" }),
+      ok({ id: "a1", url: "https://example.test/x.png", filename: "x.png" }),
     )
     renderWithClient(<MediaLibrary />)
     const input = (await screen.findByTestId(
@@ -173,7 +175,7 @@ describe("MediaLibrary", () => {
     const dialog = await screen.findByRole("alertdialog")
     fireEvent.click(within(dialog).getByRole("button", { name: /delete/i }))
     await waitFor(() =>
-      expect(api.media.remove).toHaveBeenCalledWith("acme", "a1"),
+      expect(api.media.remove).toHaveBeenCalledWith("acme", "a1", { unpublish: false }),
     )
   })
 
@@ -182,5 +184,27 @@ describe("MediaLibrary", () => {
     renderWithClient(<MediaLibrary />)
     await screen.findByTestId("media-upload-button")
     expect(vi.mocked(api.media.list).mock.calls[0][0]).toBe("acme")
+  })
+
+  it("offers to remove the published copy only for published assets", async () => {
+    vi.mocked(api.media.list).mockResolvedValue(
+      ok({ items: [asset({ id: "a1", published: true }), asset({ id: "a2" })] }),
+    )
+    vi.mocked(api.media.remove).mockResolvedValue(ok(null))
+    renderWithClient(<MediaLibrary />)
+    expect(await screen.findByTestId("media-grid")).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId("media-delete-a2"))
+    let dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).queryByRole("checkbox")).toBeNull()
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }))
+
+    fireEvent.click(screen.getByTestId("media-delete-a1"))
+    dialog = await screen.findByRole("alertdialog")
+    fireEvent.click(within(dialog).getByRole("checkbox"))
+    fireEvent.click(within(dialog).getByRole("button", { name: /delete/i }))
+    await waitFor(() =>
+      expect(api.media.remove).toHaveBeenCalledWith("acme", "a1", { unpublish: true }),
+    )
   })
 })

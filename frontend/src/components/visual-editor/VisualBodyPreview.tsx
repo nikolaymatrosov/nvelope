@@ -5,9 +5,19 @@
 
 import { useTranslation } from "react-i18next"
 import type { ReactNode } from "react"
+import { usePreviewHtml } from "@/lib/media-urls"
 
-export function VisualBodyPreview({ html, actions }: { html: string; actions?: ReactNode }) {
+export function VisualBodyPreview({
+  slug,
+  html,
+  actions,
+}: {
+  slug: string
+  html: string
+  actions?: ReactNode
+}) {
   const { t } = useTranslation("visualEditor")
+  const previewHtml = usePreviewHtml(slug, html)
   return (
     <div className="flex flex-col gap-2" data-testid="ve-body-preview">
       <div className="flex items-center justify-between gap-2">
@@ -22,7 +32,7 @@ export function VisualBodyPreview({ html, actions }: { html: string; actions?: R
         <iframe
           title={t("body.previewTitle")}
           sandbox=""
-          srcDoc={html}
+          srcDoc={previewHtml}
           className="h-96 w-full rounded-md border bg-white"
         />
       )}

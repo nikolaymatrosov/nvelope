@@ -22,6 +22,7 @@ type ConfirmDialogProps = {
   cancelLabel?: string
   onConfirm: () => void
   busy?: boolean
+  children?: ReactNode
 }
 
 export function ConfirmDialog({
@@ -33,6 +34,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   onConfirm,
   busy = false,
+  children,
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -41,6 +43,7 @@ export function ConfirmDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {children}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction

@@ -49,6 +49,7 @@ import type { RawHTMLEditRequest } from "./extensions/RawHTML"
 import type { Editor } from "@tiptap/core"
 import type { MediaAssetView, Theme, VisualDoc } from "@/lib/api-types"
 import { MediaPicker } from "@/components/common/media-picker"
+import { imageDisplayWidth } from "@/lib/media-urls"
 import {
   Dialog,
   DialogContent,
@@ -248,8 +249,9 @@ export function VisualEmailEditor({
       applyImageBlockPick(
         editor,
         imagePick.pos,
-        asset.public_url,
+        asset.url,
         asset.filename,
+        imageDisplayWidth(asset.width),
       )
       setImagePick(null)
     },

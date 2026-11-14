@@ -14,6 +14,7 @@ import type {
   VisualDoc,
 } from "@/lib/api-types"
 import { api } from "@/lib/api"
+import { usePreviewHtml } from "@/lib/media-urls"
 
 type Props = {
   slug: string
@@ -50,12 +51,14 @@ export function PreviewIframe({ slug, doc, theme, sample }: Props) {
       ).data,
   })
 
+  // Library URLs need the session cookie, which the sandboxed (opaque-origin)
+  // iframe never sends, so they are swapped for presigned preview URLs.
+  const html = usePreviewHtml(slug, query.data?.bodyHtml)
   useEffect(() => {
-    const html = query.data?.bodyHtml
     const iframe = iframeRef.current
     if (!iframe || html === undefined) return
     iframe.srcdoc = html
-  }, [query.data])
+  }, [html])
 
   return (
     <div

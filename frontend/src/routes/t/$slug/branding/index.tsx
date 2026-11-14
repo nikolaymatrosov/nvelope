@@ -230,7 +230,7 @@ function BrandingForm({
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         onPick={(asset: MediaAssetView) =>
-          setForm((f) => ({ ...f, logo_url: asset.public_url }))
+          setForm((f) => ({ ...f, logo_url: asset.url }))
         }
       />
     </>

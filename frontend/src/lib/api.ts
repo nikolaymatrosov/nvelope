@@ -623,8 +623,8 @@ export const api = {
         form,
       )
     },
-    remove: (slug: string, id: string) =>
-      request("DELETE", tp(slug, `/media/${id}`)),
+    remove: (slug: string, id: string, opts: { unpublish?: boolean } = {}) =>
+      request("DELETE", tp(slug, `/media/${id}${opts.unpublish ? "?unpublish=true" : ""}`)),
   },
 }
 

@@ -229,6 +229,7 @@ function EditTemplateCard({
           </form.Field>
           {editorMode === "visual" ? (
             <VisualBodyPreview
+              slug={slug}
               html={template.body_html}
               actions={
                 canManage && (

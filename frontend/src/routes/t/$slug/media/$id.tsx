@@ -12,6 +12,7 @@ import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { formatDate } from "@/lib/format"
 import { usePermissions } from "@/hooks/use-permissions"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -89,19 +90,22 @@ export function MediaDetail() {
             )
           }
           const copyUrl = () =>
-            navigator.clipboard.writeText(asset.public_url).then(
+            navigator.clipboard.writeText(asset.url).then(
               () => toast.success(t("toast.copied")),
               () => toast.error(t("toast.copyFailed")),
             )
           return (
             <>
               <header>
-                <h1
-                  className="break-all text-2xl font-semibold"
-                  data-testid="media-asset-filename"
-                >
-                  {asset.filename}
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1
+                    className="break-all text-2xl font-semibold"
+                    data-testid="media-asset-filename"
+                  >
+                    {asset.filename}
+                  </h1>
+                  {asset.published && <Badge variant="secondary">{t("detail.published")}</Badge>}
+                </div>
                 <p className="text-sm text-muted-foreground">
                   {t("detail.uploadedMeta", {
                     type: asset.content_type,
@@ -118,7 +122,7 @@ export function MediaDetail() {
                   <div className="grid place-items-center overflow-hidden rounded bg-muted p-4">
                     {isImageContentType(asset.content_type) ? (
                       <img
-                        src={asset.public_url}
+                        src={asset.preview_url}
                         alt={asset.filename}
                         className="max-h-[40rem] max-w-full object-contain"
                       />
@@ -137,7 +141,7 @@ export function MediaDetail() {
                     className="break-all rounded-md bg-muted p-2 text-sm"
                     data-testid="media-asset-url"
                   >
-                    {asset.public_url}
+                    {asset.url}
                   </code>
                   <Button
                     onClick={copyUrl}

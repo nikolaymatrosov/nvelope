@@ -23,6 +23,7 @@ import { errorMessage, isForbidden } from "@/lib/errors"
 import { formatDate } from "@/lib/format"
 import { usePermissions } from "@/hooks/use-permissions"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Card,
   CardContent,
@@ -235,8 +236,9 @@ function MediaCard({
 }) {
   const { t } = useTranslation("media")
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [unpublish, setUnpublish] = useState(false)
   const remove = useMutation({
-    mutationFn: () => api.media.remove(slug, asset.id),
+    mutationFn: () => api.media.remove(slug, asset.id, { unpublish }),
     onSuccess: () => {
       toast.success(t("toast.deleted"))
       setConfirmOpen(false)
@@ -249,7 +251,7 @@ function MediaCard({
   })
 
   function copyUrl() {
-    navigator.clipboard.writeText(asset.public_url).then(
+    navigator.clipboard.writeText(asset.url).then(
       () => toast.success(t("toast.copied")),
       () => toast.error(t("toast.copyFailed")),
     )
@@ -263,7 +265,7 @@ function MediaCard({
       <div className="grid aspect-square place-items-center overflow-hidden rounded bg-muted">
         {isImageContentType(asset.content_type) ? (
           <img
-            src={asset.public_url}
+            src={asset.preview_url}
             alt={asset.filename}
             className="size-full object-contain"
             loading="lazy"
@@ -296,7 +298,7 @@ function MediaCard({
             <CopyIcon /> {t("card.copyUrl")}
           </Button>
           <Button variant="ghost" size="sm" asChild>
-            <a href={asset.public_url} target="_blank" rel="noreferrer">
+            <a href={asset.url} target="_blank" rel="noreferrer">
               <ExternalLinkIcon /> {t("card.open")}
             </a>
           </Button>
@@ -321,7 +323,23 @@ function MediaCard({
         confirmLabel={t("deleteDialog.confirm")}
         busy={remove.isPending}
         onConfirm={() => remove.mutate()}
-      />
+      >
+        {asset.published && (
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox
+              checked={unpublish}
+              onCheckedChange={(v) => setUnpublish(v === true)}
+              data-testid={`media-unpublish-${asset.id}`}
+            />
+            <span>
+              {t("deleteDialog.unpublishLabel")}
+              <span className="block text-muted-foreground">
+                {t("deleteDialog.unpublishWarning")}
+              </span>
+            </span>
+          </label>
+        )}
+      </ConfirmDialog>
     </li>
   )
 }

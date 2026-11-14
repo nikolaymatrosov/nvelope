@@ -38,7 +38,9 @@ function asset(overrides: Partial<MediaAssetView> = {}): MediaAssetView {
     filename: "hero.png",
     content_type: "image/png",
     size_bytes: 4096,
-    public_url: "https://example.test/media/acme/hero.png",
+    url: "https://example.test/media/acme/hero.png",
+    preview_url: "https://example.test/media/acme/hero.png?signature=test",
+    published: false,
     created_at: "2026-05-01T00:00:00Z",
     ...overrides,
   }
