@@ -240,23 +240,28 @@ A library asset deleted after it was used:
 
 - **`mediaRef`.** Image blocks must carry a library URL with the tenant's own
   slug: `{BASE_URL}/t/{slug}/api/media/{uuid}/content`.
-  - Go: the visual-save commands carry `TenantSlug` from the API handler's
-    tenant context, and the validator checks the exact format for that slug.
-  - BFF: `mediaUrlPrefix` becomes `${BASE_URL}/t/${slug}/api/media/`, with the
-    slug from the route, plus the same UUID/`/content` tail check.
-  - The final guard is RLS at publish (§4).
+  - BFF: `mediaUrlPrefix` becomes `${NVELOPE_BASE_URL}/t/${slug}/api/media/`,
+    with the slug from the route, plus the UUID/`/content` tail check. This is
+    the per-tenant check.
+  - Go: the validator checks only that the ref is a library URL under
+    `BASE_URL`, for any slug. Go's HTTP save path never decodes VisualDoc
+    nodes (the `VisualDoc.UnmarshalJSON` codec is still deferred), so a Go
+    slug check would only reach the converter and command-level tests;
+    plumbing the slug through four commands buys nothing.
+  - The final guard is RLS at publish (§4): a foreign tenant's asset is
+    "missing" there.
 
   This closes M4.
-- **BFF env.** `BASE_URL` replaces `OBJECT_STORAGE_PUBLIC_BASE_URL`, with the
-  same value as Go's `NVELOPE_BASE_URL`.
+- **BFF env.** The BFF reads `NVELOPE_BASE_URL`, the same variable and value
+  Go uses, instead of `OBJECT_STORAGE_PUBLIC_BASE_URL`.
 - **Image `width`.** The Image block gains an optional `width`: an integer
   from 1 to 600, in CSS pixels.
   - On insert or upload, the editor sets it to `min(asset.width, 600)`. It is
     omitted for assets without dimensions.
   - The renderer emits the `width` attribute plus
     `style="max-width:100%;height:auto"`. Without `width` it renders as today.
-  - Go and TS validators both accept the field. The drift catcher and the
-    golden tests cover it.
+  - The BFF validator checks it. Go needs no change, because it never
+    decodes the nodes (see above).
   - There is no inspector control to edit it yet.
 
   This closes M7.
