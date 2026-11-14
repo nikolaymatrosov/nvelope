@@ -15,7 +15,8 @@ Managed PostgreSQL, Managed Redis, and long-running processes.
 ## Goals
 
 - A customer deploys a single-tenant nvelope into their own YC folder with one
-  `terraform apply`.
+  `terraform apply` plus a documented one-time Postbox setup step (V2: the
+  provider has no Postbox resource).
 - Every runtime piece is pay-per-use: Serverless Containers, API Gateway,
   serverless YDB, Message Queue (YMQ), triggers, Object Storage, Lockbox.
 - Feature parity with SaaS, **minus billing and usage metering**.
@@ -33,8 +34,9 @@ These are deferred on purpose:
 - **Billing, plans, usage metering** in on-prem. The contexts are not wired.
 - **Moving SaaS to YDB.** SaaS stays on Postgres + River + Redis.
 - **Cloud Marketplace listing.** It can come later on top of the Terraform module.
-- **Keyset pagination.** Existing `count(*) + OFFSET` pagination is ported as is
-  (see Ceilings).
+- **Keyset pagination at the port level.** Existing `count(*) + OFFSET`
+  pagination through `domain.Page` is ported as is (see Ceilings). Adapters may
+  page internally where a port returns an unbounded result (see V5).
 - **Provisioned (warm) instances by default.** Available as a Terraform
   variable, defaulted to 0 to preserve zero idle cost.
 
@@ -44,7 +46,7 @@ These are deferred on purpose:
 |---|----------|-----------|
 | D1 | Serverless YDB is the on-prem database | Only pay-per-request relational store in YC. Managed PG bills per hour. |
 | D2 | Same `main` branch, adapters selected via `NVELOPE_RUNTIME=saas\|serverless` | The ports already exist (DDD layout). A long-lived fork would drift from an actively developed `main` within weeks. |
-| D3 | Single tenant per install | YDB has no RLS. Today's adapters rely on RLS and do not filter by `tenant_id` (e.g. `DELETE FROM subscribers WHERE id = $1`). |
+| D3 | Single tenant per install | YDB has no RLS. Today's pg adapters rely on RLS and do not filter by `tenant_id` (e.g. `DELETE FROM subscribers WHERE id = $1`). The YDB adapters filter by `tenant_id` explicitly (see Transactions). The install is still single-tenant: this is defense-in-depth and test isolation, not multi-tenancy. |
 | D4 | Background jobs on YMQ + Message Queue triggers, not a YDB topic | YMQ gives per-message retry (visibility timeout), DLQ and delayed delivery (snooze), as River does today. On a topic, a failing message blocks its partition and there is no delay. A YDB job table polled by a timer has minute latency and costs RU while idle. |
 | D5 | The YDB topic is used only for Postbox delivery feedback | That is an event stream already (YDS), which fits a Data Streams trigger. |
 | D6 | Redis replaced by one YDB fixed-window counter | No serverless Redis exists in YC. All three throttles (send limiter, verification-resend, public-form submission) are fixed or sliding windows. Point upserts cost very little. |
@@ -110,7 +112,11 @@ Each container is built from an existing image. There are no new binaries.
 
 - `ydbtx.Do(ctx, db, fn)` replaces `tenantdb.WithTenant`. It is built on
   `db.Query().DoTx` from `ydb-go-sdk/v3` (already in `go.mod`), uses
-  serializable isolation and ignores `tenantID`.
+  serializable isolation. It only runs the transaction. Tenant scoping is the
+  adapter's responsibility: every YQL query filters by the `tenantID` the port
+  already receives, through an explicit `tenant_id` predicate. The reasons are
+  isolation of parallel contract tests (see Testing) and keeping the
+  multi-tenant option open.
 - The SDK **retries** the closure on `ABORTED`/`UNAVAILABLE`. So every
   transaction closure must be retry-safe: database operations only, no external
   side effects (no enqueue, no email, no HTTP). The plan audits all 129
@@ -124,12 +130,21 @@ Each container is built from an existing image. There are no new binaries.
   history is not replayed.
 - Runner: `golang-migrate` v4.19.1 has **no** `ydb` driver (checked during
   planning). The default is a small in-repo runner:
-  - embedded `*.up.sql` files are applied in order with
-    `db.Query().Exec`;
+  - embedded `*.up.sql` files are applied in order, one `db.Query().Exec` per
+    statement (files are split on lines ending in `;`), because the general YDB
+    query-text limit is 10 KB (V5) and the current pg migrations total 59 KB
+    with 45 `CREATE TABLE`s;
   - applied versions are recorded in a `schema_migrations` table.
 
-  If spike V4 shows that query-service `Exec` cannot run a multi-statement DDL
-  file, the fallback is `pressly/goose` v3.30.1, which has a `ydb` dialect.
+  If this runner proves unworkable, the fallback is `pressly/goose` v3.30.1,
+  which has a `ydb` dialect.
+- **Baseline migration rules.** YDB does not run DDL inside a transaction, so a
+  failure partway through a file can leave a partial schema. `/admin/migrate`
+  stays idempotent only if every DDL statement uses `IF NOT EXISTS` (and
+  `IF EXISTS` for drops). The spike did not test this failure path; Plan B
+  must.
+- Tenant-scoped tables use a primary key starting with `tenant_id`, e.g.
+  `(tenant_id, id)`, so the explicit predicate is a key-prefix lookup.
 - **IDs are generated in Go** (`uuid.NewString()`, v4). Today 36 tables default
   to `gen_random_uuid()`, so pg adapters that depend on `RETURNING id` from a DB
   default must pass the ID explicitly in the YDB variant. Random keys spread
@@ -144,12 +159,13 @@ Each container is built from an existing image. There are no new binaries.
 | Postgres | YQL |
 |----------|-----|
 | `INSERT ... ON CONFLICT DO UPDATE` (18 sites, together with DO NOTHING) | `UPSERT` |
-| `INSERT ... ON CONFLICT DO NOTHING` | `INSERT` and treat "already exists" as no-op, or `SELECT` then `UPSERT` in the same tx |
+| `INSERT ... ON CONFLICT DO NOTHING` | `INSERT` and treat "already exists" as no-op, or `SELECT` then `UPSERT` in the same tx. A failed statement likely breaks the interactive transaction, so "treat as no-op" is safe only when the INSERT is the transaction's last statement or runs in its own transaction (to verify in Plan B). If it does not hold, `Recipients.BulkInsert`'s per-row DO NOTHING loop uses `SELECT` then `UPSERT`, or chunk-level `UPSERT`. |
 | `SELECT ... FOR UPDATE` (7) | removed. A serializable conflict aborts the tx and the SDK retries it. |
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
 | `jsonb` | `JsonDocument` |
-| `ILIKE` (1, subscriber search) | YQL `ILIKE` if verified (V1). Otherwise a stored `email_lower` column with `LIKE`. |
+| segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | needs its own YQL port, using `JSON_VALUE` / `JSON_EXISTS` on `JsonDocument` or equivalent. Exact functions **to verify in Plan B**. |
+| `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE` (V1 passed only for an ASCII literal against an ASCII literal; Utf8 columns, parameters and Cyrillic are **to verify in Plan B**). Otherwise a stored lowercase column with `LIKE`. |
 | `SECURITY DEFINER` functions (6) | ordinary queries. With no RLS, the privilege bypass they existed for is unnecessary. Billing-only functions are dropped. |
 
 ### Throttling
@@ -289,7 +305,14 @@ out of scope, and TTL replaces the cleanup.
 ### Terraform module: `deploy/terraform/nvelope-serverless/`
 
 Inputs: `folder_id`, `domain`, `image_tag`, `tenant_slug`, `system_from_email`,
-`send_rate_per_sec`, `provisioned_instances` (default 0).
+`send_rate_per_sec`, `provisioned_instances` (default 0),
+`ydb_throttling_rcu_limit` (default 1000 RU/s; 0 or unset disables the limit,
+per the docs; the default value is a Plan C choice). Serverless YDB is
+throttled at 10 RU/s by default (V5), which would make imports and sends crawl.
+The provider arguments are **to verify in Plan C**, since Plan A did not read
+them in a source. Candidates on `yandex_ydb_database_serverless`:
+`serverless_database { throttling_rcu_limit, provisioned_rcu_limit,
+storage_size_limit }`.
 
 Resources:
 
@@ -308,8 +331,9 @@ Resources:
   custom domain, and a Let's Encrypt certificate from Certificate Manager. This
   requires a DNS zone in YC; otherwise the user supplies a certificate ID.
 - Triggers: 2 Message Queue (`jobs`, `jobs-long`), 2 timer, 1 Data Streams.
-- Postbox address and configuration set with the topic as feedback destination,
-  if the provider supports them (V2). Otherwise this is a documented manual step.
+- Postbox is **not** created by Terraform: the provider has no Postbox resource
+  (V2). Address and configuration set (with the topic as feedback destination)
+  are a manual README step.
 
 Migrations:
 
@@ -332,6 +356,11 @@ by release version.
   YDB backend runs in testcontainers with `ydbplatform/local-ydb`: one reused
   container, the same pattern as `nvelope-test-pg`. This is the parity
   guarantee.
+  - **Isolation.** YDB adapters keep explicit `tenant_id` predicates, and
+    contract tests isolate with the same `seedTenant` pattern as the pg suites,
+    so `t.Parallel()` works on the shared `/local` root. The container also
+    holds the `dbtest_ready` and `dbtest_ddl_probe` tables, so Plan B tests
+    must not assert an exact table set.
 - **Job runtime tests use real SQS semantics from fakecloud.** YMQ speaks the
   SQS API, so the YMQ enqueuer and the `/jobs` dispatcher are tested against
   [fakecloud](https://github.com/faiscadev/fakecloud), a local AWS emulator.
@@ -370,6 +399,9 @@ by release version.
 
 ## Verify at plan start
 
+V1–V6 are resolved; see "Spike findings (Plan A)". The list below is kept as
+the original questions.
+
 These are spikes. Each can change one detail of this design, but none changes
 its shape.
 
@@ -403,22 +435,33 @@ Run against `ydbplatform/local-ydb:26.3.1.23`.
 
 PASS. `SELECT "Alice@Example.com" ILIKE "alice%" AS hit;` returns true. The `String::AsciiToLower` fallback was not needed.
 
-Decision: subscriber search uses ILIKE
+Scope: `grep -rn ILIKE internal --include='*.go'` finds three sites, not one:
+`internal/deliverability/adapters/suppression_pg.go:91` (email filter on the
+suppression list), `internal/audience/adapters/segment_sql.go:68`
+(`col::text ILIKE`) and `segment_sql.go:87` (`attributes->>key ILIKE`). The
+spike only tested an ASCII literal against an ASCII literal, never a Utf8
+column, a parameter or non-ASCII (Cyrillic) text.
+
+Decision: the three sites use YQL `ILIKE`, provisionally. **To verify in
+Plan B:** the first audience or deliverability contract test must check
+`ILIKE` on a Utf8 column, with a parameterised `%...%` pattern, against
+Cyrillic data. If it fails, fall back to a stored lowercase column with `LIKE`.
 
 ### V4 — DDL, uniqueness, RETURNING, CurrentUtcTimestamp
 
 - Multi-statement DDL in one `Exec`: PASS (two `CREATE TABLE` statements in one `Exec`; Fallback A not needed)
 - TTL + inline `GLOBAL UNIQUE SYNC` index in `CREATE TABLE`: PASS
+- Recorded error texts below are trimmed. The full wrapper is `pool.With failed with 1 attempts: non-retryable error occurred on attempt No.1 (idempotent=false):` followed by the operation error, and the error is marked non-retryable. Matching on message text is fragile.
 - Duplicate unique-index value error: `operation/PRECONDITION_FAILED (code = 400120, issues = [{#2012 'Conflict with existing key'}])`
-- Duplicate primary key on `INSERT` error: `operation/PRECONDITION_FAILED (code = 400120, issues = [{#2012 'Conflict with existing key'}])` (identical to the unique-index error, so Plan B cannot tell the two apart by status; map `PRECONDITION_FAILED` with "Conflict with existing key" to "already exists")
+- Duplicate primary key on `INSERT` error: `operation/PRECONDITION_FAILED (code = 400120, issues = [{#2012 'Conflict with existing key'}])` (identical to the unique-index error, so Plan B cannot tell the two apart by status; map `PRECONDITION_FAILED` with "Conflict with existing key" to "already exists"). Recommended matcher, **to verify in Plan B**: `ydb.IsOperationError(err, Ydb.StatusIds_PRECONDITION_FAILED)` plus YQL issue code 2012. `IsOperationErrorAlreadyExistsError` will not fire for this error.
 - `UPSERT ... RETURNING`: PASS (`UPSERT INTO ... VALUES (...) RETURNING count` scans a `Uint64` of 7)
 - `CurrentUtcTimestamp()` scan into `time.Time`: PASS (within one minute of the host clock)
 
 Notes for Plan B:
 - `CurrentUtcTimestamp() + Interval(...)` is `Optional<Timestamp>`; inserting it into a `NOT NULL Timestamp` column fails with `Failed to convert 'expire_at': Optional<Timestamp> to Timestamp`. Wrap it in `Unwrap(...)`.
-- Right after a fresh container start, DDL can fail with `database doesn't have storage pools at all to create tablet channels to storage pool binding by profile id` even though `SELECT 1` already succeeds; `waitYDBReady` should probe with DDL.
+- Right after a fresh container start, DDL can fail with `database doesn't have storage pools at all to create tablet channels to storage pool binding by profile id` even though `SELECT 1` already succeeds. Fixed in commit 9114101: the `waitYDBReady` probe is now `CREATE TABLE IF NOT EXISTS dbtest_ready`. The race hit 2 of 2 cold starts on the first DDL.
 
-Decision: in-repo runner, one Exec per file
+Decision: in-repo runner, one `Exec` per statement, files split on lines ending in `;`. The spike's one-`Exec`-per-file result covered only two small tables, and the general YDB query-text limit is 10 KB (V5), while the current pg migrations are 59 KB with 45 `CREATE TABLE`s. DDL is not transactional in YDB, so the baseline migration must use `IF NOT EXISTS` / `IF EXISTS` on every statement; the spike did not test the partial-failure path.
 
 ### V2 — Terraform provider coverage
 
@@ -454,7 +497,13 @@ Decision: Postbox is a documented manual README step (no `postbox` resource exis
 | Behavior when throttling limit exceeded | Query rejected with `Throughput limit exceeded` (rejection is delayed to the next query); new queries pause roughly excess RU divided by the limit; safe to retry; about five minutes of burst bandwidth is reserved. | https://yandex.cloud/en/docs/ydb/concepts/serverless_and_dedicated |
 | Provisioned capacity | Optional hourly prepaid RU/s ("Provisioned capacity, RU/s"); billing, not a throttle. | https://yandex.cloud/en/docs/ydb/pricing/serverless |
 
-Decision for Plan B: export and recipient resolution page through results (keyset paging) with page size 1000 or less. The 1,000-row truncation applies to the legacy `ExecuteDataQuery` path and its applicability to `Query().Query` streaming is not documented, so paging stays the safe choice. Retry on `Throughput limit exceeded`.
+Decision for Plan B (no port changes, so the "no port-level keyset pagination" non-goal holds):
+
+- Unbounded reads (`RecipientSource.MembersOfList` and `MembersOfSegment`, `internal/campaign/domain/repository.go:122-123`) page **inside the adapter**, at most 1000 rows per request, either with keyset paging internal to the adapter on the primary key or with a streaming `Query()` result.
+- Export keeps OFFSET pages of 500 (`exportPageSize`, `ExportWorker.pageAll`) through the existing `domain.Page{Offset, Limit}` port.
+- `Recipients.BulkInsert` (`internal/campaign/adapters/recipients_pg.go:30-57`) inserts every recipient in one transaction, and V5 found no documented transaction-size limit. In YDB it writes in chunks, one transaction per chunk of at most 1000 rows. This is safe because the unique `(campaign_id, email)` key makes each chunk idempotent on retry.
+
+The 1,000-row truncation applies to the legacy `ExecuteDataQuery` path and its applicability to `Query().Query` streaming is not documented, so paging stays the safe choice. Retry on `Throughput limit exceeded`.
 
 ### V6 — retry-safety audit
 
@@ -493,6 +542,11 @@ These are known limits, marked in code with `ponytail:` comments.
   is `provisioned_instances > 0`, which costs money.
 - The fixed-window throttle allows up to 2× the limit at a window boundary.
   This is acceptable for anti-abuse and Postbox pacing.
+- The default serverless YDB throttle of 10 RU/s (V5) throttles bulk jobs
+  (imports, sends). The upgrade path is raising or removing the limit through
+  the `ydb_throttling_rcu_limit` Terraform input.
+- The YDB container used by tests also holds the `dbtest_ready` and
+  `dbtest_ddl_probe` tables, so tests must not assert an exact table set.
 - One worker invocation runs one job (batch size 1). Throughput scales through
   container instances, not batching.
 
