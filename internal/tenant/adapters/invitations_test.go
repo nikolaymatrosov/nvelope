@@ -157,12 +157,16 @@ func TestInvitationsCreateIsRaceFree(t *testing.T) {
 
 		const n = 5
 		errs := make([]error, n)
+		invs := make([]*domain.Invitation, n)
+		for i := range n {
+			invs[i] = inviteEmail(t, ws.ID(), ownerID, addr)
+		}
 		var wg sync.WaitGroup
 		for i := range n {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_, errs[i] = repo.Create(ctx, inviteEmail(t, ws.ID(), ownerID, addr), dbtest.RandString())
+				_, errs[i] = repo.Create(ctx, invs[i], dbtest.RandString())
 			}()
 		}
 		wg.Wait()
