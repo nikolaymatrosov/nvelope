@@ -456,6 +456,32 @@ Decision: Postbox is a documented manual README step (no `postbox` resource exis
 
 Decision for Plan B: export and recipient resolution page through results (keyset paging) with page size 1000 or less. The 1,000-row truncation applies to the legacy `ExecuteDataQuery` path and its applicability to `Query().Query` streaming is not documented, so paging stays the safe choice. Retry on `Throughput limit exceeded`.
 
+### V6 — retry-safety audit
+
+Scanned: 39 UpdateFn closures outside pg adapters (the grep listed 40 lines; `internal/dbtest/ydb.go:117` is `context.WithTimeout`, not a closure site, and `internal/auth/app/command/set_locale.go:43` passes no closure); 129 transaction bodies in pg adapters.
+
+No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier, blob store or Postbox client, sleeps, or uses a channel. The enqueues in `StartCampaign`, `ResumeCampaign` and `StartWorker` run after `Update` returns, and the verifier check in `VerifyWorker` runs before it. `MediaRefValidator.IsTenantMediaRef(ref string) bool` takes no context and is pure, so `ApplyVisualSave` inside the save-visual closures is safe. Plain assignments to outer variables (`updated = s`, `res.CurrentUpdatedAt = ...`) are safe: the last run wins. The pg adapter bodies reference only `tx`, locals and pure helpers (the adapters hold only `pool`); there is no injected port, no HTTP/S3/Postbox call, no enqueue, no channel op, and no `slog`/`log` call inside any transaction body.
+
+| Site (file:line) | Class | What repeats on retry | Fix in Plan B |
+|------------------|-------|-----------------------|---------------|
+| `internal/sending/adapters/verify_worker.go:53` | unsafe-mutation | `snooze = true` is only ever set, never reset. A retry whose second run takes the `!d.IsPending()` early return keeps the stale `true` and snoozes a job whose domain is already terminal. | Set `snooze = false` as the first statement of the closure. |
+| `internal/billing/app/command/charge_invoice.go:177` (billing, not ported) | unsafe-mutation, safe-time-inside | `exhausted = true` is only ever set. A retry that sees a lower attempt count keeps the stale `true` and suspends the subscription at line 188. `time.Now()` also feeds `NextAttemptAt`. | Not ported. If ever ported: set `exhausted = false` at closure start; compute `now` before the closure. |
+| `internal/billing/app/command/charge_invoice.go:86` (billing, not ported) | safe-time-inside | `s.Cancel(time.Now())` timestamp advances on retry. | Not ported. |
+| `internal/billing/app/command/charge_invoice.go:259` (billing, not ported) | safe-time-inside | `i.MarkPaid(time.Now())` timestamp advances on retry. | Not ported. |
+| `internal/iam/app/command/sessions.go:152` | safe-time-inside | `s.Revoke(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/campaign/app/command/set_archive_visibility.go:35` | safe-time-inside | `SetArchiveVisible(..., time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/campaign/app/command/campaigns.go:214` | safe-time-inside | `c.Start(time.Now())` timestamp advances on retry. The enqueue is outside the closure. | Accept; keep `EnqueueStart` after `Update` returns. |
+| `internal/campaign/adapters/batch_worker.go:258` | safe-time-inside | `c.Finish(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/audience/adapters/import_worker.go:40` | safe-time-inside | `j.Start(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/audience/adapters/import_worker.go:49` | safe-time-inside | `j.Complete(..., time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/audience/adapters/export_worker.go:44` | safe-time-inside | `j.Start(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/audience/adapters/export_worker.go:53` | safe-time-inside | `j.Fail(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/audience/adapters/export_worker.go:66` | safe-time-inside | `j.Complete(..., time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/campaign/adapters/recipients_pg.go:49` (`BulkInsert`) | unsafe-mutation (pg body) | `inserted += tag.RowsAffected()` on an outer counter: a retry double-counts rows the first attempt inserted (the rolled-back attempt's count is not undone). | Declare the counter inside the closure and assign it to the outer variable once at the end, or reset `inserted = 0` at closure start. |
+| `internal/audience/adapters/lists_pg.go:165`, `memberships_pg.go:119`, `subscribers_pg.go:205`, `subscribers_pg.go:247`, `subscribers_pg.go:285`, `subscription_pages_pg.go:191`, `internal/billing/adapters/invoices_pg.go:179` (billing, not ported), `internal/campaign/adapters/templates_pg.go:152`, `campaigns_pg.go:201`, `campaigns_pg.go:232`, `campaigns_pg.go:285`, `recipients_pg.go:88`, `internal/deliverability/adapters/suppression_pg.go:118`, `analytics_pg.go:100` (`dash.Recent`), `internal/iam/adapters/audit_pg.go:82`, `roles_pg.go:156`, `apikeys_pg.go:132`, `internal/sending/adapters/domains_pg.go:164`, `domains_pg.go:189`, `internal/media/adapters/assets_pg.go:115` | unsafe-mutation (pg body, read paths) | Each does `append` to a slice declared outside the transaction closure. A retry after a partial read appends the rows again, returning duplicates. | Rewritten in Plan B anyway: build the slice inside the closure and assign it to the outer variable at the end (`result = local`), or reset it (`out = nil`) at closure start. Apply to every YDB read helper that collects rows inside a `DoTx` closure. |
+
+All other sites are `safe`.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
