@@ -38,7 +38,9 @@ func MigrateYDB(ctx context.Context, d *ydb.Driver) error {
 // Each statement must therefore be idempotent (CREATE ... IF NOT EXISTS, DROP
 // ... IF EXISTS): a re-run re-applies the unrecorded file from its first
 // statement and converges. A version is recorded only after all of its
-// statements succeed.
+// statements succeed. A non-idempotent statement (e.g. ALTER TABLE ... ADD
+// COLUMN) must sit alone in its own file, per the spec's "Schema and
+// migrations" rules.
 func MigrateYDBFrom(ctx context.Context, q query.Executor, fsys fs.FS) error {
 	names, err := fs.Glob(fsys, "*.up.sql")
 	if err != nil {
