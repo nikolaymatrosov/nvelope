@@ -6,7 +6,7 @@
 // selected block is deleted.
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
-import { cleanup, render, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { EditorContent, useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { Divider } from "../extensions/Divider"
@@ -22,6 +22,11 @@ beforeAll(() => {
   }
   if (typeof Range.prototype.getBoundingClientRect !== "function") {
     Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
+  }
+  // ProseMirror's mousedown handler calls posAtCoords -> elementFromPoint,
+  // which jsdom lacks; an unhandled throw fails the whole run.
+  if (typeof document.elementFromPoint !== "function") {
+    document.elementFromPoint = () => null
   }
 })
 
@@ -45,6 +50,7 @@ type HarnessHandle = {
   selectedType: string
   selectedPos: number | null
   selectBlock: (pos: number) => void
+  clear: () => void
 }
 
 function Harness({ onState }: { onState: (h: HarnessHandle) => void }) {
@@ -58,6 +64,7 @@ function Harness({ onState }: { onState: (h: HarnessHandle) => void }) {
     selectedType: selection.selectedNode?.type.name ?? "none",
     selectedPos: selection.selectedPos,
     selectBlock: selection.selectBlock,
+    clear: selection.clear,
   })
   return <EditorContent editor={editor} />
 }
@@ -68,6 +75,7 @@ function renderHarness() {
     selectedType: "none",
     selectedPos: null,
     selectBlock: () => {},
+    clear: () => {},
   }
   render(<Harness onState={(h) => (latest = h)} />)
   return () => latest
@@ -89,6 +97,7 @@ describe("useBlockSelection", () => {
     await waitFor(() => expect(get().editor).toBeTruthy())
     const editor = get().editor!
     // Place the caret inside the first paragraph.
+    fireEvent.mouseDown(editor.view.dom)
     editor.commands.setTextSelection(2)
     await waitFor(() => expect(get().selectedType).toBe("paragraph"))
   })
@@ -116,5 +125,35 @@ describe("useBlockSelection", () => {
     // Delete the selected divider node.
     editor.chain().setNodeSelection(pos).deleteSelection().run()
     await waitFor(() => expect(get().selectedType).not.toBe("divider"))
+  })
+
+  it("reports nothing selected until the operator selects", async () => {
+    const get = renderHarness()
+    await waitFor(() => expect(get().editor).toBeTruthy())
+    expect(get().selectedPos).toBeNull()
+    expect(get().selectedType).toBe("none")
+  })
+
+  it("activates on a mousedown in the canvas", async () => {
+    const get = renderHarness()
+    await waitFor(() => expect(get().editor).toBeTruthy())
+    fireEvent.mouseDown(get().editor!.view.dom)
+    await waitFor(() => expect(get().selectedType).toBe("paragraph"))
+  })
+
+  it("clear() keeps the selection empty across later transactions", async () => {
+    const get = renderHarness()
+    await waitFor(() => expect(get().editor).toBeTruthy())
+    const editor = get().editor!
+    get().selectBlock(dividerPos(editor))
+    await waitFor(() => expect(get().selectedType).toBe("divider"))
+    act(() => get().clear())
+    await waitFor(() => expect(get().selectedPos).toBeNull())
+    // A programmatic edit (it moves the internal selection) must not
+    // resurrect a block selection.
+    act(() => {
+      editor.commands.insertContentAt(editor.state.doc.content.size, { type: "paragraph" })
+    })
+    expect(get().selectedPos).toBeNull()
   })
 })
