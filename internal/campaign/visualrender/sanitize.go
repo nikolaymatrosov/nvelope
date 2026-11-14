@@ -151,6 +151,10 @@ var tagRE = regexp.MustCompile(`<[^>]+>`)
 // <link>, inline SVG/MathML, event handlers, meta refresh, and script or
 // non-image data: URLs. It returns one sanitizer_stripped warning when the
 // input held any such construct.
+//
+// Comment content is preserved verbatim, so a script inside an MSO
+// conditional comment keeps its text; it is inert in browsers and Outlook.
+// The warning is advisory and may fire for such text.
 func SanitizeDocument(bodyHTML string) (sanitized string, warnings []domain.RenderWarning) {
 	if bodyHTML == "" {
 		return "", nil

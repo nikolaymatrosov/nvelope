@@ -121,3 +121,10 @@ func TestSanitizeDocument_LiteralSentinelCarriesNothing(t *testing.T) {
 	out, _ := SanitizeDocument(`<p>nvelope-merge-tag-0-x nvelope-merge-tag-99-x</p>`)
 	require.Equal(t, `<p>nvelope-merge-tag-0-x nvelope-merge-tag-99-x</p>`, out)
 }
+
+func TestSanitizeDocument_CommentContentPreservedVerbatim(t *testing.T) {
+	t.Parallel()
+	out, warnings := SanitizeDocument(`<p>x</p><!--[if mso]><script>x</script><![endif]-->`)
+	require.Contains(t, out, "<!--[if mso]><script>x</script><![endif]-->", "comment text is kept as-is")
+	require.NotEmpty(t, warnings, "the warning stays advisory")
+}

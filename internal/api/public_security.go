@@ -15,7 +15,9 @@ const publicCSP = "default-src 'none'; style-src 'unsafe-inline'; " +
 // the document an opaque origin, so campaign HTML that slipped past the
 // sanitizer, or was saved with sanitization off, can neither run script nor
 // reach the API with the visitor's session. allow-popups and
-// allow-popups-to-escape-sandbox keep target=_blank links working.
+// allow-popups-to-escape-sandbox only matter for bodies saved with
+// sanitization off: the standard sanitizer strips target, so otherwise no
+// link opens a popup.
 const archiveCSP = "sandbox allow-popups allow-popups-to-escape-sandbox; " +
 	"default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; " +
 	"font-src https: data:; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
