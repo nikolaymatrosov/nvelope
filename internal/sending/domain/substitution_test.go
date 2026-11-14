@@ -35,6 +35,22 @@ func ctx() domain.CampaignContext {
 	}
 }
 
+func TestSubstituteEscapesValuesInHTMLOnly(t *testing.T) {
+	t.Parallel()
+	s := sub()
+	s.Name = `<a href="https://evil.example">Tom & Jerry</a>`
+	html, text := domain.Substitute(`<p>Hi {{ subscriber.name }}</p>`, `Hi {{ subscriber.name }}`, s, ctx())
+	require.Equal(t, `<p>Hi &lt;a href=&#34;https://evil.example&#34;&gt;Tom &amp; Jerry&lt;/a&gt;</p>`, html)
+	require.Equal(t, `Hi <a href="https://evil.example">Tom & Jerry</a>`, text)
+}
+
+func TestSubstituteSubjectInsertsRawValues(t *testing.T) {
+	t.Parallel()
+	s := sub()
+	s.Name = "Tom & Jerry"
+	require.Equal(t, "Hi Tom & Jerry", domain.SubstituteSubject("Hi {{ subscriber.name }}", s, ctx()))
+}
+
 func TestSubstitute_BuiltInSubscriber(t *testing.T) {
 	t.Parallel()
 	html, text := domain.Substitute(

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	stdhtml "html"
 	"regexp"
 	"strings"
 	"time"
@@ -40,26 +41,42 @@ var placeholderRE = regexp.MustCompile(`\{\{\s*(subscriber|campaign)\.([a-z][a-z
 
 // Substitute replaces every `{{ subscriber.<slug> }}` and
 // `{{ campaign.<name> }}` placeholder in html and text with its concrete
-// value for the recipient. Unknown slugs are left as the literal placeholder
-// — validation already rejected such documents at save time (per FR-016c);
-// silently leaving them at send avoids a per-recipient hard fail when a
-// custom field has been deleted between save and send.
+// value for the recipient. Values are HTML-escaped in html: subscriber data
+// (a name, a custom attribute) is untrusted and lands after the body was
+// sanitized. text gets the raw value. Unknown slugs are left as the literal
+// placeholder; validation already rejected such documents at save time (per
+// FR-016c), and silently leaving them at send avoids a per-recipient hard
+// fail when a custom field has been deleted between save and send.
 func Substitute(html, text string, sub SubscriberView, ctx CampaignContext) (string, string) {
-	replace := func(in string) string {
-		return placeholderRE.ReplaceAllStringFunc(in, func(match string) string {
-			m := placeholderRE.FindStringSubmatch(match)
-			if len(m) != 3 {
-				return match
-			}
-			namespace, key := m[1], m[2]
-			value, ok := resolve(namespace, key, sub, ctx)
-			if !ok {
-				return match
-			}
-			return value
-		})
-	}
-	return replace(html), replace(text)
+	return replacePlaceholders(html, sub, ctx, stdhtml.EscapeString),
+		replacePlaceholders(text, sub, ctx, nil)
+}
+
+// SubstituteSubject resolves placeholders in a subject line. Values are
+// inserted raw: the subject is a header, Q-encoded by the messenger, and is
+// never parsed as HTML.
+func SubstituteSubject(subject string, sub SubscriberView, ctx CampaignContext) string {
+	return replacePlaceholders(subject, sub, ctx, nil)
+}
+
+// replacePlaceholders substitutes every known placeholder in one part.
+// encode, when non-nil, is applied to each value before insertion.
+func replacePlaceholders(in string, sub SubscriberView, ctx CampaignContext,
+	encode func(string) string) string {
+	return placeholderRE.ReplaceAllStringFunc(in, func(match string) string {
+		m := placeholderRE.FindStringSubmatch(match)
+		if len(m) != 3 {
+			return match
+		}
+		value, ok := resolve(m[1], m[2], sub, ctx)
+		if !ok {
+			return match
+		}
+		if encode != nil {
+			return encode(value)
+		}
+		return value
+	})
 }
 
 // resolve looks up one placeholder. Returns the empty string + ok=true for

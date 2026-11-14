@@ -217,8 +217,7 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 				CurrentDate:    time.Now(),
 			}
 			html, text = sendingdomain.Substitute(html, text, sub, cctx)
-			subjectHTML, _ := sendingdomain.Substitute(subject, "", sub, cctx)
-			subject = subjectHTML
+			subject = sendingdomain.SubstituteSubject(subject, sub, cctx)
 		}
 	}
 
