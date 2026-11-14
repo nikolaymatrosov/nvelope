@@ -74,6 +74,9 @@ func NewCampaign(tenantID, name, subject, bodyHTML, bodyText, fromName, fromLoca
 	if tenantID == "" {
 		return nil, ErrCampaignInvalid.WithMessage("a tenant is required")
 	}
+	if err := checkBodySize(bodyHTML, bodyText); err != nil {
+		return nil, err
+	}
 	name = strings.TrimSpace(name)
 	subject = strings.TrimSpace(subject)
 	fromLocalPart = strings.TrimSpace(fromLocalPart)
@@ -153,6 +156,9 @@ func NewVisualCampaign(
 ) (*Campaign, error) {
 	if tenantID == "" {
 		return nil, ErrCampaignInvalid.WithMessage("a tenant is required")
+	}
+	if err := checkBodySize(bodyHTML, bodyText); err != nil {
+		return nil, err
 	}
 	name = strings.TrimSpace(name)
 	subject = strings.TrimSpace(subject)
@@ -347,6 +353,9 @@ func (c *Campaign) ApplyVisualSave(
 	subject = strings.TrimSpace(subject)
 	if subject == "" {
 		return ErrCampaignInvalid.WithMessage("campaign subject is required")
+	}
+	if err := checkBodySize(bodyHTML, bodyText); err != nil {
+		return err
 	}
 	if doc == nil {
 		return ErrVisualDocInvalid.WithMessage("document is required")

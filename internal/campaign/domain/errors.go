@@ -9,6 +9,11 @@ import "github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
 // transport-agnostic category; internal/api/errmap.go maps the category (and a
 // few slug overrides) to an HTTP status in one place.
 var (
+	// ErrBodyTooLarge is returned when a campaign or template body exceeds
+	// MaxBodyBytes.
+	ErrBodyTooLarge = apperr.NewIncorrectInput("body-too-large",
+		"a message body may not exceed 1 MiB")
+
 	// ErrTemplateNameTaken is returned when a template name is already used.
 	ErrTemplateNameTaken = apperr.NewConflict("template-name-taken",
 		"a template with that name already exists")

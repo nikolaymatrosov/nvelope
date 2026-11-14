@@ -53,6 +53,9 @@ func NewTemplate(tenantID, name string, kind Kind, subject, bodyHTML, bodyText s
 	if tenantID == "" {
 		return nil, ErrTemplateInvalid.WithMessage("a tenant is required")
 	}
+	if err := checkBodySize(bodyHTML, bodyText); err != nil {
+		return nil, err
+	}
 	if !validKind(kind) {
 		return nil, ErrTemplateInvalid.WithMessage("kind must be campaign or transactional")
 	}
@@ -122,6 +125,9 @@ func NewVisualTemplate(
 ) (*Template, error) {
 	if tenantID == "" {
 		return nil, ErrTemplateInvalid.WithMessage("a tenant is required")
+	}
+	if err := checkBodySize(bodyHTML, bodyText); err != nil {
+		return nil, err
 	}
 	if !validKind(kind) {
 		return nil, ErrTemplateInvalid.WithMessage("kind must be campaign or transactional")
@@ -249,6 +255,9 @@ func (t *Template) ApplyVisualSave(
 	subject = strings.TrimSpace(subject)
 	if subject == "" {
 		return ErrTemplateInvalid.WithMessage("template subject is required")
+	}
+	if err := checkBodySize(bodyHTML, bodyText); err != nil {
+		return err
 	}
 	if doc == nil {
 		return ErrVisualDocInvalid.WithMessage("document is required")

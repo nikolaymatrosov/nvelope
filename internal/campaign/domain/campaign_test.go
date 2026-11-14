@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -155,4 +156,19 @@ func TestNewTemplateValidates(t *testing.T) {
 
 	_, err = domain.NewTemplate("t1", "T", domain.Kind("bogus"), "Hi", "<p>b</p>", "")
 	require.ErrorIs(t, err, domain.ErrTemplateInvalid, "rejects an unknown kind")
+}
+
+func TestMessageBodiesAreCappedAtOneMiB(t *testing.T) {
+	t.Parallel()
+	big := strings.Repeat("a", domain.MaxBodyBytes+1)
+
+	_, err := domain.NewCampaign("tenant-1", "Big", "S", big, "", "", "", "", "", 0)
+	require.ErrorIs(t, err, domain.ErrBodyTooLarge)
+	_, err = domain.NewCampaign("tenant-1", "Big", "S", "", big, "", "", "", "", 0)
+	require.ErrorIs(t, err, domain.ErrBodyTooLarge)
+	_, err = domain.NewTemplate("tenant-1", "Big", domain.KindCampaign, "S", big, "")
+	require.ErrorIs(t, err, domain.ErrBodyTooLarge)
+
+	_, err = domain.NewCampaign("tenant-1", "Fits", "S", strings.Repeat("a", domain.MaxBodyBytes), "", "", "", "", "", 0)
+	require.NoError(t, err, "exactly 1 MiB is allowed")
 }
