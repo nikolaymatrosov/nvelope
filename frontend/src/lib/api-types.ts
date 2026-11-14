@@ -298,6 +298,8 @@ export type TemplateView = {
   // Phase 7 — populated when the template was last saved visually.
   body_doc?: VisualDoc | null
   theme?: Theme | null
+  // Present on raw create/update responses: what the sanitizer stripped.
+  warnings?: Array<RenderWarning>
   created_at: string
   updated_at: string
 }
@@ -346,6 +348,8 @@ export type CampaignView = {
   // to switch to the visual editor (per FR-029).
   body_doc?: VisualDoc | null
   theme?: Theme | null
+  // Present on raw create/update responses: what the sanitizer stripped.
+  warnings?: Array<RenderWarning>
   from_name: string
   from_local_part: string
   sending_domain_id?: string

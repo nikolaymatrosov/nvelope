@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
+import { toast } from "sonner"
 import { TemplateDetail } from "./$id"
 import type { VisualDoc } from "@/lib/api-types"
 import { renderWithClient } from "@/test/render"
@@ -14,6 +15,10 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: unknown; to?: unknown }) => (
     <a href={typeof to === "string" ? to : "#"}>{children as never}</a>
   ),
+}))
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock("@/lib/api", () => ({
@@ -108,6 +113,27 @@ describe("TemplateDetail — code-only path", () => {
         expect.objectContaining({ name: "Welcome v2" }),
       ),
     )
+  })
+})
+
+describe("TemplateDetail — raw save sanitization", () => {
+  it("warns and shows the stored body when the raw save returns warnings", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockResolvedValue(
+      ok(template({ body_html: "<p>Hi</p><script>x</script>" })),
+    )
+    vi.mocked(api.updateTemplate).mockResolvedValue(
+      ok(template({ body_html: "<p>Hi</p>", warnings: [{ kind: "sanitizer_stripped", detail: "removed" }] })),
+    )
+    renderWithClient(<TemplateDetail />)
+
+    await screen.findByDisplayValue("<p>Hi</p><script>x</script>")
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+    await screen.findByDisplayValue("<p>Hi</p>")
+    expect(screen.queryByDisplayValue("<p>Hi</p><script>x</script>")).toBeNull()
   })
 })
 

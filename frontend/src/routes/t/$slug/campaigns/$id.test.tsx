@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react"
+import { toast } from "sonner"
 import { CampaignDetail } from "./$id"
 import type { CampaignStatus, VisualDoc } from "@/lib/api-types"
 import { renderWithClient } from "@/test/render"
@@ -20,6 +21,10 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: unknown; to?: unknown }) => (
     <a href={typeof to === "string" ? to : "#"}>{children as never}</a>
   ),
+}))
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock("@/lib/api", () => ({
@@ -250,6 +255,28 @@ describe("CampaignDetail", () => {
     fireEvent.click(open)
     // Picker opens; media list is fetched.
     await waitFor(() => expect(api.media.list).toHaveBeenCalledWith("acme"))
+  })
+})
+
+describe("CampaignDetail — raw save sanitization", () => {
+  it("warns and shows the stored body when the raw save returns warnings", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockResolvedValue(
+      ok(campaign({ body_html: "<p>Hi</p><script>x</script>" })),
+    )
+    vi.mocked(api.listSendingDomains).mockResolvedValue(ok({ domains: [] }))
+    vi.mocked(api.updateCampaign).mockResolvedValue(
+      ok(campaign({ body_html: "<p>Hi</p>", warnings: [{ kind: "sanitizer_stripped", detail: "removed" }] })),
+    )
+    renderWithClient(<CampaignDetail />)
+
+    await screen.findByDisplayValue("<p>Hi</p><script>x</script>")
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+    await screen.findByDisplayValue("<p>Hi</p>")
+    expect(screen.queryByDisplayValue("<p>Hi</p><script>x</script>")).toBeNull()
   })
 })
 

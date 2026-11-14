@@ -217,9 +217,16 @@ function CampaignEditor({
         list_ids: listIds,
         segments: campaign.segments ?? undefined,
       }),
-    onSuccess: async () => {
+    onSuccess: async (res) => {
       await invalidate()
-      toast.success(t("detail.saveSuccess"))
+      // Show what the sanitizer actually stored.
+      form.setFieldValue("bodyHtml", res.data.body_html)
+      const warnings = res.data.warnings?.length ?? 0
+      if (warnings > 0) {
+        toast.warning(t("detail.saveWarnings", { count: warnings }))
+      } else {
+        toast.success(t("detail.saveSuccess"))
+      }
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
