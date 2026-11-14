@@ -32,10 +32,10 @@ run-scheduler:
 test:
 	$(GO) test ./...
 
-# Integration tests reuse a single testcontainers-managed Postgres container
-# that persists between runs for speed. test-db-clean removes it.
+# Integration tests share testcontainers-managed Postgres and local-YDB
+# containers, reused by name. test-db-clean removes any that are left over.
 test-db-clean:
-	docker rm -f nvelope-test-pg
+	docker rm -f nvelope-test-pg nvelope-test-ydb 2>/dev/null || true
 
 lint:
 	golangci-lint run
