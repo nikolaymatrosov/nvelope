@@ -6,6 +6,11 @@ import "github.com/nikolaymatrosov/nvelope/internal/platform/apperr"
 // transport-agnostic category; internal/api/errmap.go maps the category to an
 // HTTP status in one place.
 var (
+	// ErrRiskNotAccepted is returned when a tenant turns raw-HTML
+	// sanitization off without explicitly accepting the risk.
+	ErrRiskNotAccepted = apperr.NewIncorrectInput("risk_acceptance_required",
+		"turning raw HTML sanitization off requires accepting the risk")
+
 	// ErrSlugTaken is returned when creating a tenant whose slug is in use.
 	ErrSlugTaken = apperr.NewConflict("slug_taken", "that workspace address is already in use")
 

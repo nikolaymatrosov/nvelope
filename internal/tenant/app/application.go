@@ -16,12 +16,13 @@ type Application struct {
 
 // Commands gathers the tenant context's state-changing handlers.
 type Commands struct {
-	CreateWorkspace  decorator.ResultCommandHandler[command.CreateWorkspace, command.CreateWorkspaceResult]
-	InviteTeammate   decorator.ResultCommandHandler[command.InviteTeammate, command.InviteTeammateResult]
-	AcceptInvitation decorator.ResultCommandHandler[command.AcceptInvitation, command.AcceptInvitationResult]
-	RevokeInvitation decorator.CommandHandler[command.RevokeInvitation]
-	UpdateSettings   decorator.ResultCommandHandler[command.UpdateSettings, command.UpdateSettingsResult]
-	SaveBranding     decorator.CommandHandler[command.SaveBranding]
+	CreateWorkspace        decorator.ResultCommandHandler[command.CreateWorkspace, command.CreateWorkspaceResult]
+	InviteTeammate         decorator.ResultCommandHandler[command.InviteTeammate, command.InviteTeammateResult]
+	AcceptInvitation       decorator.ResultCommandHandler[command.AcceptInvitation, command.AcceptInvitationResult]
+	RevokeInvitation       decorator.CommandHandler[command.RevokeInvitation]
+	UpdateSettings         decorator.ResultCommandHandler[command.UpdateSettings, command.UpdateSettingsResult]
+	SetRawHTMLSanitization decorator.ResultCommandHandler[command.SetRawHTMLSanitization, command.SetRawHTMLSanitizationResult]
+	SaveBranding           decorator.CommandHandler[command.SaveBranding]
 }
 
 // Queries gathers the tenant context's read-only handlers.

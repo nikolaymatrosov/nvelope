@@ -208,6 +208,8 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				tenantcommand.NewRevokeInvitationHandler(invitations), "RevokeInvitation", logger),
 			UpdateSettings: decorator.ApplyResultCommandDecorators(
 				tenantcommand.NewUpdateSettingsHandler(settings), "UpdateSettings", logger),
+			SetRawHTMLSanitization: decorator.ApplyResultCommandDecorators(
+				tenantcommand.NewSetRawHTMLSanitizationHandler(settings), "SetRawHTMLSanitization", logger),
 			SaveBranding: decorator.ApplyCommandDecorators(
 				tenantcommand.NewSaveBrandingHandler(branding), "SaveBranding", logger),
 		},

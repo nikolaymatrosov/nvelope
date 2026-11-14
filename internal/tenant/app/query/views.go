@@ -36,4 +36,6 @@ type InvitationView struct {
 type SettingsView struct {
 	DisplayName string `json:"display_name"`
 	Timezone    string `json:"timezone"`
+
+	RawHTMLSanitization string `json:"raw_html_sanitization"`
 }

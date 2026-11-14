@@ -72,3 +72,24 @@ func TestSettingsUpdateRollsBackOnClosureError(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Workspace", settings.DisplayName(), "a closure error rolls the transaction back")
 }
+
+func TestSettingsRawHTMLSanitizationRoundTrips(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewSettings(pool)
+	ctx := context.Background()
+	ownerID := insertUser(t, pool)
+	ws := createWorkspace(t, adapters.NewTenants(pool), ownerID)
+
+	settings, err := repo.Get(ctx, ws.ID())
+	require.NoError(t, err)
+	require.Equal(t, domain.RawHTMLStandard, settings.RawHTMLSanitization(), "new tenants default to standard")
+
+	require.NoError(t, repo.Update(ctx, ws.ID(), func(s *domain.TenantSettings) (*domain.TenantSettings, error) {
+		return s, s.SetRawHTMLSanitization(domain.RawHTMLOff, true)
+	}))
+	settings, err = repo.Get(ctx, ws.ID())
+	require.NoError(t, err)
+	require.Equal(t, domain.RawHTMLOff, settings.RawHTMLSanitization())
+	require.Equal(t, "Workspace", settings.DisplayName(), "other fields survive the update")
+}

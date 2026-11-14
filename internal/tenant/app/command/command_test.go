@@ -86,7 +86,7 @@ func TestRevokeInvitation(t *testing.T) {
 func TestUpdateSettings(t *testing.T) {
 	t.Parallel()
 	settings := newFakeSettings()
-	settings.byTenant["tenant-1"] = domain.HydrateTenantSettings("tenant-1", "Old", "UTC")
+	settings.byTenant["tenant-1"] = domain.HydrateTenantSettings("tenant-1", "Old", "UTC", domain.RawHTMLStandard)
 	h := command.NewUpdateSettingsHandler(settings)
 
 	result, err := h.Handle(context.Background(), command.UpdateSettings{
@@ -164,4 +164,24 @@ func seedPendingInvitation(t *testing.T, invitations *fakeInvitations, tenantID 
 	require.NoError(t, err)
 	_, err = invitations.Create(context.Background(), inv, token.Hash("raw-token"))
 	require.NoError(t, err)
+}
+
+func TestSetRawHTMLSanitization(t *testing.T) {
+	t.Parallel()
+	settings := newFakeSettings()
+	settings.byTenant["tenant-1"] = domain.HydrateTenantSettings("tenant-1", "Acme", "UTC", domain.RawHTMLStandard)
+	h := command.NewSetRawHTMLSanitizationHandler(settings)
+
+	_, err := h.Handle(context.Background(), command.SetRawHTMLSanitization{TenantID: "tenant-1", Level: "off"})
+	require.ErrorIs(t, err, domain.ErrRiskNotAccepted)
+
+	res, err := h.Handle(context.Background(), command.SetRawHTMLSanitization{
+		TenantID: "tenant-1", Level: "off", AcceptRisk: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, command.SetRawHTMLSanitizationResult{Previous: "standard", Current: "off"}, res)
+
+	stored, err := settings.Get(context.Background(), "tenant-1")
+	require.NoError(t, err)
+	require.Equal(t, domain.RawHTMLOff, stored.RawHTMLSanitization())
 }

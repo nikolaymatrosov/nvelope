@@ -31,5 +31,6 @@ func (h GetSettingsHandler) Handle(ctx context.Context, q GetSettings) (Settings
 	if err != nil {
 		return SettingsView{}, err
 	}
-	return SettingsView{DisplayName: s.DisplayName(), Timezone: s.Timezone()}, nil
+	return SettingsView{DisplayName: s.DisplayName(), Timezone: s.Timezone(),
+		RawHTMLSanitization: string(s.RawHTMLSanitization())}, nil
 }

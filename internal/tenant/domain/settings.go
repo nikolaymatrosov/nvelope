@@ -13,7 +13,22 @@ type TenantSettings struct {
 	tenantID    string
 	displayName string
 	timezone    string
+
+	rawHTMLSanitization RawHTMLSanitization
 }
+
+// RawHTMLSanitization is how a tenant's raw (non-visual) campaign and
+// template HTML is treated on save.
+type RawHTMLSanitization string
+
+const (
+	// RawHTMLStandard strips active content (scripts, frames, forms, event
+	// handlers, unsafe URLs) and keeps the rest of the email document.
+	RawHTMLStandard RawHTMLSanitization = "standard"
+	// RawHTMLOff stores raw HTML verbatim. It is reachable only by explicitly
+	// accepting the risk.
+	RawHTMLOff RawHTMLSanitization = "off"
+)
 
 // NewTenantSettings builds the initial settings row created with a tenant. The
 // timezone is left to its database-level default until first changed.
@@ -25,13 +40,36 @@ func NewTenantSettings(tenantID, displayName string) (*TenantSettings, error) {
 	if displayName == "" {
 		return nil, apperr.NewIncorrectInput("validation_failed", "display name is required")
 	}
-	return &TenantSettings{tenantID: tenantID, displayName: displayName}, nil
+	return &TenantSettings{tenantID: tenantID, displayName: displayName, rawHTMLSanitization: RawHTMLStandard}, nil
 }
 
 // HydrateTenantSettings reconstructs settings from a persisted row.
 // Persistence only — it is not a constructor.
-func HydrateTenantSettings(tenantID, displayName, timezone string) *TenantSettings {
-	return &TenantSettings{tenantID: tenantID, displayName: displayName, timezone: timezone}
+func HydrateTenantSettings(tenantID, displayName, timezone string,
+	rawHTMLSanitization RawHTMLSanitization) *TenantSettings {
+	return &TenantSettings{tenantID: tenantID, displayName: displayName,
+		timezone: timezone, rawHTMLSanitization: rawHTMLSanitization}
+}
+
+// RawHTMLSanitization returns how raw campaign and template HTML is treated
+// on save.
+func (s *TenantSettings) RawHTMLSanitization() RawHTMLSanitization { return s.rawHTMLSanitization }
+
+// SetRawHTMLSanitization changes the raw-HTML level. Turning sanitization
+// off requires acceptRisk; turning it back on never does.
+func (s *TenantSettings) SetRawHTMLSanitization(level RawHTMLSanitization, acceptRisk bool) error {
+	switch level {
+	case RawHTMLStandard:
+	case RawHTMLOff:
+		if !acceptRisk {
+			return ErrRiskNotAccepted
+		}
+	default:
+		return apperr.NewIncorrectInput("validation_failed",
+			"raw HTML sanitization must be standard or off")
+	}
+	s.rawHTMLSanitization = level
+	return nil
 }
 
 // TenantID returns the owning tenant's id.

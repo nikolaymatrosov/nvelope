@@ -32,17 +32,17 @@ func NewSettings(pool *pgxpool.Pool) *Settings {
 func (r *Settings) Get(ctx context.Context, tenantID string) (*domain.TenantSettings, error) {
 	var settings *domain.TenantSettings
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
-		var displayName, timezone string
+		var displayName, timezone, rawHTML string
 		err := tx.QueryRow(ctx,
-			"SELECT display_name, timezone FROM tenant_settings").
-			Scan(&displayName, &timezone)
+			"SELECT display_name, timezone, raw_html_sanitization FROM tenant_settings").
+			Scan(&displayName, &timezone, &rawHTML)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrTenantNotFound
 		}
 		if err != nil {
 			return fmt.Errorf("loading tenant settings: %w", err)
 		}
-		settings = domain.HydrateTenantSettings(tenantID, displayName, timezone)
+		settings = domain.HydrateTenantSettings(tenantID, displayName, timezone, domain.RawHTMLSanitization(rawHTML))
 		return nil
 	})
 	if err != nil {
@@ -58,10 +58,10 @@ func (r *Settings) Update(ctx context.Context, tenantID string,
 	fn func(*domain.TenantSettings) (*domain.TenantSettings, error)) error {
 
 	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
-		var displayName, timezone string
+		var displayName, timezone, rawHTML string
 		err := tx.QueryRow(ctx,
-			"SELECT display_name, timezone FROM tenant_settings FOR UPDATE").
-			Scan(&displayName, &timezone)
+			"SELECT display_name, timezone, raw_html_sanitization FROM tenant_settings FOR UPDATE").
+			Scan(&displayName, &timezone, &rawHTML)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrTenantNotFound
 		}
@@ -69,15 +69,16 @@ func (r *Settings) Update(ctx context.Context, tenantID string,
 			return fmt.Errorf("loading tenant settings: %w", err)
 		}
 
-		loaded := domain.HydrateTenantSettings(tenantID, displayName, timezone)
+		loaded := domain.HydrateTenantSettings(tenantID, displayName, timezone, domain.RawHTMLSanitization(rawHTML))
 		updated, err := fn(loaded)
 		if err != nil {
 			return err
 		}
 
 		if _, err := tx.Exec(ctx,
-			`UPDATE tenant_settings SET display_name = $1, timezone = $2, updated_at = now()`,
-			updated.DisplayName(), updated.Timezone()); err != nil {
+			`UPDATE tenant_settings
+			    SET display_name = $1, timezone = $2, raw_html_sanitization = $3, updated_at = now()`,
+			updated.DisplayName(), updated.Timezone(), string(updated.RawHTMLSanitization())); err != nil {
 			return fmt.Errorf("updating tenant settings: %w", err)
 		}
 		return nil
