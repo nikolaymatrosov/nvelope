@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
 	authadapters "github.com/nikolaymatrosov/nvelope/internal/auth/adapters"
@@ -21,10 +20,11 @@ const testUserName = "Test User"
 // contract test. Every contract test body runs once per backend, so the
 // Postgres and YDB adapters are held to the same behaviour.
 type backend struct {
-	name     string
-	tenants  func(t *testing.T) domain.TenantRepository
-	settings func(t *testing.T) domain.SettingsRepository
-	branding func(t *testing.T) domain.BrandingRepository
+	name        string
+	tenants     func(t *testing.T) domain.TenantRepository
+	invitations func(t *testing.T) domain.InvitationRepository
+	settings    func(t *testing.T) domain.SettingsRepository
+	branding    func(t *testing.T) domain.BrandingRepository
 	// users seeds platform users through the auth context's repository for
 	// the same backend. On Postgres, memberships and invitations carry foreign
 	// keys to platform_users, and ListMembers joins it on both backends.
@@ -36,6 +36,9 @@ var backends = []backend{
 		name: "pg",
 		tenants: func(t *testing.T) domain.TenantRepository {
 			return adapters.NewTenants(dbtest.AppPool(t))
+		},
+		invitations: func(t *testing.T) domain.InvitationRepository {
+			return adapters.NewInvitations(dbtest.AppPool(t))
 		},
 		settings: func(t *testing.T) domain.SettingsRepository {
 			return adapters.NewSettings(dbtest.AppPool(t))
@@ -51,6 +54,9 @@ var backends = []backend{
 		name: "ydb",
 		tenants: func(t *testing.T) domain.TenantRepository {
 			return adapters.NewYDBTenants(dbtest.YDBMigrated(t))
+		},
+		invitations: func(t *testing.T) domain.InvitationRepository {
+			return adapters.NewYDBInvitations(dbtest.YDBMigrated(t))
 		},
 		settings: func(t *testing.T) domain.SettingsRepository {
 			return adapters.NewYDBSettings(dbtest.YDBMigrated(t))
@@ -98,18 +104,4 @@ func createWorkspace(t *testing.T, repo domain.TenantRepository, ownerID string)
 	created, err := repo.CreateWorkspace(context.Background(), tn, ownerID)
 	require.NoError(t, err)
 	return created
-}
-
-// insertUser inserts a platform user directly and returns its id. The tenant
-// adapters need real users to satisfy the membership and invitation foreign
-// keys; the auth context owns user creation, so the test inserts one directly.
-func insertUser(t *testing.T, pool *pgxpool.Pool) string {
-	t.Helper()
-	var id string
-	err := pool.QueryRow(context.Background(),
-		`INSERT INTO platform_users (email, password_hash, name)
-		 VALUES ($1, 'hash', 'Test User') RETURNING id`,
-		dbtest.RandString()+"@example.com").Scan(&id)
-	require.NoError(t, err)
-	return id
 }
