@@ -117,7 +117,7 @@ func main() {
 	// The cleanup sweep prunes expired email-verification tokens.
 	river.AddWorker(workers, authadapters.NewVerificationCleanupWorker(
 		authadapters.NewEmailVerifications(pool)))
-	river.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
+	jobs.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
 		cfg.SendingDomainVerifyInterval, cfg.SendingDomainVerifyWindow))
 	campaignSuppression := deliverabilityadapters.NewSuppressionChecker(pool)
 

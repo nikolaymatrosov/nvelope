@@ -35,10 +35,8 @@ func backdateDomain(t *testing.T, id string, age time.Duration) {
 	require.NoError(t, err)
 }
 
-func verifyJob(tenantID, domainID string) *river.Job[jobs.DomainVerifyArgs] {
-	return &river.Job[jobs.DomainVerifyArgs]{
-		Args: jobs.DomainVerifyArgs{TenantID: tenantID, DomainID: domainID},
-	}
+func verifyJob(tenantID, domainID string) jobs.DomainVerifyArgs {
+	return jobs.DomainVerifyArgs{TenantID: tenantID, DomainID: domainID}
 }
 
 func TestVerifyWorkerVerifiedPath(t *testing.T) {
@@ -92,7 +90,8 @@ func TestVerifyWorkerSnoozesWhilePending(t *testing.T) {
 
 	w := adapters.NewVerifyWorker(repo, fakeVerifier{verified: false}, time.Minute, 72*time.Hour)
 	err = w.Work(ctx, verifyJob(tenantID, id))
-	require.Error(t, err, "an unverified domain within the window snoozes")
+	require.Equal(t, river.JobSnooze(time.Minute), err,
+		"an unverified domain within the window snoozes for one interval")
 
 	got, err := repo.Get(ctx, tenantID, id)
 	require.NoError(t, err)
