@@ -54,7 +54,15 @@ const threeParas = {
   ],
 }
 
-function Harness({ content, onReady }: { content: object; onReady: (e: Editor) => void }) {
+function Harness({
+  content,
+  onReady,
+  editable = true,
+}: {
+  content: object
+  onReady: (e: Editor) => void
+  editable?: boolean
+}) {
   const editor = useEditor({
     extensions: [StarterKit.configure({ hardBreak: false }), Columns, Column, Divider],
     content,
@@ -65,15 +73,15 @@ function Harness({ content, onReady }: { content: object; onReady: (e: Editor) =
   }, [editor, onReady])
   return (
     <div>
-      <StructureOutline editor={editor} selection={selection} />
+      <StructureOutline editor={editor} selection={selection} editable={editable} />
       <EditorContent editor={editor} />
     </div>
   )
 }
 
-function renderHarness(content: object) {
+function renderHarness(content: object, editable = true) {
   let editor: Editor | null = null
-  render(<Harness content={content} onReady={(e) => (editor = e)} />)
+  render(<Harness content={content} editable={editable} onReady={(e) => (editor = e)} />)
   return () => editor
 }
 
@@ -139,17 +147,38 @@ describe("StructureOutline", () => {
     expect(editor.getJSON()).toEqual(before)
   })
 
-  it("deletes and duplicates a block from the outline", async () => {
+  it("deletes and duplicates a block from the row menu", async () => {
     const get = renderHarness(threeParas)
     await waitFor(() => expect(get()).toBeTruthy())
     const editor = get()!
     expect(editor.state.doc.childCount).toBe(3)
     const firstPos = topLevelPositions(editor)[0]
-    fireEvent.click(screen.getByTestId(`ve-outline-duplicate-${firstPos}`))
+    fireEvent.keyDown(screen.getByTestId(`ve-outline-menu-${firstPos}`), { key: "Enter" })
+    fireEvent.click(await screen.findByTestId(`ve-outline-duplicate-${firstPos}`))
     await waitFor(() => expect(editor.state.doc.childCount).toBe(4))
     const delPos = topLevelPositions(editor)[0]
-    fireEvent.click(screen.getByTestId(`ve-outline-delete-${delPos}`))
+    fireEvent.keyDown(screen.getByTestId(`ve-outline-menu-${delPos}`), { key: "Enter" })
+    fireEvent.click(await screen.findByTestId(`ve-outline-delete-${delPos}`))
     await waitFor(() => expect(editor.state.doc.childCount).toBe(3))
+  })
+
+  it("shows a root «Email» row that is current until a block is selected", async () => {
+    const get = renderHarness(nestedDoc)
+    await waitFor(() => expect(get()).toBeTruthy())
+    const root = screen.getByTestId("ve-outline-root")
+    expect(root.className).toContain("is-selected")
+    const headingPos = topLevelPositions(get()!)[0]
+    fireEvent.click(screen.getByTestId(`ve-outline-select-${headingPos}`))
+    await waitFor(() => expect(screen.getByTestId("ve-outline-root").className).not.toContain("is-selected"))
+    fireEvent.click(screen.getByText("Email"))
+    await waitFor(() => expect(screen.getByTestId("ve-outline-root").className).toContain("is-selected"))
+  })
+
+  it("hides row menus and dragging when read-only", async () => {
+    const get = renderHarness(threeParas, false)
+    await waitFor(() => expect(get()).toBeTruthy())
+    expect(screen.queryByTestId(`ve-outline-menu-${topLevelPositions(get()!)[0]}`)).toBeNull()
+    expect(screen.getAllByTestId("ve-outline-row-paragraph")[0].getAttribute("draggable")).toBe("false")
   })
 
   it("collapses a container entry to hide its children", async () => {

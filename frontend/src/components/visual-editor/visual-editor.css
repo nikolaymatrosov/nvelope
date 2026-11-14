@@ -610,23 +610,25 @@
   white-space: nowrap;
 }
 
-.ve-outline__actions {
+.ve-outline__menu {
   display: inline-flex;
-  gap: 2px;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
   opacity: 0;
 }
 
-.ve-outline__row:hover .ve-outline__actions {
+.ve-outline__row:hover .ve-outline__menu,
+.ve-outline__menu[aria-expanded="true"],
+.ve-outline__menu:focus-visible {
   opacity: 1;
 }
 
-.ve-outline__actions button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #6b7280;
-  font-size: 11px;
-  padding: 0 2px;
+.ve-outline__row--root .ve-outline__type {
+  font-weight: 600;
 }
 
 /* ── Three-pane chrome: toggle bar + overlays (feature 017, US3) ────────── */

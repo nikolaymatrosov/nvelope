@@ -5,17 +5,28 @@
 // highlighted (FR-008). Entries can be reordered by drag among same-parent
 // siblings (FR-009), deleted/duplicated (FR-010), and container entries
 // collapse to hide nested detail (FR-011).
+//
+// The outline ("Layers") lives in the right panel under a root «Email» row;
+// row actions sit in a ⋮ menu; read-only mode hides menus and dragging.
 
 import { useEffect, useReducer, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { EllipsisVertical } from "lucide-react"
 import type { Editor } from "@tiptap/core"
 import type { TFunction } from "i18next"
 import type { Node as PMNode } from "@tiptap/pm/model"
 import type { BlockSelection } from "../hooks/useBlockSelection"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 type Props = {
   editor: Editor
   selection: BlockSelection
+  editable?: boolean
 }
 
 type OutlineEntry = {
@@ -82,7 +93,7 @@ function buildOutline(editor: Editor): Array<OutlineEntry> {
   return entries
 }
 
-export function StructureOutline({ editor, selection }: Props) {
+export function StructureOutline({ editor, selection, editable = true }: Props) {
   const { t } = useTranslation("visualEditor")
   const [, bump] = useReducer((n: number) => n + 1, 0)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
@@ -101,29 +112,44 @@ export function StructureOutline({ editor, selection }: Props) {
   return (
     <div className="ve-panel ve-panel--structure" data-testid="ve-structure-panel">
       <div className="ve-panel__title">{t("panel.structureTitle")}</div>
-      {entries.length === 0 ? (
-        <p className="ve-panel__empty">{t("structure.empty")}</p>
-      ) : (
-        <ul className="ve-outline" role="tree" data-testid="ve-outline">
-          {entries.map((entry) => (
-            <OutlineNode
-              key={entry.pos}
-              entry={entry}
-              depth={0}
-              editor={editor}
-              selection={selection}
-              collapsed={collapsed}
-              setCollapsed={setCollapsed}
-              t={t}
-            />
-          ))}
-        </ul>
-      )}
+      <ul className="ve-outline" role="tree" data-testid="ve-outline">
+        <li className="ve-outline__item" role="treeitem" aria-selected={selection.selectedPos === null}>
+          <div
+            className={`ve-outline__row ve-outline__row--root${selection.selectedPos === null ? " is-selected" : ""}`}
+            data-testid="ve-outline-root"
+          >
+            <button type="button" className="ve-outline__label" onClick={() => selection.clear()}>
+              <span className="ve-outline__type">{t("screen.rootLabel")}</span>
+            </button>
+          </div>
+          {entries.length === 0 ? (
+            <p className="ve-panel__empty">{t("structure.empty")}</p>
+          ) : (
+            <ul className="ve-outline" role="group">
+              {entries.map((entry) => (
+                <OutlineNode
+                  key={entry.pos}
+                  entry={entry}
+                  depth={1}
+                  editor={editor}
+                  selection={selection}
+                  collapsed={collapsed}
+                  setCollapsed={setCollapsed}
+                  editable={editable}
+                  t={t}
+                />
+              ))}
+            </ul>
+          )}
+        </li>
+      </ul>
     </div>
   )
 }
 
-function labelFor(entry: OutlineEntry, t: TFunction<"visualEditor">): string {
+export type BlockLabelInput = { type: string; level?: number; count?: number }
+
+export function labelFor(entry: BlockLabelInput, t: TFunction<"visualEditor">): string {
   switch (entry.type) {
     case "heading":
       return t("structure.block.heading", { level: entry.level ?? 1 })
@@ -153,6 +179,7 @@ function OutlineNode({
   selection,
   collapsed,
   setCollapsed,
+  editable,
   t,
 }: {
   entry: OutlineEntry
@@ -161,6 +188,7 @@ function OutlineNode({
   selection: BlockSelection
   collapsed: Set<number>
   setCollapsed: React.Dispatch<React.SetStateAction<Set<number>>>
+  editable: boolean
   t: TFunction<"visualEditor">
 }) {
   const isContainer = entry.children.length > 0
@@ -182,14 +210,16 @@ function OutlineNode({
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
         data-testid={`ve-outline-row-${entry.type}`}
         data-pos={entry.pos}
-        draggable
+        draggable={editable}
         onDragStart={(e) => {
+          if (!editable) return
           e.dataTransfer.setData("text/ve-pos", String(entry.pos))
           e.dataTransfer.effectAllowed = "move"
         }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault()
+          if (!editable) return
           const raw = e.dataTransfer.getData("text/ve-pos")
           if (!raw) return
           moveBlock(editor, Number(raw), entry.pos)
@@ -216,26 +246,35 @@ function OutlineNode({
           <span className="ve-outline__type">{labelFor(entry, t)}</span>
           {entry.excerpt && <span className="ve-outline__excerpt">{entry.excerpt}</span>}
         </button>
-        <span className="ve-outline__actions">
-          <button
-            type="button"
-            aria-label={t("structure.actions.duplicate")}
-            title={t("structure.actions.duplicate")}
-            data-testid={`ve-outline-duplicate-${entry.pos}`}
-            onClick={() => duplicateBlock(editor, entry.pos)}
-          >
-            ⧉
-          </button>
-          <button
-            type="button"
-            aria-label={t("structure.actions.delete")}
-            title={t("structure.actions.delete")}
-            data-testid={`ve-outline-delete-${entry.pos}`}
-            onClick={() => deleteBlock(editor, entry.pos)}
-          >
-            ✕
-          </button>
-        </span>
+        {editable && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="ve-outline__menu"
+                aria-label={t("structure.actions.menu")}
+                data-testid={`ve-outline-menu-${entry.pos}`}
+              >
+                <EllipsisVertical className="size-4" aria-hidden />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                data-testid={`ve-outline-duplicate-${entry.pos}`}
+                onSelect={() => duplicateBlock(editor, entry.pos)}
+              >
+                {t("structure.actions.duplicate")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                data-testid={`ve-outline-delete-${entry.pos}`}
+                onSelect={() => deleteBlock(editor, entry.pos)}
+              >
+                {t("structure.actions.delete")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       {isContainer && !isCollapsed && (
         <ul className="ve-outline" role="group">
@@ -248,6 +287,7 @@ function OutlineNode({
               selection={selection}
               collapsed={collapsed}
               setCollapsed={setCollapsed}
+              editable={editable}
               t={t}
             />
           ))}
@@ -258,7 +298,7 @@ function OutlineNode({
 }
 
 // deleteBlock removes the block at pos.
-function deleteBlock(editor: Editor, pos: number): void {
+export function deleteBlock(editor: Editor, pos: number): void {
   const node = editor.state.doc.nodeAt(pos)
   if (!node) return
   editor
@@ -272,7 +312,7 @@ function deleteBlock(editor: Editor, pos: number): void {
 }
 
 // duplicateBlock inserts a copy of the block immediately after it.
-function duplicateBlock(editor: Editor, pos: number): void {
+export function duplicateBlock(editor: Editor, pos: number): void {
   const node = editor.state.doc.nodeAt(pos)
   if (!node) return
   editor
