@@ -201,12 +201,13 @@ function EditorSession({
         return
       }
       if (e.key !== "Escape") return
-      const fromCanvas = e.target instanceof Node && editor?.view.dom.contains(e.target) === true
+      // DOM check, not editor.view: the view throws until it is mounted.
+      const fromCanvas = e.target instanceof Element && e.target.closest(".ve-editor") !== null
       if (fromCanvas || !e.defaultPrevented) selection.clear()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [editable, editor, session, selection])
+  }, [editable, session, selection])
 
   const onInsert = (item: CatalogItem) => {
     if (!editor) return
