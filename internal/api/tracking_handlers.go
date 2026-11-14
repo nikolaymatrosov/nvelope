@@ -48,8 +48,12 @@ func (s *Server) handleTrackClick(w http.ResponseWriter, r *http.Request) {
 	}
 	url, err := s.tracking.RecordClick(r.Context(), tenantID, linkID, recipientID)
 	if err != nil {
-		s.fail(w, r, "track click", err)
-		return
+		if url == "" {
+			s.fail(w, r, "track click", err)
+			return
+		}
+		// Attribution is best-effort; the recipient still reaches the link.
+		s.logger.Warn("recording click", "error", err)
 	}
 	http.Redirect(w, r, url, http.StatusFound)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -52,7 +53,14 @@ func (r *Tracking) UpsertLinks(ctx context.Context, tenantID, campaignID string,
 	return out, nil
 }
 
-// RecordClick records a click and returns the link's original URL.
+// RecordClick returns the link's original URL and records the click when the
+// recipient belongs to the link's campaign.
+//
+// A missing, malformed, or foreign recipient id records nothing: the
+// redirect must still work for forwarded or hand-copied links. An unknown
+// link is domain.ErrLinkNotFound with an empty URL. When the insert itself
+// fails, the URL is returned alongside the error so the caller can still
+// redirect.
 func (r *Tracking) RecordClick(ctx context.Context, tenantID, linkID, recipientID string) (string, error) {
 	var url string
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
@@ -65,9 +73,14 @@ func (r *Tracking) RecordClick(ctx context.Context, tenantID, linkID, recipientI
 		if err != nil {
 			return fmt.Errorf("loading link: %w", err)
 		}
+		if _, perr := uuid.Parse(recipientID); perr != nil {
+			return nil
+		}
 		_, err = tx.Exec(ctx,
 			`INSERT INTO link_clicks (tenant_id, link_id, campaign_id, recipient_id)
-			 VALUES (@tenant_id, @link_id, @campaign_id, @recipient_id)`,
+			 SELECT @tenant_id::uuid, @link_id::uuid, @campaign_id::uuid, cr.id
+			   FROM campaign_recipients cr
+			  WHERE cr.id = @recipient_id::uuid AND cr.campaign_id = @campaign_id::uuid`,
 			pgx.NamedArgs{
 				"tenant_id":    tenantID,
 				"link_id":      linkID,
@@ -79,18 +92,21 @@ func (r *Tracking) RecordClick(ctx context.Context, tenantID, linkID, recipientI
 		}
 		return nil
 	})
-	if err != nil {
-		return "", err
-	}
-	return url, nil
+	return url, err
 }
 
-// RecordView records an open for one recipient of a campaign.
+// RecordView records an open when the recipient belongs to the campaign. A
+// malformed or foreign recipient id records nothing.
 func (r *Tracking) RecordView(ctx context.Context, tenantID, campaignID, recipientID string) error {
+	if _, err := uuid.Parse(recipientID); err != nil {
+		return nil
+	}
 	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO campaign_views (tenant_id, campaign_id, recipient_id)
-			 VALUES ($1, $2, $3)`,
+			 SELECT $1::uuid, $2::uuid, cr.id
+			   FROM campaign_recipients cr
+			  WHERE cr.id = $3::uuid AND cr.campaign_id = $2::uuid`,
 			tenantID, campaignID, recipientID)
 		if err != nil {
 			return fmt.Errorf("recording view: %w", err)

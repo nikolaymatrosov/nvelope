@@ -4,11 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/tenantdb"
 )
 
 // seedCampaignWithRecipient persists a campaign and one recipient, returning
@@ -125,4 +128,61 @@ func TestTrackingCrossTenantIsolation(t *testing.T) {
 	// link or campaign.
 	_, err = repo.RecordClick(ctx, tenantB, linkA, recipientA)
 	require.ErrorIs(t, err, domain.ErrLinkNotFound)
+}
+
+// countRows returns the row count of a tracking table for one key column,
+// read inside the tenant binding (the tables are under RLS).
+func countRows(t *testing.T, pool *pgxpool.Pool, tenantID, query, arg string) int {
+	t.Helper()
+	var n int
+	require.NoError(t, tenantdb.WithTenant(context.Background(), pool, tenantID,
+		func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, query, arg).Scan(&n)
+		}))
+	return n
+}
+
+func TestTrackingRecordClickAttributesOnlyOwnRecipients(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewTracking(pool)
+	ctx := context.Background()
+	tenantID := seedTenant(t, pool)
+	campaignID, ownRecipient := seedCampaignWithRecipient(t, tenantID)
+	_, otherRecipient := seedCampaignWithRecipient(t, tenantID)
+
+	links, err := repo.UpsertLinks(ctx, tenantID, campaignID, []string{"https://acme.com/sale"})
+	require.NoError(t, err)
+	linkID := links["https://acme.com/sale"]
+	const clicks = "SELECT count(*) FROM link_clicks WHERE link_id = $1"
+
+	for _, s := range []string{otherRecipient, "", "not-a-uuid"} {
+		url, err := repo.RecordClick(ctx, tenantID, linkID, s)
+		require.NoError(t, err, "recipient %q", s)
+		require.Equal(t, "https://acme.com/sale", url, "the redirect target is returned regardless")
+	}
+	require.Zero(t, countRows(t, pool, tenantID, clicks, linkID),
+		"no click is attributed to a foreign, missing, or malformed recipient")
+
+	_, err = repo.RecordClick(ctx, tenantID, linkID, ownRecipient)
+	require.NoError(t, err)
+	require.Equal(t, 1, countRows(t, pool, tenantID, clicks, linkID), "the campaign's own recipient is attributed")
+}
+
+func TestTrackingRecordViewIgnoresForeignRecipients(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.AppPool(t)
+	repo := adapters.NewTracking(pool)
+	ctx := context.Background()
+	tenantID := seedTenant(t, pool)
+	campaignID, ownRecipient := seedCampaignWithRecipient(t, tenantID)
+	_, otherRecipient := seedCampaignWithRecipient(t, tenantID)
+	const views = "SELECT count(*) FROM campaign_views WHERE campaign_id = $1"
+
+	require.NoError(t, repo.RecordView(ctx, tenantID, campaignID, otherRecipient))
+	require.NoError(t, repo.RecordView(ctx, tenantID, campaignID, "not-a-uuid"))
+	require.Zero(t, countRows(t, pool, tenantID, views, campaignID))
+
+	require.NoError(t, repo.RecordView(ctx, tenantID, campaignID, ownRecipient))
+	require.Equal(t, 1, countRows(t, pool, tenantID, views, campaignID))
 }
