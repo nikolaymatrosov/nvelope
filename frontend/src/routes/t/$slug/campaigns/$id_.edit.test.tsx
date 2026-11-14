@@ -117,4 +117,13 @@ describe("CampaignEditPage", () => {
     fireEvent.click(await screen.findByTestId("ve-back"))
     expect(navigate).toHaveBeenCalledWith({ to: "/t/$slug/campaigns/$id", params: { slug: "acme", id: "camp-1" } })
   })
+
+  it("offers a back link when the campaign fails to load", async () => {
+    setupOwner()
+    vi.mocked(api.getCampaign).mockRejectedValue(new Error("forbidden"))
+    renderWithClient(<CampaignEditPage />)
+    await screen.findByTestId("async-error")
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    expect(navigate).toHaveBeenCalledWith({ to: "/t/$slug/campaigns/$id", params: { slug: "acme", id: "camp-1" } })
+  })
 })

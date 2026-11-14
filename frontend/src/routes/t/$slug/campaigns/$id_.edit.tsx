@@ -9,6 +9,7 @@ import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { usePermissions } from "@/hooks/use-permissions"
 import { AsyncState } from "@/components/common/async-state"
+import { Button } from "@/components/ui/button"
 import { EditorScreen } from "@/components/visual-editor/EditorScreen"
 
 export const Route = createFileRoute("/t/$slug/campaigns/$id_/edit")({
@@ -28,8 +29,19 @@ export function CampaignEditPage() {
     queryFn: async () => (await api.getCampaign(slug, id)).data,
   })
 
+  const onBack = () => {
+    void navigate({ to: "/t/$slug/campaigns/$id", params: { slug, id } })
+  }
+
   return (
-    <AsyncState query={query}>
+    <AsyncState
+      query={query}
+      errorAction={
+        <Button type="button" variant="outline" size="sm" onClick={onBack}>
+          {t("screen.back")}
+        </Button>
+      }
+    >
       {(campaign) => (
         <EditorScreen
           key={campaign.id}
@@ -37,9 +49,7 @@ export function CampaignEditPage() {
           section={t("screen.breadcrumb.campaigns")}
           row={campaign}
           editable={can("campaigns:manage") && campaign.status === "draft"}
-          onBack={() => {
-            void navigate({ to: "/t/$slug/campaigns/$id", params: { slug, id } })
-          }}
+          onBack={onBack}
           convert={() => api.campaigns.convertToVisual(slug, id)}
           save={(v) => api.campaigns.saveVisual(slug, id, { subject: campaign.subject, ...v })}
           refetch={async () => (await api.getCampaign(slug, id)).data}

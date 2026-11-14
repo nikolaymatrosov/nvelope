@@ -35,7 +35,14 @@ export function TemplateEditPage() {
   }
 
   return (
-    <AsyncState query={query}>
+    <AsyncState
+      query={query}
+      errorAction={
+        <Button type="button" variant="outline" size="sm" onClick={onBack}>
+          {t("screen.back")}
+        </Button>
+      }
+    >
       {(tpl) =>
         tpl.kind === "transactional" ? (
           <div className="ve-screen__notice">

@@ -128,6 +128,17 @@ describe("TemplateEditPage", () => {
     renderWithClient(<TemplateEditPage />)
     expect(await screen.findByText(/not available for transactional templates/i)).toBeTruthy()
     expect(screen.queryByTestId("visual-email-editor")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    expect(navigate).toHaveBeenCalledWith({ to: "/t/$slug/templates/$id", params: { slug: "acme", id: "tpl-1" } })
+  })
+
+  it("offers a back link when the template fails to load", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockRejectedValue(new Error("not found"))
+    renderWithClient(<TemplateEditPage />)
+    await screen.findByTestId("async-error")
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    expect(navigate).toHaveBeenCalledWith({ to: "/t/$slug/templates/$id", params: { slug: "acme", id: "tpl-1" } })
   })
 
   it("goes back to the template detail page", async () => {
