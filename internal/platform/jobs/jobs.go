@@ -152,7 +152,27 @@ func (VerificationCleanupArgs) Kind() string { return "auth.verification_cleanup
 // Migrate installs (or updates) River's own queue tables. It is invoked from
 // cmd/migrate after the application migrations so `migrate up` provisions the
 // whole schema.
+//
+// Unlike golang-migrate, River's migrator takes no lock, so two processes
+// migrating the same database at once both apply the same version and the
+// loser fails (e.g. 004's DROP TRIGGER river_notify). A session advisory lock,
+// held on one pooled connection while the migrator works through the rest,
+// serialises them; the waiter then finds every version already applied.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquiring river migration lock connection: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock(hashtext('nvelope.river_migrate'))"); err != nil {
+		return fmt.Errorf("taking river migration lock: %w", err)
+	}
+	// Unlock explicitly: Release returns the connection to the pool, where a
+	// session lock would otherwise outlive this call.
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock(hashtext('nvelope.river_migrate'))")
+	}()
+
 	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
 	if err != nil {
 		return fmt.Errorf("building river migrator: %w", err)
