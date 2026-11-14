@@ -22,13 +22,15 @@ type backend struct {
 	name     string
 	users    func(t *testing.T) domain.UserRepository
 	sessions func(t *testing.T) domain.SessionRepository
+	roles    func(t *testing.T) domain.RoleRepository
 	audit    func(t *testing.T) domain.AuditRepository
-	// newTenant and newPlatformUser return ids of rows other contexts own. On
-	// Postgres the iam tables carry foreign keys to them, so the pg backend
-	// inserts real rows. YDB has no foreign keys and no iam query reads those
-	// tables, so a bare UUID stands in.
+	// newTenant, newPlatformUser and newList return ids of rows other contexts
+	// own. On Postgres the iam tables carry foreign keys to them, so the pg
+	// backend inserts real rows. YDB has no foreign keys and no iam query reads
+	// those tables, so a bare UUID stands in.
 	newTenant       func(t *testing.T) string
 	newPlatformUser func(t *testing.T) string
+	newList         func(t *testing.T, tenantID string) string
 }
 
 var backends = []backend{
@@ -40,11 +42,15 @@ var backends = []backend{
 		sessions: func(t *testing.T) domain.SessionRepository {
 			return adapters.NewSessions(dbtest.AppPool(t))
 		},
+		roles: func(t *testing.T) domain.RoleRepository {
+			return adapters.NewRoles(dbtest.AppPool(t))
+		},
 		audit: func(t *testing.T) domain.AuditRepository {
 			return adapters.NewAudit(dbtest.AppPool(t))
 		},
 		newTenant:       func(t *testing.T) string { return seedTenant(t, dbtest.AppPool(t)) },
 		newPlatformUser: func(t *testing.T) string { return seedPlatformUser(t, dbtest.AppPool(t)) },
+		newList:         func(t *testing.T, tenantID string) string { return seedList(t, dbtest.AppPool(t), tenantID) },
 	},
 	{
 		name: "ydb",
@@ -54,11 +60,15 @@ var backends = []backend{
 		sessions: func(t *testing.T) domain.SessionRepository {
 			return adapters.NewYDBSessions(dbtest.YDBMigrated(t))
 		},
+		roles: func(t *testing.T) domain.RoleRepository {
+			return adapters.NewYDBRoles(dbtest.YDBMigrated(t))
+		},
 		audit: func(t *testing.T) domain.AuditRepository {
 			return adapters.NewYDBAudit(dbtest.YDBMigrated(t))
 		},
 		newTenant:       func(*testing.T) string { return uuid.NewString() },
 		newPlatformUser: func(*testing.T) string { return uuid.NewString() },
+		newList:         func(*testing.T, string) string { return uuid.NewString() },
 	},
 }
 
