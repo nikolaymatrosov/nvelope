@@ -420,6 +420,42 @@ Notes for Plan B:
 
 Decision: in-repo runner, one Exec per file
 
+### V2 — Terraform provider coverage
+
+Source: `https://raw.githubusercontent.com/yandex-cloud/terraform-provider-yandex/master/docs/resources/<name>.md`; resource index from `https://api.github.com/repos/yandex-cloud/terraform-provider-yandex/contents/docs/resources` (270 entries).
+
+| Resource | Exists | Notes (exact attribute names, gaps) |
+|----------|--------|-------------------------------------|
+| `function_trigger` | yes | `container` block: `id` (required), `service_account_id`, `path`, `retry_attempts`, `retry_interval`. Trigger sections: `container`, `container_registry`, `data_streams`, `dlq`, `function`, `iot`, `logging`, `mail`, `message_queue`, `object_storage`, `timer`, `workflow`. `data_streams`: `stream_name`, `database`, `service_account_id`, `batch_cutoff` (all required), `batch_size`. `message_queue`: `queue_id`, `service_account_id`, `batch_cutoff` (required), `batch_size`, `visibility_timeout`. The page does not state which trigger types work with which targets (not documented; checked: the function_trigger.md URL above). |
+| `ydb_database_serverless` | yes | Exported: `database_path`, `ydb_api_endpoint`, `ydb_full_endpoint`, `document_api_endpoint`, `tls_enabled`, `status`, `created_at`. |
+| `ydb_topic` | yes | Needs `database_endpoint` and `name`. Has a `consumer` block (`name` required, `important`, `starting_message_timestamp_ms`, `supported_codecs`), so it can create a consumer. |
+| `message_queue` | yes | `redrive_policy` (String), `visibility_timeout_seconds` (0 to 43200, default 30), `arn` (read-only), `fifo_queue`, `message_retention_seconds`, `receive_wait_time_seconds`, `access_key`/`secret_key` (fall back to provider config). |
+| `serverless_container` | yes | `concurrency`, `execution_timeout` (duration string), `provision_policy { min_instances }`, `memory`, `cores`, `image { url }`, `connectivity { network_id }`, `secrets { id, version_id, key, environment_variable }` (the page does not name Lockbox in the description; its example takes `id` from `yandex_lockbox_secret`). |
+| `api_gateway` | yes | `spec` (required string, OpenAPI), `custom_domains { fqdn, certificate_id, domain_id }`, `connectivity`, `log_options`, `canary`, `execution_timeout`. The page example uses only `type: dummy`; no `x-yc-apigateway-integration` with `serverless_containers` example on the page (not documented; checked: api_gateway.md). |
+| `cm_certificate` | yes | `managed` block with `challenge_type` of `DNS_CNAME` (documented as "Recommended for fully automated certificate renewal"), `DNS_TXT` or `HTTP`. Exported `challenges` list: `dns_name`, `dns_type`, `dns_value`, `domain`, `http_content`, `http_url`, `type`, `message`, `created_at`, `updated_at`. Let's Encrypt is not named in what was read. |
+| `lockbox_secret` | yes | `name`, `kms_key_id`, `deletion_protection`, `password_payload_specification`, `labels`. |
+| `lockbox_secret_version` | yes | `secret_id` (required), `entries { key, text_value or command }`, `description`. A `lockbox_secret_version_hashed` resource also exists. |
+| anything matching `postbox` | no | No file with `postbox` in its name in the 270-entry `docs/resources` listing. Related names found: none. |
+
+Decision: Postbox is a documented manual README step (no `postbox` resource exists, so neither a sending identity nor a configuration set with an event destination can be created in Terraform). Triggers that cannot target a container: none found, but the docs do not state target compatibility per trigger type, so the `message_queue`, `timer` and `data_streams` triggers with a `container` target are unverified until a Terraform plan or apply in Plan C. `data_streams` has `database` and `stream_name`, so a YDB topic is plausible but not confirmed by the docs.
+
+### V5 — Serverless YDB limits
+
+| Limit | Value | Source |
+|-------|-------|--------|
+| Max rows per query result | 1,000 rows, returns the rows with the `truncated` flag set, status SUCCESS. Labelled "Legacy Limits", `ExecuteDataQuery` only; general YDB, not serverless-specific. Not documented for the Query service or for serverless specifically (checked: both URLs below). | https://ydb.tech/docs/en/concepts/limits-ydb |
+| Max query result size | 50 MB, query fails with `PRECONDITION_FAILED` and returns no data. Legacy Limits, general YDB. | https://ydb.tech/docs/en/concepts/limits-ydb |
+| Max query execution time | 2 hours, error `TIMEOUT`. General YDB. | https://ydb.tech/docs/en/concepts/limits-ydb |
+| Max transaction execution time | not documented separately (checked: https://ydb.tech/docs/en/concepts/limits-ydb, https://yandex.cloud/en/docs/ydb/concepts/limits) | n/a |
+| Max transaction size or changed rows | not documented (checked: https://ydb.tech/docs/en/concepts/limits-ydb, https://yandex.cloud/en/docs/ydb/concepts/limits). Related: 10,000 lock ranges per DataShard, beyond which locks become whole-shard locks. | https://ydb.tech/docs/en/concepts/limits-ydb |
+| Max query text, parameter value, row | query text 10 KB (`BAD_REQUEST`), parameter value 50 MB (`BAD_REQUEST`), single row 50 MB (`PRECONDITION_FAILED`). General YDB. | https://ydb.tech/docs/en/concepts/limits-ydb |
+| Serverless RU quota | `ydb.serverlessRequestUnitsPerSecond.count` 1,000 RU per cloud; `ydb.serverlessProvisionedCapacity.count` 1,000 billable RU/s. Quotas, raisable via support. | https://yandex.cloud/en/docs/ydb/concepts/limits |
+| Serverless throttling default | "10 RU/s by default when creating a database" (settable, can be zero or disabled). | https://yandex.cloud/en/docs/ydb/concepts/serverless_and_dedicated |
+| Behavior when throttling limit exceeded | Query rejected with `Throughput limit exceeded` (rejection is delayed to the next query); new queries pause roughly excess RU divided by the limit; safe to retry; about five minutes of burst bandwidth is reserved. | https://yandex.cloud/en/docs/ydb/concepts/serverless_and_dedicated |
+| Provisioned capacity | Optional hourly prepaid RU/s ("Provisioned capacity, RU/s"); billing, not a throttle. | https://yandex.cloud/en/docs/ydb/pricing/serverless |
+
+Decision for Plan B: export and recipient resolution page through results (keyset paging) with page size 1000 or less. The 1,000-row truncation applies to the legacy `ExecuteDataQuery` path and its applicability to `Query().Query` streaming is not documented, so paging stays the safe choice. Retry on `Throughput limit exceeded`.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
