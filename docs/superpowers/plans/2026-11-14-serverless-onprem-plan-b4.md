@@ -31,7 +31,7 @@
   - `Bool` columns, and a nullable `String` column bound as `Optional<String>` and scanned into `*[]byte`;
   - two composite `GLOBAL UNIQUE SYNC` indexes on one table;
   - an `UPDATE` onto another row's unique-index value inside `DoTx`, which fails at the statement with `db.IsYDBConflict`;
-  - `DELETE ... RETURNING`;
+  - `DELETE ... RETURNING` and `UPDATE ... WHERE <key> AND <guard> RETURNING`;
   - a two-column `JOIN`;
   - `COUNT(*)`, and `LIMIT $limit OFFSET $offset` with `Uint64` parameters;
   - a key-prefix `DELETE` followed by an `INSERT` of a just-deleted key in one `DoTx`.
@@ -2996,16 +2996,21 @@ git commit -m "feat(iam): add the YDB API key and recovery code repositories und
   - **Plan C wiring.** The serverless composition root wires:
     - `NewYDBUsers`, `NewYDBSessions`, `NewYDBRoles`, `NewYDBAPIKeys` and `NewYDBRecoveryCodes` in place of the pg constructors in `buildIAM` (`internal/service/application.go:607-611`);
     - `NewYDBAudit` in place of `iamadapters.NewAudit` (`application.go:242`). The api layer shares that writer.
-  - **Audience plan.** On pg, `user_list_roles.list_id` has a foreign key to `lists` with `ON DELETE CASCADE` (`000006_audience_schema.up.sql`). Deleting a list on YDB leaves its `user_list_roles` rows, which grant permissions on a list id that no longer exists. `YDBLists`' delete should run `DELETE FROM user_list_roles WHERE tenant_id = $tenant_id AND list_id = $list_id` in its own transaction. That is a scan of the tenant's rows. The alternative is to accept the dangling rows. Decide in that plan.
+  - **Audience plan.** On pg, `user_list_roles.list_id` has a foreign key to `lists` with `ON DELETE CASCADE` (`000006_audience_schema.up.sql`). YDB has no cascade, so the cascade is required. `YDBLists.Delete` must run `DELETE FROM user_list_roles WHERE tenant_id = $tenant_id AND list_id = $list_id` inside the same `DoTx` as the list delete. That is a scan of the tenant's rows. Without it, a dangling row keeps its role in use, so `YDBRoles.Delete` returns `ErrRoleInUse` forever and nothing in the UI lists the stale assignment.
   - **Deliverability plan.** `internal/deliverability/adapters/audit.go` writes the shared `audit_log`. Its YDB variant must write the same columns:
     - `created_at` from `CurrentUtcTimestamp()`, as part of the primary key;
-    - `metadata` as JSON text in the `Utf8` column.
+    - `metadata` as JSON text in the `Utf8` column, always a valid JSON object and never `""`. `YDBAudit.All` returns an error on metadata it cannot decode, so one bad row fails every page that contains it.
   - **Media plan.** `media_assets.uploaded_by` references iam `users(id)` with `ON DELETE SET NULL`. iam users are never deleted, so YDB needs nothing for it.
   - **Accepted YDB/pg differences.** No contract test covers these:
     - Assigning an unknown role: pg returns a wrapped foreign-key error; YDB returns `ErrRoleNotFound`.
     - Assigning another tenant's role id: pg accepts it, because foreign-key checks bypass RLS, although the role then grants nothing. YDB returns `ErrRoleNotFound`.
     - Assigning a role to an unknown user or list: pg returns a foreign-key error; YDB accepts it.
     - `TouchLastUsed` with a malformed id: pg returns an invalid-input error, which the app ignores; YDB does nothing.
+    - `YDBRoles.All` orders by `name` by bytes, and pg by the database collation, so mixed-case and non-ASCII names order differently.
+    - YDB accepts what pg rejects. None of these is reachable through the domain constructors or the app flows:
+      - values the `CHECK` constraints forbid (`users.status`, `sessions.state`, `audit_log.actor_kind`);
+      - unknown users where pg has foreign keys (`sessions.user_id`, `api_keys.created_by`, `recovery_codes.user_id`);
+      - a malformed user id in `RecoveryCodes`: pg returns an invalid-input error, YDB returns false or does nothing.
     - Once TTL has deleted an expired TOTP-pending session, a request answers `ErrUnauthenticated` instead of `ErrTOTPRequired`.
   - **Ceilings.** These are marked `ponytail:` in code and listed under the spec's "Ceilings":
     - `YDBRoles.Delete` scans the tenant's assignments;
