@@ -748,3 +748,24 @@
 .ve-style-controls__toggle input[role="switch"]:checked::before {
   transform: translateX(14px);
 }
+
+/* Unit suffix for compact padding inputs (CSS-only: no literal in JSX). */
+.ve-style-controls__px {
+  position: relative;
+  display: block;
+}
+
+.ve-style-controls__px::after {
+  content: "px";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.ve-style-controls__px input {
+  padding-right: 22px;
+}

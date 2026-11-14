@@ -406,7 +406,7 @@ function NumberField({
     return (
       <label className="ve-style-controls__compact">
         <span>{label}</span>
-        {input}
+        <span className="ve-style-controls__px">{input}</span>
       </label>
     )
   }

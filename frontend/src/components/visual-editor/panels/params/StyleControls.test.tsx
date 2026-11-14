@@ -54,6 +54,15 @@ describe("StyleControls", () => {
     expect(onChange).toHaveBeenCalledWith({ borderRadius: undefined })
   })
 
+  it("wraps each padding input in a px-suffix element", () => {
+    const { container } = render(<StyleControls value={{}} fields={["padding"]} onChange={vi.fn()} />)
+    const inputs = container.querySelectorAll("[data-testid^='ve-param-padding']")
+    expect(inputs).toHaveLength(4)
+    inputs.forEach((el) => {
+      expect(el.parentElement?.classList.contains("ve-style-controls__px")).toBe(true)
+    })
+  })
+
   it("lays padding out left, top, bottom, right", () => {
     const { container } = render(<StyleControls value={{}} fields={["padding"]} onChange={vi.fn()} />)
     const ids = Array.from(container.querySelectorAll("[data-testid^='ve-param-padding']")).map((el) =>
