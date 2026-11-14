@@ -96,6 +96,13 @@ export function TransactionalView() {
             <strong>{t("endpoint.templateNoteEmphasis")}</strong>
             {t("endpoint.templateNoteSuffix")}
           </p>
+          <p className="text-muted-foreground">
+            {t("endpoint.variablesNotePrefix")}
+            <code>{"{{key}}"}</code>
+            {t("endpoint.variablesNoteEscaped")}
+            <code>{"{{{key}}}"}</code>
+            {t("endpoint.variablesNoteRaw")}
+          </p>
           <div className="flex flex-col gap-1">
             <span className="text-muted-foreground">
               {t("endpoint.requestBodyLabel")}

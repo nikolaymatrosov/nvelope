@@ -13,7 +13,7 @@ vi.mock("@tanstack/react-router", () => ({
 }))
 
 vi.mock("@/lib/api", () => ({
-  api: { getSettings: vi.fn(), updateSettings: vi.fn() },
+  api: { getSettings: vi.fn(), updateSettings: vi.fn(), setRawHTMLSanitization: vi.fn() },
 }))
 
 const ok = <T,>(data: T) => ({ status: 200, ok: true, data })
@@ -26,7 +26,7 @@ afterEach(() => {
 describe("SettingsView", () => {
   it("loads settings and saves an update", async () => {
     vi.mocked(api.getSettings).mockResolvedValue(
-      ok({ display_name: "Acme", timezone: "UTC" }),
+      ok({ display_name: "Acme", timezone: "UTC", raw_html_sanitization: "standard" }),
     )
     vi.mocked(api.updateSettings).mockResolvedValue(ok(null))
     renderWithClient(<SettingsView />)
@@ -39,6 +39,29 @@ describe("SettingsView", () => {
       expect(api.updateSettings).toHaveBeenCalledWith("acme", {
         display_name: "Acme Inc",
         timezone: "UTC",
+      }),
+    )
+  })
+
+  it("disables raw HTML sanitization only after the risk is accepted", async () => {
+    vi.mocked(api.getSettings).mockResolvedValue(
+      ok({ display_name: "Acme", timezone: "UTC", raw_html_sanitization: "standard" }),
+    )
+    vi.mocked(api.setRawHTMLSanitization).mockResolvedValue(ok({ raw_html_sanitization: "off" }))
+    renderWithClient(<SettingsView />)
+
+    fireEvent.click(await screen.findByRole("button", { name: /disable sanitization/i }))
+    const confirm = await screen.findByRole("button", { name: /disable anyway/i })
+    expect((confirm as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole("checkbox"))
+    expect((confirm as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(confirm)
+
+    await waitFor(() =>
+      expect(api.setRawHTMLSanitization).toHaveBeenCalledWith("acme", {
+        level: "off",
+        accept_risk: true,
       }),
     )
   })

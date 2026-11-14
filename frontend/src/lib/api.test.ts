@@ -63,6 +63,21 @@ afterEach(() => {
 })
 
 describe("api client — verb & path correctness", () => {
+  it("unwraps the settings envelope", async () => {
+    const settings = { display_name: "Acme", timezone: "UTC", raw_html_sanitization: "standard" }
+    mockFetch(200, { settings })
+    const res = await api.getSettings("acme")
+    expect(res.data).toEqual(settings)
+  })
+
+  it("puts the raw-HTML sanitization level", async () => {
+    const calls = mockFetch(200, { raw_html_sanitization: "off" })
+    await api.setRawHTMLSanitization("acme", { level: "off", accept_risk: true })
+    expect(calls[0].url).toBe("/t/acme/api/settings/raw-html-sanitization")
+    expect(calls[0].init.method).toBe("PUT")
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ level: "off", accept_risk: true })
+  })
+
   it("posts platform signup", async () => {
     const calls = mockFetch(200, { user: {}, tenants: [] })
     await api.signup("a@b.com", "secret123", "Ann")

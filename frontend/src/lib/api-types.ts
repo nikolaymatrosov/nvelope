@@ -72,9 +72,12 @@ export type WorkspaceInvitation = {
   expires_at: string
 }
 
+export type RawHTMLSanitization = "standard" | "off"
+
 export type WorkspaceSettings = {
   display_name: string
   timezone: string
+  raw_html_sanitization: RawHTMLSanitization
 }
 
 // ── Workspace session state machine ──────────────────────────────────────────

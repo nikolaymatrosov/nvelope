@@ -1200,6 +1200,24 @@ export default interface Resources {
     "page": {
       "description": "Configure this workspace.",
       "title": "Settings"
+    },
+    "rawHtml": {
+      "description": "Applies to campaigns and templates written in the HTML editor. The visual editor always sanitizes, and archive pages stay sandboxed either way.",
+      "dialog": {
+        "accept": "I understand these risks and accept them for this workspace.",
+        "confirm": "Disable anyway",
+        "description": "Campaign and template HTML will reach your subscribers without cleanup.",
+        "riskActiveContent": "Scripts, forms, iframes, and event handlers will be delivered in your emails.",
+        "riskClients": "Mail clients' own filtering becomes the only safeguard.",
+        "riskDeliverability": "Mailbox providers may lower deliverability for such mail.",
+        "title": "Disable HTML sanitization?"
+      },
+      "savedToast": "Sanitization setting saved.",
+      "statusOff": "Off: HTML is stored exactly as written.",
+      "statusStandard": "On: scripts, forms, frames, event handlers, and unsafe links are removed on save. Styles and table layouts are kept.",
+      "title": "HTML sanitization",
+      "turnOff": "Disable sanitization…",
+      "turnOn": "Re-enable sanitization"
     }
   },
   "subscribers": {
@@ -1445,7 +1463,10 @@ export default interface Resources {
       "templateNoteEmphasis": "transactional",
       "templateNotePrefix": "Each request must reference an existing ",
       "templateNoteSuffix": " template by id and a verified sending domain id.",
-      "title": "Endpoint reference"
+      "title": "Endpoint reference",
+      "variablesNoteEscaped": " is HTML-escaped in the HTML body; ",
+      "variablesNotePrefix": "Template variables: ",
+      "variablesNoteRaw": " inserts the value as HTML, which is then sanitized. Subjects and text bodies always get the plain value."
     },
     "index": {
       "description": "Issue a scoped API key and integrate the transactional endpoint.",

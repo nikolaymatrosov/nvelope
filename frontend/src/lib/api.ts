@@ -45,6 +45,7 @@ import type {
   PlanView,
   PlatformAccount,
   PlatformUser,
+  RawHTMLSanitization,
   RenderPreviewInput,
   RenderPreviewResponse,
   Role,
@@ -183,8 +184,20 @@ export const api = {
   // ── Workspace, settings, invitations ───────────────────────────────────────
   tenant: (slug: string) =>
     request<WorkspaceInfo>("GET", tp(slug, "/tenant")),
-  getSettings: (slug: string) =>
-    request<WorkspaceSettings>("GET", tp(slug, "/settings")),
+  getSettings: async (slug: string): Promise<ApiResult<WorkspaceSettings>> => {
+    // Go wraps the settings in a `settings` envelope.
+    const res = await request<{ settings: WorkspaceSettings }>("GET", tp(slug, "/settings"))
+    return { ...res, data: res.data.settings }
+  },
+  setRawHTMLSanitization: (
+    slug: string,
+    body: { level: RawHTMLSanitization; accept_risk: boolean },
+  ) =>
+    request<{ raw_html_sanitization: RawHTMLSanitization }>(
+      "PUT",
+      tp(slug, "/settings/raw-html-sanitization"),
+      body,
+    ),
   updateSettings: (slug: string, body: Partial<WorkspaceSettings>) =>
     request("PUT", tp(slug, "/settings"), body),
   invite: (slug: string, email: string) =>

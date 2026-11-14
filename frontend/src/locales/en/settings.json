@@ -3,6 +3,24 @@
     "title": "Settings",
     "description": "Configure this workspace."
   },
+  "rawHtml": {
+    "title": "HTML sanitization",
+    "description": "Applies to campaigns and templates written in the HTML editor. The visual editor always sanitizes, and archive pages stay sandboxed either way.",
+    "statusStandard": "On: scripts, forms, frames, event handlers, and unsafe links are removed on save. Styles and table layouts are kept.",
+    "statusOff": "Off: HTML is stored exactly as written.",
+    "turnOff": "Disable sanitization…",
+    "turnOn": "Re-enable sanitization",
+    "savedToast": "Sanitization setting saved.",
+    "dialog": {
+      "title": "Disable HTML sanitization?",
+      "description": "Campaign and template HTML will reach your subscribers without cleanup.",
+      "riskActiveContent": "Scripts, forms, iframes, and event handlers will be delivered in your emails.",
+      "riskClients": "Mail clients' own filtering becomes the only safeguard.",
+      "riskDeliverability": "Mailbox providers may lower deliverability for such mail.",
+      "accept": "I understand these risks and accept them for this workspace.",
+      "confirm": "Disable anyway"
+    }
+  },
   "form": {
     "title": "Workspace settings",
     "description": "These values apply across the whole workspace.",
