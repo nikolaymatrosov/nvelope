@@ -28,7 +28,7 @@
 - Not in scope:
   - Wiring the YDB adapters into the composition root (Plan C).
   - The resend throttle: `ydbthrottle.Keyed` already matches `domain.ResendThrottle`, and Plan C wires it.
-  - The verification workers. Neither touches the database through a port this plan adds.
+  - The verification workers need no change: `VerificationWorker` already takes `domain.UserRepository`, so it works with `YDBUsers` as is, and the cleanup worker is not wired in serverless mode (TTL replaces it).
 
 ## Global Constraints
 
@@ -1445,3 +1445,5 @@ git commit -m "feat(auth): add the YDB user repository under a pg+ydb contract s
 - The final report lists what stays open for the next plans:
   - Plan B3 (tenant) joins `platform_users` from `Tenants.ListMembers`. Its test helper seeds YDB users through `adapters.NewYDBUsers` from this plan.
   - The INSERT-conflict "continue the transaction" behaviour for `BulkInsert` is still open (campaign plan).
+  - Plan B3 must also port `internal/service/onboarding.go` `AcceptForNewUser` (lines 69-90), which writes `platform_users` and `platform_sessions` directly with raw SQL. It must first decide where the email-key function lives so both writers share it (for example a key method on `auth/domain.Email`; `internal/auth/app/command/resend_verification.go` also lower-cases an address for the throttle key). It must also reproduce Go-side user and session ids, the `db.IsYDBConflict` to `domain.ErrEmailTaken` mapping and a retry-safe closure. A wrong key derivation fails silently (case-variant duplicate accounts, broken logins). `invitations.email` is also `citext` and needs the same treatment.
+  - Plan C: the setup-token bootstrap ("while no user exists") needs a user-exists check that `UserRepository` does not have yet. The check and the create must run in one serializable `DoTx` so two concurrent bootstraps cannot both succeed. The Plan C smoke test should also confirm that TTL actually evicts expired rows from `email_verification_tokens` (a TTL table with a `GLOBAL UNIQUE SYNC` index) on the target YDB.
