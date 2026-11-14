@@ -17,8 +17,9 @@ type UserRepository interface {
 	// session to persist together with its token hash. The whole operation is
 	// one transaction, so a failure leaves neither the user nor the session.
 	// issueSession may be called more than once (a backend may retry the
-	// transaction), so it must have no side effects beyond its return values;
-	// only the last call's result is persisted.
+	// transaction), so any side effect must be overwrite-only (e.g. assigning
+	// an outer variable that the next call overwrites); only the last call's
+	// result is persisted.
 	CreateWithSession(ctx context.Context, u *User, passwordHash string,
 		issueSession func(userID string) (s *Session, tokenHash string, err error)) (*User, error)
 	// CreateWithVerification atomically inserts a new user and its first
@@ -26,9 +27,9 @@ type UserRepository interface {
 	// user's id and returns the challenge to persist together with its token
 	// hash. The whole operation is one transaction, so a failure leaves neither
 	// the user nor the challenge. issueVerification may be called more than
-	// once (a backend may retry the transaction), so it must have no side
-	// effects beyond its return values; only the last call's result is
-	// persisted.
+	// once (a backend may retry the transaction), so any side effect must be
+	// overwrite-only (e.g. assigning an outer variable that the next call
+	// overwrites); only the last call's result is persisted.
 	CreateWithVerification(ctx context.Context, u *User, passwordHash string,
 		issueVerification func(userID string) (v *EmailVerification, tokenHash string, err error)) (*User, error)
 	// MarkEmailVerified records that the user verified their email address at
