@@ -22,63 +22,63 @@ import (
 )
 
 const (
-	minioContainerName = "nvelope-test-minio"
-	minioAccessKey     = "nvelope"
-	minioSecretKey     = "nvelope-secret"
-	minioTestBucket    = "nvelope-media"
+	s3ContainerName = "nvelope-test-s3"
+	s3AccessKey     = "nvelope"
+	s3SecretKey     = "nvelope-secret"
+	s3TestBucket    = "nvelope-media"
 )
 
 var (
-	minioOnce     sync.Once
-	minioEndpoint string
-	minioErr      error
+	s3Once     sync.Once
+	s3Endpoint string
+	s3Err      error
 )
 
-// startMinIO boots — or reuses — a single MinIO container shared by every
-// blobstore test in this binary so the suite stays fast.
-func startMinIO(t *testing.T) string {
+// startS3 boots — or reuses — a single fakecloud container (S3 emulator)
+// shared by every blobstore test in this binary so the suite stays fast.
+// fakecloud does not enforce bucket policies by default, so anonymous GETs
+// succeed regardless of the policy set in ensureBucket.
+func startS3(t *testing.T) string {
 	t.Helper()
-	minioOnce.Do(func() {
+	s3Once.Do(func() {
 		if env := os.Getenv("NVELOPE_OBJECT_STORAGE_ENDPOINT"); env != "" {
-			minioEndpoint = env
+			s3Endpoint = env
 			return
 		}
 		ctx := context.Background()
 		container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 			ContainerRequest: testcontainers.ContainerRequest{
-				Image:        "minio/minio:latest",
-				ExposedPorts: []string{"9000/tcp"},
-				Cmd:          []string{"server", "/data"},
-				Env: map[string]string{
-					"MINIO_ROOT_USER":     minioAccessKey,
-					"MINIO_ROOT_PASSWORD": minioSecretKey,
-				},
-				WaitingFor: wait.ForHTTP("/minio/health/live").
-					WithPort("9000/tcp").
+				Image:        "ghcr.io/faiscadev/fakecloud:0.50.0",
+				ExposedPorts: []string{"4566/tcp"},
+				// The default IPv4-only bind breaks testcontainers' "localhost"
+				// through the IPv6 port mapping.
+				Env: map[string]string{"FAKECLOUD_ADDR": "[::]:4566"},
+				WaitingFor: wait.ForHTTP("/_fakecloud/health").
+					WithPort("4566/tcp").
 					WithStartupTimeout(90 * time.Second),
-				Name: minioContainerName,
+				Name: s3ContainerName,
 			},
 			Started: true,
 			Reuse:   true,
 		})
 		if err != nil {
-			minioErr = fmt.Errorf("integration tests require Docker: %w", err)
+			s3Err = fmt.Errorf("integration tests require Docker: %w", err)
 			return
 		}
 		host, err := container.Host(ctx)
 		if err != nil {
-			minioErr = err
+			s3Err = err
 			return
 		}
-		port, err := container.MappedPort(ctx, "9000/tcp")
+		port, err := container.MappedPort(ctx, "4566/tcp")
 		if err != nil {
-			minioErr = err
+			s3Err = err
 			return
 		}
-		minioEndpoint = fmt.Sprintf("http://%s:%s", host, port.Port())
+		s3Endpoint = fmt.Sprintf("http://%s:%s", host, port.Port())
 	})
-	require.NoError(t, minioErr)
-	return minioEndpoint
+	require.NoError(t, s3Err)
+	return s3Endpoint
 }
 
 // ensureBucket creates the test bucket if it doesn't exist and grants
@@ -90,20 +90,20 @@ func ensureBucket(t *testing.T, endpoint string) {
 		Region:       "us-east-1",
 		BaseEndpoint: awscfg.String(endpoint),
 		Credentials: credentials.NewStaticCredentialsProvider(
-			minioAccessKey, minioSecretKey, ""),
+			s3AccessKey, s3SecretKey, ""),
 		UsePathStyle: true,
 	})
 	ctx := context.Background()
-	if _, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: awscfg.String(minioTestBucket)}); err != nil {
+	if _, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: awscfg.String(s3TestBucket)}); err != nil {
 		_, err = client.CreateBucket(ctx, &s3.CreateBucketInput{
-			Bucket: awscfg.String(minioTestBucket),
+			Bucket: awscfg.String(s3TestBucket),
 		})
 		require.NoError(t, err)
 	}
 	policy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` +
-		minioTestBucket + `/media/*"]}]}`
+		s3TestBucket + `/media/*"]}]}`
 	_, err := client.PutBucketPolicy(ctx, &s3.PutBucketPolicyInput{
-		Bucket: awscfg.String(minioTestBucket),
+		Bucket: awscfg.String(s3TestBucket),
 		Policy: awscfg.String(policy),
 	})
 	require.NoError(t, err)
@@ -111,15 +111,15 @@ func ensureBucket(t *testing.T, endpoint string) {
 
 func newTestStore(t *testing.T) *adapters.S3BlobStore {
 	t.Helper()
-	endpoint := startMinIO(t)
+	endpoint := startS3(t)
 	ensureBucket(t, endpoint)
 	store, err := adapters.NewS3BlobStore(adapters.S3Config{
 		Endpoint:        endpoint,
 		Region:          "us-east-1",
-		Bucket:          minioTestBucket,
-		AccessKeyID:     minioAccessKey,
-		SecretAccessKey: minioSecretKey,
-		PublicBaseURL:   endpoint + "/" + minioTestBucket,
+		Bucket:          s3TestBucket,
+		AccessKeyID:     s3AccessKey,
+		SecretAccessKey: s3SecretKey,
+		PublicBaseURL:   endpoint + "/" + s3TestBucket,
 	})
 	require.NoError(t, err)
 	return store
