@@ -332,9 +332,34 @@ by release version.
   YDB backend runs in testcontainers with `ydbplatform/local-ydb`: one reused
   container, the same pattern as `nvelope-test-pg`. This is the parity
   guarantee.
-- **Job runtime unit tests.** Dispatcher outcome table (`nil`, snooze,
-  `not_before`, error, unknown kind, bad body → status and re-send) against a
-  fake SQS client.
+- **Job runtime tests use real SQS semantics from fakecloud.** YMQ speaks the
+  SQS API, so the YMQ enqueuer and the `/jobs` dispatcher are tested against
+  [fakecloud](https://github.com/faiscadev/fakecloud), a local AWS emulator.
+  It runs as a `dbtest.SQS(t)` testcontainer helper, following the
+  `dbtest.YDB` pattern, with `NVELOPE_TEST_SQS_ENDPOINT` as the override.
+  - **Verified on 2026-11-14 against `ghcr.io/faiscadev/fakecloud:0.50.0`**
+    (multi-arch, native on arm64):
+    - per-message `DelaySeconds`, rejecting values above 900 exactly as YMQ does;
+    - redelivery after `VisibilityTimeout`;
+    - `ApproximateReceiveCount`;
+    - `RedrivePolicy` with `maxReceiveCount` moving the message to the DLQ;
+    - message attributes.
+  - **Container setup:**
+    - Run it with `FAKECLOUD_REGION=ru-central1`. Queues are regional, and the
+      SDK signs for the YMQ region.
+    - Run it with `FAKECLOUD_ADDR=[::]:4566`. The default `0.0.0.0` bind is
+      IPv4-only, and `localhost`, which testcontainers returns as the host,
+      then fails through the IPv6 port mapping.
+    - Readiness is `GET /_fakecloud/health`.
+    - Credentials are dummy values (`test`/`test`).
+  - **The trigger is not emulated.** fakecloud has no YC Message Queue
+    triggers. Tests drive the handler with a small test-only pump: receive
+    from fakecloud, wrap the message in the YC trigger payload shape, `POST`
+    it to `/jobs`, and delete the message on 200. This exercises the real
+    retry and DLQ path: a 500 leaves the message to reappear after the
+    visibility timeout.
+  - The dispatcher outcome table (`nil`, snooze, `not_before`, error, unknown
+    kind, bad body → status and re-send) runs through this pump.
 - **Throttle counter.** Window rollover and `retryAfter` against local YDB.
 - **Bootstrap.** Signup with no token, a wrong token and the right token on an
   empty DB; a second signup after the first user exists; tenant creation after
