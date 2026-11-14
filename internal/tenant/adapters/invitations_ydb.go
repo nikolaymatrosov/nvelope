@@ -50,7 +50,12 @@ func (r *YDBInvitations) Create(ctx context.Context, inv *domain.Invitation, tok
 	err := r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
 		// ponytail: the check reads the tenant's whole invitation history (a
 		// key-prefix range, every status); add a GLOBAL SYNC index on
-		// (tenant_id, email_key) if that history grows large.
+		// (tenant_id, email_key) if that history grows large. The scan also
+		// read-locks the tenant's whole invitation range, so concurrent Creates
+		// in the tenant (any email) and Updates of any of its invitations abort
+		// each other and the SDK retries them: correct, fine for one
+		// organisation. The index fixes both; re-run
+		// TestInvitationsCreateIsRaceFree when it lands.
 		_, err := tx.QueryRow(ctx, `DECLARE $tenant_id AS Utf8;
 DECLARE $email_key AS Utf8;
 SELECT id FROM invitations
@@ -77,7 +82,7 @@ INSERT INTO invitations
     (tenant_id, id, email, email_key, role, token_hash, status, invited_by, created_at, expires_at)
 VALUES ($tenant_id, $id, $email, $email_key, "admin"u, $token_hash, "pending"u, $invited_by,
     CurrentUtcTimestamp(), $expires_at)
-RETURNING created_at;`,
+RETURNING created_at, expires_at;`,
 			query.WithParameters(ydb.ParamsBuilder().
 				Param("$tenant_id").Text(inv.TenantID()).
 				Param("$id").Text(id).
@@ -96,12 +101,12 @@ RETURNING created_at;`,
 		if err != nil {
 			return fmt.Errorf("inserting invitation: %w", err)
 		}
-		var createdAt time.Time
-		if err := row.Scan(&createdAt); err != nil {
+		var createdAt, expiresAt time.Time
+		if err := row.Scan(&createdAt, &expiresAt); err != nil {
 			return fmt.Errorf("scanning invitation: %w", err)
 		}
 		created = domain.HydrateInvitation(id, inv.TenantID(), inv.Email().String(),
-			string(domain.InvitationPending), inv.InvitedBy(), createdAt, inv.ExpiresAt())
+			string(domain.InvitationPending), inv.InvitedBy(), createdAt, expiresAt)
 		return nil
 	})
 	// The spike saw the conflict at the statement; this covers a YDB that
