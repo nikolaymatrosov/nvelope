@@ -790,3 +790,122 @@
   color: #9ca3af;
   cursor: default;
 }
+
+/* ── Block library (editor shell 2026-11-14) ───────────────────────────── */
+
+.ve-library__body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.ve-library__nav {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+  overflow: auto;
+  border-right: 1px solid #e5e7eb;
+}
+
+.ve-library__group {
+  margin: 0;
+  padding: 4px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.ve-library__type {
+  padding: 8px 24px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ve-library__type:hover {
+  background: #f4f4f5;
+}
+
+.ve-library__type.is-active {
+  background: #ede9fe;
+}
+
+.ve-library__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow: auto;
+  background: #f4f4f5;
+}
+
+.ve-library__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 16px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.ve-library__card:hover {
+  border-color: #2563eb;
+}
+
+.ve-library__card-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.ve-mock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 70%;
+  min-height: 48px;
+  color: #111827;
+}
+
+.ve-mock--h1 { font-size: 32px; font-weight: 700; }
+.ve-mock--h2 { font-size: 24px; font-weight: 700; }
+.ve-mock--h3 { font-size: 18px; font-weight: 700; }
+
+.ve-mock--lines,
+.ve-mock--list,
+.ve-mock--quote {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ve-mock--lines > span,
+.ve-mock--list > span,
+.ve-mock--quote > span {
+  height: 6px;
+  border-radius: 3px;
+  background: #d4d4d8;
+}
+
+.ve-mock--list > span { margin-left: 14px; }
+.ve-mock--quote { border-left: 3px solid #a1a1aa; padding-left: 10px; }
+
+.ve-mock--columns > span {
+  flex: 1;
+  height: 48px;
+  border: 1px dashed #a1a1aa;
+  border-radius: 4px;
+}
+
+.ve-mock--button { flex: none; width: 96px; min-height: 28px; height: 28px; border-radius: 6px; background: #2563eb; }
+.ve-mock--image { height: 56px; border-radius: 6px; background: linear-gradient(135deg, #e4e4e7, #d4d4d8); }
+.ve-mock--divider { min-height: 1px; height: 1px; background: #a1a1aa; }
+.ve-mock--code { font-family: ui-monospace, monospace; font-size: 20px; color: #6b7280; }
