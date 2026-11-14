@@ -20,3 +20,12 @@ func TestYDBRoundTrip(t *testing.T) {
 	require.NoError(t, row.Scan(&answer))
 	require.Equal(t, int32(42), answer)
 }
+
+func TestYDBReadyForDDL(t *testing.T) {
+	t.Parallel()
+	db := dbtest.YDB(t)
+
+	err := db.Query().Exec(context.Background(),
+		"CREATE TABLE IF NOT EXISTS dbtest_ddl_probe (id Uint64 NOT NULL, PRIMARY KEY (id));")
+	require.NoError(t, err)
+}

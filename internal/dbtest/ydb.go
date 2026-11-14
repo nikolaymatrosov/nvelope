@@ -105,9 +105,11 @@ func startYDBContainer() (string, error) {
 	return dsn, nil
 }
 
-// waitYDBReady polls until a trivial query succeeds. The gRPC port opens
-// before the database finishes initialising, so a listening port alone is not
-// readiness.
+// waitYDBReady polls until a schema operation succeeds. The gRPC port and
+// simple queries come up before local-ydb has created its storage pools, so
+// neither a listening port nor SELECT 1 proves DDL works. The probe table is
+// kept (IF NOT EXISTS, never dropped) so test binaries sharing the container
+// cannot race on a drop.
 func waitYDBReady(ctx context.Context, dsn string) error {
 	deadline := time.Now().Add(ydbReadyTimeout)
 	var lastErr error
@@ -115,7 +117,7 @@ func waitYDBReady(ctx context.Context, dsn string) error {
 		attemptCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		db, err := openYDB(attemptCtx, dsn)
 		if err == nil {
-			err = db.Query().Exec(attemptCtx, "SELECT 1")
+			err = db.Query().Exec(attemptCtx, "CREATE TABLE IF NOT EXISTS dbtest_ready (id Uint64 NOT NULL, PRIMARY KEY (id));")
 			_ = db.Close(context.Background())
 		}
 		cancel()
