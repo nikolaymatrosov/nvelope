@@ -2686,4 +2686,5 @@ git commit -m "feat(service): add the YDB onboarding under a pg+ydb contract sui
     - Refusing a second tenant under any other slug needs a "does any tenant exist" read that `TenantRepository` lacks. It must sit in the same `DoTx` as the create to be race-free.
   - **Plan C `/cron/analytics-refresh`** needs the YDB form of `cmd/scheduler`'s `SELECT id FROM tenants WHERE status = 'active'` (`status = "active"u`).
   - **Campaign plan.** Continuing a transaction after an INSERT conflict (`Recipients.BulkInsert`) is still unverified. This plan avoided it with SELECT-then-INSERT and did not test it.
+  - **Plan C query plans.** Check the two JOINs (`ListMembers`, `ListMembershipsForUser`) with EXPLAIN on real serverless YDB, to confirm a lookup join on the right side's primary key rather than a scan.
   - **Ceiling.** `YDBInvitations.Create` reads the tenant's whole invitation history for the pending check. It is marked `ponytail:` in code and listed under the spec's "Ceilings".

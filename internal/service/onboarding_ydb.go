@@ -47,6 +47,10 @@ func (o ydbOnboarding) AcceptForExistingUser(ctx context.Context, p tenantcomman
 	if err != nil {
 		return err
 	}
+	// No IsYDBConflict -> nil mapping follows DoTx, on purpose: a conflict
+	// rolls the invitation acceptance back too, so reporting success would leave
+	// the invitation pending. Unlike the standalone YDBTenants.AddMembership,
+	// the error must surface.
 	return o.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
 		if err := tenantadapters.AcceptYDBInvitation(ctx, tx, p.TenantID, p.InvitationID, p.UserID); err != nil {
 			return err
@@ -57,9 +61,11 @@ func (o ydbOnboarding) AcceptForExistingUser(ctx context.Context, p tenantcomman
 
 // AcceptForNewUser creates the account, issues a session, marks the invitation
 // accepted, and records the membership for a new user, all in one
-// transaction. The user id, the session, the token and the password hash are
-// fixed before DoTx. The closure runs only database statements, so the SDK can
-// re-run it safely.
+// transaction. The user id, token, token hash, password hash and expiry are
+// fixed before DoTx. The session row id is generated per attempt, which is
+// harmless: a retried attempt is rolled back, the id is never returned, and
+// token_hash is the key. The closure runs only database statements, so the
+// SDK can re-run it safely.
 func (o ydbOnboarding) AcceptForNewUser(ctx context.Context, p tenantcommand.NewUserAcceptance) (tenantcommand.NewlyOnboardedUser, error) {
 	email, err := authdomain.NewEmail(p.Email)
 	if err != nil {

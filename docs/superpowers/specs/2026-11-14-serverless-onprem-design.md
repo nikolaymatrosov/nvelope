@@ -171,7 +171,7 @@ Each container is built from an existing image. There are no new binaries.
 | Postgres | YQL |
 |----------|-----|
 | `INSERT ... ON CONFLICT DO UPDATE` (18 sites, together with DO NOTHING) | `UPSERT` |
-| `INSERT ... ON CONFLICT DO NOTHING` | `INSERT` and treat "already exists" as no-op, or `SELECT` then `UPSERT` in the same tx. A failed statement likely breaks the interactive transaction, so "treat as no-op" is safe only when the INSERT is the transaction's last statement or runs in its own transaction (to verify in Plan B). If it does not hold, `Recipients.BulkInsert`'s per-row DO NOTHING loop uses `SELECT` then `UPSERT`, or chunk-level `UPSERT`. |
+| `INSERT ... ON CONFLICT DO NOTHING` | An INSERT conflict aborts the whole interactive transaction ("Plan B2 planning spike"). Inside a transaction use `SELECT` then `INSERT` (as `AddYDBMembership` does, Plan B3). A standalone single-statement INSERT may treat `db.IsYDBConflict` as a no-op. `UPSERT` is wrong where it would overwrite existing data. Still open, for the campaign plan: whether `Recipients.BulkInsert` can continue after a conflict, or needs `SELECT` then `INSERT`/chunk-level `UPSERT`. |
 | `SELECT ... FOR UPDATE` (7) | removed. A serializable conflict aborts the tx and the SDK retries it. |
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
@@ -623,7 +623,13 @@ These are known limits, marked in code with `ponytail:` comments.
 - YDB has no partial index, so the pending-invitation check
   (`YDBInvitations.Create`) reads every invitation row of the tenant, whatever
   its status. That is fine for one organisation's invitation history. The
-  upgrade path is a `GLOBAL SYNC` index on `(tenant_id, email_key)`.
+  check also takes a read lock on the tenant's whole invitation range, so
+  concurrent `Create`s in one tenant (any email) and concurrent `Update`s or
+  accepts of any of its invitations abort each other and are retried by the
+  SDK. That is correct, and fine for one organisation. The upgrade path is a
+  `GLOBAL SYNC` index on `(tenant_id, email_key)`, which fixes both cost and
+  contention. When it lands, re-run `TestInvitationsCreateIsRaceFree`, since
+  the guarantee would then rest on an index-range lock.
 
 ## Implementation phasing
 
