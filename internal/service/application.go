@@ -213,7 +213,7 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 			SetRawHTMLSanitization: decorator.ApplyResultCommandDecorators(
 				tenantcommand.NewSetRawHTMLSanitizationHandler(settings), "SetRawHTMLSanitization", logger),
 			SaveBranding: decorator.ApplyCommandDecorators(
-				tenantcommand.NewSaveBrandingHandler(branding), "SaveBranding", logger),
+				tenantcommand.NewSaveBrandingHandler(branding, publisher), "SaveBranding", logger),
 		},
 		Queries: tenantapp.Queries{
 			ListWorkspaces: decorator.ApplyQueryDecorators(
