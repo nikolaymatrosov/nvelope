@@ -22,5 +22,6 @@ type Commands struct {
 
 // Queries gathers the media context's read-only handlers.
 type Queries struct {
-	ListAssets decorator.QueryHandler[query.ListAssets, []query.AssetView]
+	ListAssets      decorator.QueryHandler[query.ListAssets, []query.AssetView]
+	AssetContentURL decorator.QueryHandler[query.AssetContentURL, string]
 }

@@ -208,6 +208,7 @@ func (s *Server) Handler() http.Handler {
 
 			// Tenant media library (Phase 6 US4).
 			r.Get("/media", s.handleListMedia)
+			r.Get("/media/{id}/content", s.handleMediaContent)
 			r.Post("/media", s.handleUploadMedia)
 			r.Delete("/media/{id}", s.handleDeleteMedia)
 

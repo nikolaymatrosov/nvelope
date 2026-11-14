@@ -34,12 +34,12 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		require.NoError(t, dbErr)
 	}
 
-	// Apply: every migration applies and the recorded version reaches 23.
+	// Apply: every migration applies and the recorded version reaches 24.
 	m := newMigrator()
 	require.NoError(t, m.Up())
 	v, dirty, err := m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(23), v)
+	require.Equal(t, uint(24), v)
 	require.False(t, dirty)
 	closeMigrator(m)
 

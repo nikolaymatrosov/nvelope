@@ -283,14 +283,16 @@ func buildMedia(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	return mediaapp.Application{
 		Commands: mediaapp.Commands{
 			UploadAsset: decorator.ApplyResultCommandDecorators(
-				mediacommand.NewUploadAssetHandler(assets, blobs, cfg.MediaMaxBytes),
+				mediacommand.NewUploadAssetHandler(assets, blobs, cfg.MediaMaxBytes, cfg.BaseURL),
 				"UploadAsset", logger),
 			DeleteAsset: decorator.ApplyCommandDecorators(
 				mediacommand.NewDeleteAssetHandler(assets, blobs), "DeleteAsset", logger),
 		},
 		Queries: mediaapp.Queries{
 			ListAssets: decorator.ApplyQueryDecorators(
-				mediaquery.NewListAssetsHandler(assets), "ListAssets", logger),
+				mediaquery.NewListAssetsHandler(assets, blobs, cfg.BaseURL), "ListAssets", logger),
+			AssetContentURL: decorator.ApplyQueryDecorators(
+				mediaquery.NewAssetContentURLHandler(assets, blobs), "AssetContentURL", logger),
 		},
 	}
 }
