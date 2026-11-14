@@ -12,6 +12,7 @@ vi.mock("@tanstack/react-router", () => ({
     useParams: () => ({ slug: "acme" }),
   }),
   useNavigate: () => vi.fn(),
+  useMatches: ({ select }: { select: (m: Array<unknown>) => unknown }) => select([]),
   useLocation: () => ({ pathname: "/t/acme/lists" }),
   Link: ({ children, to, ...rest }: { children: unknown; to?: unknown }) => (
     <a href={typeof to === "string" ? to : "#"} {...rest}>

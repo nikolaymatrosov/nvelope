@@ -2,12 +2,21 @@
 // every workspace screen. Permission-aware nav gating is handled inside the
 // sidebar (entries the user cannot use are hidden).
 
+import { useMatches } from "@tanstack/react-router"
 import { WorkspaceSidebar } from "./sidebar"
 import { TopBar } from "./top-bar"
 import { SuspensionBanner } from "./suspension-banner"
 import type { ReactNode } from "react"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { useSyncAccountLocale } from "@/hooks/use-locale"
+
+// Routes opt out of the workspace chrome with `staticData: { fullscreen: true }`
+// (the visual email editor). Session/TOTP gating in /t/$slug still applies.
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    fullscreen?: boolean
+  }
+}
 
 type AppShellProps = {
   slug: string
@@ -18,6 +27,11 @@ type AppShellProps = {
 export function AppShell({ slug, workspaceName, children }: AppShellProps) {
   // Apply the signed-in user's stored language preference (FR-004).
   useSyncAccountLocale()
+  const fullscreen = useMatches({
+    select: (matches) => matches.some((m) => m.staticData.fullscreen === true),
+  })
+
+  if (fullscreen) return <>{children}</>
 
   return (
     <SidebarProvider>
