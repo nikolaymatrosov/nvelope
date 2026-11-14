@@ -111,7 +111,7 @@ func TestImportWorkerAgainstRealQueue(t *testing.T) {
 	memberships := adapters.NewMemberships(pool)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, adapters.NewImportWorker(jobRepo, subscribers, memberships))
+	jobs.AddWorker(workers, adapters.NewImportWorker(jobRepo, subscribers, memberships))
 
 	client, err := jobs.NewWorkerClient(pool, "import_export", 2, workers)
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestExportWorkerAgainstRealQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, adapters.NewExportWorker(jobRepo, subscribers))
+	jobs.AddWorker(workers, adapters.NewExportWorker(jobRepo, subscribers))
 	client, err := jobs.NewWorkerClient(pool, "import_export", 2, workers)
 	require.NoError(t, err)
 	require.NoError(t, client.Start(ctx))

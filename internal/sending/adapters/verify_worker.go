@@ -11,12 +11,11 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/sending/domain"
 )
 
-// VerifyWorker is the River worker that polls a sending domain's verification
+// VerifyWorker is the job worker that polls a sending domain's verification
 // status. It re-checks the provider, transitions the domain to verified or
 // failed, and snoozes while the domain is still pending and within its
 // verification window.
 type VerifyWorker struct {
-	river.WorkerDefaults[jobs.DomainVerifyArgs]
 	domains  domain.SendingDomainRepository
 	verifier domain.IdentityVerifier
 	interval time.Duration
@@ -33,8 +32,8 @@ func NewVerifyWorker(domains domain.SendingDomainRepository, verifier domain.Ide
 }
 
 // Work runs one verification poll.
-func (w *VerifyWorker) Work(ctx context.Context, job *river.Job[jobs.DomainVerifyArgs]) error {
-	tenantID, domainID := job.Args.TenantID, job.Args.DomainID
+func (w *VerifyWorker) Work(ctx context.Context, args jobs.DomainVerifyArgs) error {
+	tenantID, domainID := args.TenantID, args.DomainID
 
 	d, err := w.domains.Get(ctx, tenantID, domainID)
 	if err != nil {
@@ -53,6 +52,9 @@ func (w *VerifyWorker) Work(ctx context.Context, job *river.Job[jobs.DomainVerif
 	var snooze bool
 	err = w.domains.Update(ctx, tenantID, domainID,
 		func(d *domain.SendingDomain) (*domain.SendingDomain, error) {
+			// The closure may run more than once (a retried YDB transaction), so
+			// the outcome is decided by its last run only.
+			snooze = false
 			if !d.IsPending() {
 				return d, nil
 			}

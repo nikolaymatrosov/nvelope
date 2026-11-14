@@ -43,6 +43,11 @@ if [ -z "$DOCKER_HOST" ] && [ ! -S /var/run/docker.sock ]; then
 	DOCKER_HOST=$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null) && export DOCKER_HOST
 fi
 
+# In a linked worktree git exports GIT_DIR to hooks, which pins the work tree
+# to the cwd: `cd frontend && git diff ../internal/...` then fails as "outside
+# repository". The hook runs from the work tree root, so rediscovery is safe.
+unset GIT_DIR
+
 targets=${targets# }
 echo "[pre-push] running make $targets..."
 make $targets || exit 1

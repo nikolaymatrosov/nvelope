@@ -30,12 +30,11 @@ type TenantNameLookup interface {
 	TenantName(ctx context.Context, tenantID string) (string, error)
 }
 
-// BatchWorker is the River worker for campaign.batch: it sends one bounded
+// BatchWorker is the job worker for campaign.batch: it sends one bounded
 // slice of a campaign's recipients, rate-limited and resumable. Per-recipient
 // status rows make redelivery idempotent — an already-sent recipient is never
 // re-selected.
 type BatchWorker struct {
-	river.WorkerDefaults[jobs.CampaignBatchArgs]
 	campaigns   domain.CampaignRepository
 	recipients  domain.RecipientRepository
 	tracking    domain.TrackingRepository
@@ -78,8 +77,8 @@ func NewBatchWorker(campaigns domain.CampaignRepository, recipients domain.Recip
 }
 
 // Work runs one campaign.batch job.
-func (w *BatchWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignBatchArgs]) error {
-	tenantID, campaignID := job.Args.TenantID, job.Args.CampaignID
+func (w *BatchWorker) Work(ctx context.Context, args jobs.CampaignBatchArgs) error {
+	tenantID, campaignID := args.TenantID, args.CampaignID
 
 	campaign, err := w.campaigns.Get(ctx, tenantID, campaignID)
 	if err != nil {
@@ -98,7 +97,7 @@ func (w *BatchWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignBatc
 	}
 	fromAddress := campaign.FromLocalPart() + "@" + domainName
 
-	pending, err := w.recipients.Pending(ctx, tenantID, campaignID, job.Args.Offset, job.Args.Limit)
+	pending, err := w.recipients.Pending(ctx, tenantID, campaignID, args.Offset, args.Limit)
 	if err != nil {
 		return err
 	}

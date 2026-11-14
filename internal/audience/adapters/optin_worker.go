@@ -7,18 +7,15 @@ import (
 	"html"
 	"strings"
 
-	"github.com/riverqueue/river"
-
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
-// OptinWorker is the River worker that sends one double-opt-in confirmation
+// OptinWorker is the job worker that sends one double-opt-in confirmation
 // email. It is durable and retry-capable: a restarted worker re-sends rather
 // than dropping the confirmation, and an unverified sending domain fails the
 // job so River retries once the domain is verified.
 type OptinWorker struct {
-	river.WorkerDefaults[jobs.OptinSendArgs]
 	pending       domain.PendingSubscriptionRepository
 	pages         domain.SubscriptionPageRepository
 	domains       domain.SendingDomainResolver
@@ -41,10 +38,10 @@ func NewOptinWorker(pending domain.PendingSubscriptionRepository,
 }
 
 // Work sends one confirmation email.
-func (w *OptinWorker) Work(ctx context.Context, job *river.Job[jobs.OptinSendArgs]) error {
-	tenantID := job.Args.TenantID
+func (w *OptinWorker) Work(ctx context.Context, args jobs.OptinSendArgs) error {
+	tenantID := args.TenantID
 
-	pending, err := w.pending.Get(ctx, tenantID, job.Args.PendingSubscriptionID)
+	pending, err := w.pending.Get(ctx, tenantID, args.PendingSubscriptionID)
 	if errors.Is(err, domain.ErrPendingSubscriptionNotFound) {
 		return nil // already confirmed or withdrawn — River redelivery is harmless
 	}
@@ -66,7 +63,7 @@ func (w *OptinWorker) Work(ctx context.Context, job *river.Job[jobs.OptinSendArg
 	}
 
 	confirmURL := strings.TrimRight(w.publicBaseURL, "/") +
-		"/t/" + job.Args.TenantSlug + "/confirm/" + job.Args.ConfirmationToken
+		"/t/" + args.TenantSlug + "/confirm/" + args.ConfirmationToken
 	fromAddress := page.FromLocalPart() + "@" + sendingDomain.Domain
 
 	if err := w.mailer.Send(ctx, domain.ConfirmationEmail{

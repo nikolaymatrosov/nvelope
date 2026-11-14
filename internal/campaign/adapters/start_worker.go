@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/riverqueue/river"
-
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
@@ -17,12 +15,11 @@ type batchEnqueuer interface {
 	EnqueueBatch(ctx context.Context, tenantID, campaignID string, offset, limit int) error
 }
 
-// StartWorker is the River worker for campaign.start: it resolves a campaign's
+// StartWorker is the job worker for campaign.start: it resolves a campaign's
 // targeted lists and segments into a deduplicated recipient set, creates the
 // tracked-link rows, records the recipient count, and fans out campaign.batch
 // jobs. It is idempotent — re-running finds recipients already inserted.
 type StartWorker struct {
-	river.WorkerDefaults[jobs.CampaignStartArgs]
 	campaigns  domain.CampaignRepository
 	recipients domain.RecipientRepository
 	tracking   domain.TrackingRepository
@@ -51,8 +48,8 @@ func NewStartWorker(campaigns domain.CampaignRepository, recipients domain.Recip
 }
 
 // Work runs one campaign.start job.
-func (w *StartWorker) Work(ctx context.Context, job *river.Job[jobs.CampaignStartArgs]) error {
-	tenantID, campaignID := job.Args.TenantID, job.Args.CampaignID
+func (w *StartWorker) Work(ctx context.Context, args jobs.CampaignStartArgs) error {
+	tenantID, campaignID := args.TenantID, args.CampaignID
 
 	campaign, err := w.campaigns.Get(ctx, tenantID, campaignID)
 	if err != nil {
