@@ -1,12 +1,17 @@
 // Frontend view model — the TypeScript types the UI consumes, mirrored from the
 // backend's query read models and command inputs.
 //
-// Casing convention (research.md Decision 2): platform-plane and tenant
-// settings/invitation responses are snake_case; IAM responses are PascalCase
-// (those Go view structs carry no `json:` tags). Field names below match
-// exactly what each endpoint emits — do not rename them. The audience plane
-// (Lists & Subscribers) is generated from the OpenAPI spec — see the import
-// below.
+// Casing convention. The audience plane — lists, subscribers, import/export,
+// and jobs — is spec-first: those types are generated from `api/openapi/` and
+// re-exported below, and every property on them is lowerCamelCase. Nothing in
+// that group is hand-written here.
+//
+// The remaining, unmigrated contexts still carry the old inconsistency
+// (research.md Decision 2): platform-plane and tenant settings/invitation
+// responses are snake_case; IAM responses are PascalCase (those Go view
+// structs carry no `json:` tags). The hand-written field names below match
+// exactly what each endpoint emits — do not rename them. Each context loses
+// its snake_case/PascalCase marker when its own migration lands.
 
 import type { components } from "./api-schema.gen"
 
