@@ -48,10 +48,10 @@ lint-arch:
 	@echo '[arch] domain packages import no transport or driver code'
 	@! $(GO) list -deps ./internal/auth/domain/... ./internal/tenant/domain/... \
 		./internal/iam/domain/... ./internal/audience/domain/... \
-		| grep -E 'net/http|jackc/pgx|go-chi'
+		| grep -E 'net/http|jackc/pgx|ydb-platform|go-chi'
 	@echo '[arch] the transport layer imports no driver or adapter code'
 	@! $(GO) list -deps ./internal/api/... \
-		| grep -E 'jackc/pgx|nvelope/internal/[a-z]+/adapters'
+		| grep -E 'jackc/pgx|ydb-platform|nvelope/internal/[a-z]+/adapters'
 	@echo '[arch] clean'
 
 # verify runs the per-increment verification bundle from quickstart.md: the
