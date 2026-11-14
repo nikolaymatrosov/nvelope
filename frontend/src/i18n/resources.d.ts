@@ -438,7 +438,6 @@ export default interface Resources {
         "title": "Start this campaign?"
       },
       "content": {
-        "bodyLabel": "Body",
         "description": "Edit the campaign’s subject and content. HTML is sent as-is.",
         "htmlBodyLabel": "HTML body",
         "insertFromMedia": "Insert from media library",
@@ -528,22 +527,13 @@ export default interface Resources {
     },
     "visual": {
       "convert": "Convert to visual editor",
-      "convertedSuccess": "Converted to visual editor. Review and save to keep it.",
-      "convertedWarnings_few": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_many": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_one": "Converted to visual editor with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_other": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "converting": "Converting…",
-      "forceOverwrite": "Force overwrite",
       "optOut": {
         "confirm": "Switch to HTML only",
         "description": "Your structured visual document will be discarded. The last saved HTML body stays intact so the campaign remains sendable, but blocks, columns, and merge-tag chips will no longer be available unless you convert back later.",
         "switching": "Switching…",
         "title": "Switch to HTML-only editing?"
       },
-      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared.",
-      "reload": "Reload",
-      "staleTitle": "Changed in another tab/session"
+      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared."
     }
   },
   "common": {
@@ -1368,7 +1358,6 @@ export default interface Resources {
     },
     "detail": {
       "backToTemplates": "← Templates",
-      "bodyLabel": "Body",
       "htmlBodyLabel": "HTML body",
       "nameLabel": "Name",
       "nameRequired": "Enter a template name.",
@@ -1409,22 +1398,13 @@ export default interface Resources {
     },
     "visual": {
       "convert": "Convert to visual editor",
-      "convertedSuccess": "Converted to visual editor. Review and save to keep it.",
-      "convertedWarnings_few": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_many": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_one": "Converted to visual editor with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_other": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "converting": "Converting…",
-      "forceOverwrite": "Force overwrite",
       "optOut": {
         "confirm": "Switch to HTML only",
         "description": "Your structured visual document will be discarded. The last saved HTML body stays intact so the template remains usable, but blocks, columns, and merge-tag chips will no longer be available unless you convert back later.",
         "switching": "Switching…",
         "title": "Switch to HTML-only editing?"
       },
-      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared.",
-      "reload": "Reload",
-      "staleTitle": "Changed in another tab/session"
+      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared."
     }
   },
   "transactional": {
@@ -1484,10 +1464,52 @@ export default interface Resources {
     }
   },
   "visualEditor": {
+    "body": {
+      "editHtmlOnly": "Edit as HTML only",
+      "openEditor": "Open editor",
+      "previewEmpty": "The email body is empty.",
+      "previewTitle": "Saved email"
+    },
     "bubbleMenu": {
       "apply": "Apply",
       "colorPrompt": "Color (CSS hex / rgb / name):",
       "linkPlaceholder": "https://…"
+    },
+    "catalog": {
+      "item": {
+        "bullet-list": "Bulleted list",
+        "button": "Button",
+        "code": "Code block",
+        "columns-2": "Two columns",
+        "columns-3": "Three columns",
+        "columns-4": "Four columns",
+        "divider": "Divider",
+        "heading-1": "Heading 1",
+        "heading-2": "Heading 2",
+        "heading-3": "Heading 3",
+        "image": "Image",
+        "merge-tag": "Merge tag",
+        "ordered-list": "Numbered list",
+        "paragraph": "Paragraph",
+        "quote": "Quote",
+        "raw-html": "HTML block"
+      },
+      "mergeTagDescription": "Insert a subscriber or campaign placeholder",
+      "type": {
+        "button": "Button",
+        "columns": "Columns",
+        "divider": "Divider",
+        "heading": "Heading",
+        "html": "HTML",
+        "image": "Image",
+        "text": "Text"
+      }
+    },
+    "library": {
+      "group": {
+        "basic": "Basic"
+      },
+      "title": "Block library"
     },
     "mergeTag": {
       "closeAriaLabel": "Close",
@@ -1501,12 +1523,8 @@ export default interface Resources {
       "title": "Insert merge tag"
     },
     "panel": {
-      "collapseLeft": "Collapse structure panel",
-      "collapseRight": "Collapse properties panel",
-      "expandLeft": "Show structure panel",
-      "expandRight": "Show properties panel",
       "paramsTitle": "Properties",
-      "structureTitle": "Structure"
+      "structureTitle": "Layers"
     },
     "params": {
       "align": {
@@ -1528,7 +1546,9 @@ export default interface Resources {
         "borderStyle": "Border style",
         "borderWidth": "Border width",
         "color": "Text color",
+        "columnCount": "Number of columns",
         "columnWidths": "Column widths",
+        "editHtml": "Edit HTML",
         "fontFamily": "Font",
         "fontSize": "Font size",
         "fontWeight": "Font weight",
@@ -1539,10 +1559,11 @@ export default interface Resources {
         "lineColor": "Line color",
         "lineHeight": "Line height",
         "padding": "Padding",
-        "paddingBottom": "Padding bottom",
-        "paddingLeft": "Padding left",
-        "paddingRight": "Padding right",
-        "paddingTop": "Padding top",
+        "paddingBottom": "Bottom",
+        "paddingLeft": "Left",
+        "paddingRight": "Right",
+        "paddingTop": "Top",
+        "replaceImage": "Replace image",
         "textAlign": "Alignment",
         "thickness": "Thickness",
         "width": "Width"
@@ -1555,8 +1576,16 @@ export default interface Resources {
         "border": "Border",
         "content": "Content",
         "layout": "Layout",
-        "spacing": "Spacing",
+        "spacing": "Spacing & alignment",
         "typography": "Typography"
+      },
+      "tabs": {
+        "content": "Content",
+        "design": "Design"
+      },
+      "toggle": {
+        "border": "Border",
+        "radius": "Rounded corners"
       },
       "weight": {
         "bold": "Bold",
@@ -1576,12 +1605,57 @@ export default interface Resources {
       "save": "Save HTML",
       "title": "Edit raw HTML block"
     },
+    "save": {
+      "convertedSuccess": "Converted to the visual editor. Review and save to keep it.",
+      "convertedWarnings_few": "Converted with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+      "convertedWarnings_many": "Converted with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+      "convertedWarnings_one": "Converted with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
+      "convertedWarnings_other": "Converted with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+      "forceOverwrite": "Force overwrite",
+      "reload": "Reload",
+      "staleTitle": "Changed in another tab/session",
+      "success": "Saved.",
+      "warnings_few": "Saved with {{count}} content warnings.",
+      "warnings_many": "Saved with {{count}} content warnings.",
+      "warnings_one": "Saved with {{count}} content warning.",
+      "warnings_other": "Saved with {{count}} content warnings."
+    },
+    "screen": {
+      "add": "Add block",
+      "back": "Back",
+      "breadcrumb": {
+        "campaigns": "Campaigns",
+        "templates": "Templates"
+      },
+      "convertFailed": "Could not convert this email to the visual editor.",
+      "converting": "Converting to the visual editor…",
+      "device": {
+        "desktop": "Desktop",
+        "label": "Viewport",
+        "mobile": "Mobile"
+      },
+      "emptyAction": "Add block",
+      "emptyTitle": "Add your first block",
+      "openPanel": "Properties",
+      "preview": "Preview",
+      "previewTitle": "Email preview",
+      "readOnly": "View only",
+      "redo": "Redo",
+      "rootLabel": "Email",
+      "save": "Save",
+      "saved": "Saved",
+      "saving": "Saving…",
+      "unavailable": "The visual editor is not available for transactional templates.",
+      "undo": "Undo",
+      "unsavedConfirm": "You have unsaved changes. Leave anyway?"
+    },
     "structure": {
       "actions": {
         "collapse": "Collapse",
         "delete": "Delete block",
         "duplicate": "Duplicate block",
-        "expand": "Expand"
+        "expand": "Expand",
+        "menu": "Block actions"
       },
       "block": {
         "blockquote": "Quote",
@@ -1616,10 +1690,6 @@ export default interface Resources {
       "resetDefaults": "Reset to tenant defaults",
       "textColor": "Text color",
       "title": "Theme"
-    },
-    "toolbar": {
-      "editHtmlOnly": "Edit as HTML only",
-      "viewHtml": "View HTML"
     }
   }
 }

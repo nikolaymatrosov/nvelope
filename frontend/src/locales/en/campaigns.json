@@ -40,7 +40,6 @@
       "title": "Start this campaign?"
     },
     "content": {
-      "bodyLabel": "Body",
       "description": "Edit the campaign’s subject and content. HTML is sent as-is.",
       "htmlBodyLabel": "HTML body",
       "insertFromMedia": "Insert from media library",
@@ -130,21 +129,12 @@
   },
   "visual": {
     "convert": "Convert to visual editor",
-    "convertedSuccess": "Converted to visual editor. Review and save to keep it.",
-    "convertedWarnings_few": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-    "convertedWarnings_many": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-    "convertedWarnings_one": "Converted to visual editor with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
-    "convertedWarnings_other": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-    "converting": "Converting…",
-    "forceOverwrite": "Force overwrite",
     "optOut": {
       "confirm": "Switch to HTML only",
       "description": "Your structured visual document will be discarded. The last saved HTML body stays intact so the campaign remains sendable, but blocks, columns, and merge-tag chips will no longer be available unless you convert back later.",
       "switching": "Switching…",
       "title": "Switch to HTML-only editing?"
     },
-    "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared.",
-    "reload": "Reload",
-    "staleTitle": "Changed in another tab/session"
+    "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared."
   }
 }

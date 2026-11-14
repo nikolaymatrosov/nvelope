@@ -13,7 +13,8 @@ import {
 } from "react"
 import { Extension } from "@tiptap/core"
 import Suggestion from "@tiptap/suggestion"
-import { buildColumnsNode } from "../extensions/Columns"
+import i18n from "i18next"
+import { BLOCK_CATALOG } from "../blockCatalog"
 import type { Editor, Range } from "@tiptap/core"
 
 type SlashItem = {
@@ -26,146 +27,23 @@ type SlashItem = {
   apply: (editor: Editor, range: Range) => void
 }
 
-const SLASH_ITEMS: Array<SlashItem> = [
-  {
-    key: "paragraph",
-    label: "Paragraph",
-    apply: (editor, range) =>
-      editor.chain().focus().deleteRange(range).setParagraph().run(),
-  },
-  {
-    key: "heading-1",
-    label: "Heading 1",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .setNode("heading", { level: 1 })
-        .run(),
-  },
-  {
-    key: "heading-2",
-    label: "Heading 2",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .setNode("heading", { level: 2 })
-        .run(),
-  },
-  {
-    key: "heading-3",
-    label: "Heading 3",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .setNode("heading", { level: 3 })
-        .run(),
-  },
-  {
-    key: "bullet-list",
-    label: "Bulleted list",
-    apply: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleBulletList().run(),
-  },
-  {
-    key: "ordered-list",
-    label: "Numbered list",
-    apply: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
-  },
-  {
-    key: "quote",
-    label: "Quote",
-    apply: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
-  },
-  {
-    key: "code",
-    label: "Code block",
-    apply: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
-  },
-  {
-    key: "image",
-    label: "Image",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertContent({
-          type: "image",
-          attrs: { mediaRef: "", alt: "", href: "" },
-        })
-        .run(),
-  },
-  {
-    key: "button",
-    label: "Button",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertContent({
-          type: "button",
-          attrs: { label: "Button", href: "" },
-        })
-        .run(),
-  },
-  {
-    key: "divider",
-    label: "Divider",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertContent({ type: "divider" })
-        .run(),
-  },
-  {
-    key: "columns-2",
-    label: "Two columns",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertContent(buildColumnsNode(2))
-        .run(),
-  },
-  {
-    key: "columns-3",
-    label: "Three columns",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertContent(buildColumnsNode(3))
-        .run(),
-  },
-  {
-    key: "columns-4",
-    label: "Four columns",
-    apply: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertContent(buildColumnsNode(4))
-        .run(),
-  },
-  {
+// slashItems builds the menu from the shared block catalog (plus the
+// slash-only merge-tag entry), labelled in the active i18n language, then
+// filters by the typed query. Applying an item inserts the catalog content at
+// the slash position. On an empty line TipTap replaces the empty paragraph,
+// matching the old setNode/toggle behaviour.
+export function slashItems(query: string): Array<SlashItem> {
+  const items: Array<SlashItem> = BLOCK_CATALOG.map((item) => ({
+    key: item.key,
+    label: i18n.t(`visualEditor:catalog.item.${item.key}`),
+    apply: (editor, range) => {
+      editor.chain().focus().deleteRange(range).insertContent(item.content()).run()
+    },
+  }))
+  items.push({
     key: "merge-tag",
-    label: "Merge tag",
-    description: "Insert a subscriber or campaign placeholder",
+    label: i18n.t("visualEditor:catalog.item.merge-tag"),
+    description: i18n.t("visualEditor:catalog.mergeTagDescription"),
     apply: (editor, range) => {
       editor.chain().focus().deleteRange(range).run()
       // The MergeTagPicker UI listens for this event and opens, then
@@ -175,8 +53,10 @@ const SLASH_ITEMS: Array<SlashItem> = [
         new CustomEvent("visual-editor:merge-tag-open", { bubbles: true }),
       )
     },
-  },
-]
+  })
+  const q = query.toLowerCase()
+  return items.filter((i) => i.label.toLowerCase().includes(q) || i.key.includes(q))
+}
 
 // React state container that exposes a ref API the suggestion plugin can
 // drive directly (no React-effect re-renders per keystroke — the
@@ -189,21 +69,24 @@ type MenuApi = {
   onKeyDown: (e: { event: KeyboardEvent }) => boolean
 }
 
-export const SlashCommandExtension = Extension.create<{ menuApi: MenuApi }>({
+const NOOP_MENU_API: MenuApi = {
+  setItems: () => {},
+  setOnSelect: () => {},
+  open: () => {},
+  close: () => {},
+  onKeyDown: () => false,
+}
+
+// getMenuApi is a function, resolved on every suggestion event: configure()
+// deep-merges plain-object options at configure time, before the menu's ref
+// exists, which would freeze the no-op API forever.
+export const SlashCommandExtension = Extension.create<{ getMenuApi: () => MenuApi }>({
   name: "slashCommand",
   addOptions() {
-    return {
-      menuApi: {
-        setItems: () => {},
-        setOnSelect: () => {},
-        open: () => {},
-        close: () => {},
-        onKeyDown: () => false,
-      },
-    }
+    return { getMenuApi: () => NOOP_MENU_API }
   },
   addProseMirrorPlugins() {
-    const { menuApi } = this.options
+    const { getMenuApi } = this.options
     return [
       Suggestion({
         editor: this.editor,
@@ -213,23 +96,22 @@ export const SlashCommandExtension = Extension.create<{ menuApi: MenuApi }>({
           const item = props as SlashItem
           item.apply(editor, range)
         },
-        items: ({ query }) =>
-          SLASH_ITEMS.filter((i) =>
-            i.label.toLowerCase().includes(query.toLowerCase()),
-          ),
+        items: ({ query }) => slashItems(query),
         render: () => ({
           onStart: (props) => {
+            const menuApi = getMenuApi()
             menuApi.setItems(props.items)
             menuApi.setOnSelect((item) => props.command(item))
             menuApi.open(props.clientRect?.() ?? undefined)
           },
           onUpdate: (props) => {
+            const menuApi = getMenuApi()
             menuApi.setItems(props.items)
             menuApi.setOnSelect((item) => props.command(item))
             menuApi.open(props.clientRect?.() ?? undefined)
           },
-          onKeyDown: (props) => menuApi.onKeyDown(props),
-          onExit: () => menuApi.close(),
+          onKeyDown: (props) => getMenuApi().onKeyDown(props),
+          onExit: () => getMenuApi().close(),
         }),
       }),
     ]
@@ -291,6 +173,9 @@ function SlashCommandMenuRendered({ ref }: RenderedProps) {
           return true
         }
         if (event.key === "Escape") {
+          // Esc only closes the menu; keep it from reaching EditorScreen's
+          // window handler, which would also clear the block selection.
+          event.stopPropagation()
           setOpen(false)
           return true
         }

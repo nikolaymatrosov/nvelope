@@ -1,8 +1,4 @@
 {
-  "toolbar": {
-    "viewHtml": "View HTML",
-    "editHtmlOnly": "Edit as HTML only"
-  },
   "rawHtmlModal": {
     "title": "Edit raw HTML block",
     "description": "These bytes are passed through verbatim. They run through the sanitizer at save time — disallowed constructs (script, event handlers, dangerous URL schemes) are stripped.",
@@ -49,12 +45,8 @@
     "apply": "Apply"
   },
   "panel": {
-    "structureTitle": "Structure",
-    "paramsTitle": "Properties",
-    "collapseLeft": "Collapse structure panel",
-    "collapseRight": "Collapse properties panel",
-    "expandLeft": "Show structure panel",
-    "expandRight": "Show properties panel"
+    "structureTitle": "Layers",
+    "paramsTitle": "Properties"
   },
   "structure": {
     "empty": "The document is empty.",
@@ -78,7 +70,8 @@
       "delete": "Delete block",
       "duplicate": "Duplicate block",
       "collapse": "Collapse",
-      "expand": "Expand"
+      "expand": "Expand",
+      "menu": "Block actions"
     }
   },
   "params": {
@@ -89,7 +82,7 @@
     "sections": {
       "background": "Background",
       "typography": "Typography",
-      "spacing": "Spacing",
+      "spacing": "Spacing & alignment",
       "border": "Border",
       "layout": "Layout",
       "content": "Content"
@@ -102,10 +95,10 @@
       "fontWeight": "Font weight",
       "lineHeight": "Line height",
       "textAlign": "Alignment",
-      "paddingTop": "Padding top",
-      "paddingRight": "Padding right",
-      "paddingBottom": "Padding bottom",
-      "paddingLeft": "Padding left",
+      "paddingTop": "Top",
+      "paddingRight": "Right",
+      "paddingBottom": "Bottom",
+      "paddingLeft": "Left",
       "padding": "Padding",
       "borderRadius": "Corner radius",
       "borderWidth": "Border width",
@@ -119,7 +112,10 @@
       "thickness": "Thickness",
       "lineColor": "Line color",
       "columnWidths": "Column widths",
-      "gap": "Column gap"
+      "gap": "Column gap",
+      "columnCount": "Number of columns",
+      "replaceImage": "Replace image",
+      "editHtml": "Edit HTML"
     },
     "weight": {
       "normal": "Normal",
@@ -134,6 +130,100 @@
       "solid": "Solid",
       "dashed": "Dashed",
       "dotted": "Dotted"
+    },
+    "tabs": {
+      "content": "Content",
+      "design": "Design"
+    },
+    "toggle": {
+      "border": "Border",
+      "radius": "Rounded corners"
     }
+  },
+  "screen": {
+    "breadcrumb": {
+      "templates": "Templates",
+      "campaigns": "Campaigns"
+    },
+    "back": "Back",
+    "add": "Add block",
+    "undo": "Undo",
+    "redo": "Redo",
+    "device": {
+      "label": "Viewport",
+      "desktop": "Desktop",
+      "mobile": "Mobile"
+    },
+    "preview": "Preview",
+    "previewTitle": "Email preview",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "readOnly": "View only",
+    "openPanel": "Properties",
+    "emptyTitle": "Add your first block",
+    "emptyAction": "Add block",
+    "unsavedConfirm": "You have unsaved changes. Leave anyway?",
+    "converting": "Converting to the visual editor…",
+    "convertFailed": "Could not convert this email to the visual editor.",
+    "unavailable": "The visual editor is not available for transactional templates.",
+    "rootLabel": "Email"
+  },
+  "save": {
+    "success": "Saved.",
+    "warnings_one": "Saved with {{count}} content warning.",
+    "warnings_few": "Saved with {{count}} content warnings.",
+    "warnings_many": "Saved with {{count}} content warnings.",
+    "warnings_other": "Saved with {{count}} content warnings.",
+    "staleTitle": "Changed in another tab/session",
+    "reload": "Reload",
+    "forceOverwrite": "Force overwrite",
+    "convertedSuccess": "Converted to the visual editor. Review and save to keep it.",
+    "convertedWarnings_one": "Converted with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_few": "Converted with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_many": "Converted with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
+    "convertedWarnings_other": "Converted with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document."
+  },
+  "library": {
+    "title": "Block library",
+    "group": {
+      "basic": "Basic"
+    }
+  },
+  "catalog": {
+    "type": {
+      "text": "Text",
+      "heading": "Heading",
+      "image": "Image",
+      "button": "Button",
+      "columns": "Columns",
+      "divider": "Divider",
+      "html": "HTML"
+    },
+    "item": {
+      "paragraph": "Paragraph",
+      "bullet-list": "Bulleted list",
+      "ordered-list": "Numbered list",
+      "quote": "Quote",
+      "code": "Code block",
+      "heading-1": "Heading 1",
+      "heading-2": "Heading 2",
+      "heading-3": "Heading 3",
+      "image": "Image",
+      "button": "Button",
+      "columns-2": "Two columns",
+      "columns-3": "Three columns",
+      "columns-4": "Four columns",
+      "divider": "Divider",
+      "raw-html": "HTML block",
+      "merge-tag": "Merge tag"
+    },
+    "mergeTagDescription": "Insert a subscriber or campaign placeholder"
+  },
+  "body": {
+    "previewTitle": "Saved email",
+    "previewEmpty": "The email body is empty.",
+    "openEditor": "Open editor",
+    "editHtmlOnly": "Edit as HTML only"
   }
 }

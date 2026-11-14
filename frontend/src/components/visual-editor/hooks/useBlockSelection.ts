@@ -10,8 +10,12 @@
 // the position from it. When the selected block is deleted and the selection
 // lands on no block, the position resolves to null and the params panel shows
 // its empty state.
+//
+// Selection starts empty and clear() sticks: nothing is selected until the
+// operator clicks or types in the canvas (or calls selectBlock), so the root
+// «Email» node stays current. Programmatic transactions alone never select.
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { NodeSelection } from "@tiptap/pm/state"
 import type { Editor } from "@tiptap/core"
 import type { Node as PMNode } from "@tiptap/pm/model"
@@ -55,25 +59,44 @@ export type BlockSelection = {
   clear: () => void
 }
 
+function resolveSelection(editor: Editor): { pos: number | null; node: PMNode | null } {
+  const pos = deriveSelectedPos(editor.state)
+  return { pos, node: pos == null ? null : editor.state.doc.nodeAt(pos) }
+}
+
 export function useBlockSelection(editor: Editor | null): BlockSelection {
   const [state, setState] = useState<{ pos: number | null; node: PMNode | null }>(
     { pos: null, node: null },
   )
+  // Whether the operator has picked a block. False on load and after clear():
+  // ProseMirror always holds *some* selection internally, but until the user
+  // clicks or types in the canvas (or picks a layer) nothing is "selected" and
+  // the root «Email» node is current.
+  const activeRef = useRef(false)
 
   useEffect(() => {
-    if (!editor) {
-      setState({ pos: null, node: null })
-      return
-    }
+    // New (or no) editor instance: its default caret must not read as selected.
+    activeRef.current = false
+    setState({ pos: null, node: null })
+    if (!editor) return
     const sync = () => {
-      const pos = deriveSelectedPos(editor.state)
-      const node = pos == null ? null : editor.state.doc.nodeAt(pos)
-      setState({ pos, node })
+      setState(activeRef.current ? resolveSelection(editor) : { pos: null, node: null })
     }
+    const activate = () => {
+      activeRef.current = true
+      sync()
+    }
+    const dom = editor.view.dom
     sync()
+    dom.addEventListener("mousedown", activate)
+    dom.addEventListener("keydown", activate)
+    editor.on("focus", activate)
     editor.on("selectionUpdate", sync)
     editor.on("transaction", sync)
     return () => {
+      dom.removeEventListener("mousedown", activate)
+      dom.removeEventListener("keydown", activate)
+      editor.off("focus", activate)
       editor.off("selectionUpdate", sync)
       editor.off("transaction", sync)
     }
@@ -84,6 +107,7 @@ export function useBlockSelection(editor: Editor | null): BlockSelection {
       if (!editor) return
       const node = editor.state.doc.nodeAt(pos)
       if (!node) return
+      activeRef.current = true
       const chain = editor.chain().focus()
       if (node.isTextblock) {
         // Place the caret just inside the text block.
@@ -92,6 +116,8 @@ export function useBlockSelection(editor: Editor | null): BlockSelection {
         chain.setNodeSelection(pos)
       }
       chain.scrollIntoView().run()
+      // Re-sync even if the selection did not move (no selectionUpdate fires).
+      setState(resolveSelection(editor))
     },
     [editor],
   )
@@ -102,7 +128,6 @@ export function useBlockSelection(editor: Editor | null): BlockSelection {
       const pos = state.pos
       editor
         .chain()
-        .focus()
         .command(({ tr }) => {
           const node = tr.doc.nodeAt(pos)
           if (!node) return false
@@ -115,6 +140,7 @@ export function useBlockSelection(editor: Editor | null): BlockSelection {
   )
 
   const clear = useCallback(() => {
+    activeRef.current = false
     setState({ pos: null, node: null })
     editor?.commands.blur()
   }, [editor])

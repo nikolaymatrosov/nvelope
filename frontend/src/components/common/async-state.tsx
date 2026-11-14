@@ -32,6 +32,7 @@ type AsyncStateProps<T> = {
   emptyTitle?: string
   emptyMessage?: string
   emptyAction?: ReactNode
+  errorAction?: ReactNode
 }
 
 function DefaultSkeleton() {
@@ -52,6 +53,7 @@ export function AsyncState<T>({
   emptyTitle,
   emptyMessage,
   emptyAction,
+  errorAction,
 }: AsyncStateProps<T>) {
   const { t } = useTranslation()
   if (query.isLoading) {
@@ -68,15 +70,18 @@ export function AsyncState<T>({
           <EmptyTitle>{t("asyncState.errorTitle")}</EmptyTitle>
           <EmptyDescription>{errorMessage(query.error)}</EmptyDescription>
         </EmptyHeader>
-        {query.refetch && (
+        {(query.refetch || errorAction) && (
           <EmptyContent>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => query.refetch?.()}
-            >
-              {t("actions.tryAgain")}
-            </Button>
+            {query.refetch && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => query.refetch?.()}
+              >
+                {t("actions.tryAgain")}
+              </Button>
+            )}
+            {errorAction}
           </EmptyContent>
         )}
       </Empty>

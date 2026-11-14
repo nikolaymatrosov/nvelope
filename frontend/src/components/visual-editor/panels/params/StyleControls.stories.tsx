@@ -87,6 +87,7 @@ export const EditsNumberAlignAndSelect: Story = {
     const canvas = within(canvasElement)
 
     // Numeric stepper (bounded, starts empty / inherited).
+    await userEvent.click(canvas.getByTestId("ve-param-borderRadius-toggle"))
     await userEvent.type(canvas.getByTestId("ve-param-borderRadius"), "16")
     await expect(canvas.getByTestId("ve-param-borderRadius")).toHaveValue(16)
 

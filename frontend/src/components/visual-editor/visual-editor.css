@@ -213,27 +213,6 @@
   max-height: 180px;
 }
 
-.ve-toolbar {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  padding: 6px 0;
-}
-
-.ve-toolbar__btn {
-  font-size: 12px;
-  padding: 4px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: white;
-  color: #1f2937;
-  cursor: pointer;
-}
-
-.ve-toolbar__btn:hover {
-  background: #f3f4f6;
-}
-
 .ve-theme-controls {
   margin: 8px 0 12px;
   padding: 10px 12px;
@@ -348,26 +327,6 @@
 
 .ve-theme-controls__number-input {
   width: 100px;
-}
-
-/* ── Three-pane editor shell (feature 017) ─────────────────────────────── */
-
-.ve-three-pane {
-  height: 100%;
-  min-height: 480px;
-}
-
-.ve-three-pane__group {
-  height: 100%;
-}
-
-.ve-pane {
-  height: 100%;
-  overflow: auto;
-}
-
-.ve-pane--center {
-  min-width: 0;
 }
 
 /* Side panels (structure / parameters) */
@@ -504,22 +463,28 @@
 
 .ve-style-controls__align {
   display: inline-flex;
-  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #e4e4e7;
 }
 
 .ve-style-controls__align button {
-  font-size: 11px;
-  padding: 2px 6px;
-  border: 1px solid #d1d5db;
-  background: white;
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 4px 8px;
+  border: none;
   border-radius: 4px;
+  background: transparent;
+  color: #3f3f46;
+  cursor: pointer;
 }
 
 .ve-style-controls__align button.is-active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: white;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .ve-style-controls input[type="number"],
@@ -604,62 +569,424 @@
   white-space: nowrap;
 }
 
-.ve-outline__actions {
+.ve-outline__menu {
   display: inline-flex;
-  gap: 2px;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
   opacity: 0;
 }
 
-.ve-outline__row:hover .ve-outline__actions {
+.ve-outline__row:hover .ve-outline__menu,
+.ve-outline__menu[aria-expanded="true"],
+.ve-outline__menu:focus-visible {
   opacity: 1;
 }
 
-.ve-outline__actions button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #6b7280;
-  font-size: 11px;
-  padding: 0 2px;
-}
-
-/* ── Three-pane chrome: toggle bar + overlays (feature 017, US3) ────────── */
-
-.ve-three-pane {
-  display: flex;
-  flex-direction: column;
-}
-
-.ve-three-pane__bar {
-  display: flex;
-  gap: 8px;
-  padding: 4px 8px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
-}
-
-.ve-three-pane__bar-btn {
-  font-size: 12px;
-  padding: 2px 8px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: white;
-  color: #374151;
-  cursor: pointer;
-}
-
-.ve-three-pane__group {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.ve-three-pane--narrow .ve-pane--center {
-  height: 100%;
-  min-height: 360px;
+.ve-outline__row--root .ve-outline__type {
+  font-weight: 600;
 }
 
 .ve-overlay-panel {
   width: 300px;
   max-width: 85vw;
   overflow: auto;
+}
+
+/* Grouped sections (Design tab) — editor shell 2026-11-14. */
+.ve-style-controls__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.ve-style-controls__section:last-child {
+  border-bottom: none;
+}
+
+.ve-style-controls__heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.ve-style-controls__padding {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ve-style-controls__compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.ve-style-controls .ve-style-controls__compact input[type="number"] {
+  width: 100%;
+  max-width: none;
+}
+
+.ve-style-controls__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ve-style-controls__toggle input[role="switch"] {
+  appearance: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  border-radius: 9px;
+  background: #d4d4d8;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ve-style-controls__toggle input[role="switch"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.ve-style-controls__toggle input[role="switch"]:checked {
+  background: #3f3f46;
+}
+
+.ve-style-controls__toggle input[role="switch"]:checked::before {
+  transform: translateX(14px);
+}
+
+/* Unit suffix for compact padding inputs (CSS-only: no literal in JSX). */
+.ve-style-controls__px {
+  position: relative;
+  display: block;
+}
+
+.ve-style-controls__px::after {
+  content: "px";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.ve-style-controls .ve-style-controls__px input[type="number"] {
+  padding-right: 22px;
+}
+
+.ve-panel__tabs {
+  gap: 8px;
+}
+
+.ve-params-action {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.ve-params-action:disabled {
+  color: #9ca3af;
+  cursor: default;
+}
+
+/* ── Block library (editor shell 2026-11-14) ───────────────────────────── */
+
+.ve-library__body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.ve-library__nav {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+  overflow: auto;
+  border-right: 1px solid #e5e7eb;
+}
+
+.ve-library__group {
+  margin: 0;
+  padding: 4px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.ve-library__type {
+  padding: 8px 24px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ve-library__type:hover {
+  background: #f4f4f5;
+}
+
+.ve-library__type.is-active {
+  background: #ede9fe;
+}
+
+.ve-library__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow: auto;
+  background: #f4f4f5;
+}
+
+.ve-library__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 16px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.ve-library__card:hover {
+  border-color: #2563eb;
+}
+
+.ve-library__card-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.ve-mock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 70%;
+  min-height: 48px;
+  color: #111827;
+}
+
+.ve-mock--h1 { font-size: 32px; font-weight: 700; }
+.ve-mock--h2 { font-size: 24px; font-weight: 700; }
+.ve-mock--h3 { font-size: 18px; font-weight: 700; }
+
+.ve-mock--lines,
+.ve-mock--list,
+.ve-mock--quote {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ve-mock--lines > span,
+.ve-mock--list > span,
+.ve-mock--quote > span {
+  height: 6px;
+  border-radius: 3px;
+  background: #d4d4d8;
+}
+
+.ve-mock--list > span { margin-left: 14px; }
+.ve-mock--quote { border-left: 3px solid #a1a1aa; padding-left: 10px; }
+
+.ve-mock--columns > span {
+  flex: 1;
+  height: 48px;
+  border: 1px dashed #a1a1aa;
+  border-radius: 4px;
+}
+
+.ve-mock--button { flex: none; width: 96px; min-height: 28px; height: 28px; border-radius: 6px; background: #2563eb; }
+.ve-mock--image { height: 56px; border-radius: 6px; background: linear-gradient(135deg, #e4e4e7, #d4d4d8); }
+.ve-mock--divider { min-height: 1px; height: 1px; background: #a1a1aa; }
+.ve-mock--code { font-family: ui-monospace, monospace; font-size: 20px; color: #6b7280; }
+
+.ve-block-toolbar {
+  position: absolute;
+  z-index: 20;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+
+.ve-block-toolbar__label {
+  margin-right: 4px;
+  font-weight: 500;
+}
+
+.ve-block-toolbar button {
+  display: inline-flex;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ve-block-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Editor screen (editor shell 2026-11-14) ───────────────────────────── */
+
+.ve-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.ve-topbar__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ve-topbar__crumbs {
+  display: flex;
+  gap: 6px;
+  margin-right: 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.ve-topbar__name {
+  color: #111827;
+  font-weight: 500;
+}
+
+.ve-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100svh;
+  background: #f4f4f5;
+}
+
+.ve-screen__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ve-screen__side {
+  border-left: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.ve-screen__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px;
+  color: #6b7280;
+}
+
+/* Canvas: grey dotted backdrop with the white email page centered on it. */
+.ve-canvas {
+  height: 100%;
+  overflow: auto;
+  padding: 32px 24px 96px;
+  background-color: #f4f4f5;
+  background-image: radial-gradient(#d4d4d8 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.ve-page {
+  position: relative;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: width 0.15s ease;
+}
+
+.ve-page .ve-editor {
+  min-height: 480px;
+  border: none;
+  border-radius: 0;
+}
+
+/* Thin grey outline on hover; the blue selection outline only while a block
+   is selected (the decoration always marks ProseMirror's internal selection). */
+.ve-page .ve-editor > *:hover {
+  outline: 1px solid #cbd5e1;
+  outline-offset: 2px;
+}
+
+.ve-page .ve-editor .ve-selected {
+  outline: none;
+}
+
+.ve-page.ve-has-selection .ve-editor .ve-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.ve-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 16px;
+  padding: 32px;
+  border: 1px dashed #d4d4d8;
+  border-radius: 8px;
+  color: #52525b;
+  font-size: 14px;
+}
+
+.ve-side {
+  height: 100%;
+}
+
+.ve-side__pane {
+  overflow: auto;
+}
+
+.ve-side .ve-panel {
+  background: #fff;
 }
