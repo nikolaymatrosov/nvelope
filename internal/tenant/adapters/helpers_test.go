@@ -2,12 +2,14 @@ package adapters_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	ydb "github.com/ydb-platform/ydb-go-sdk/v3"
+	"github.com/ydb-platform/ydb-go-sdk/v3/query"
 
-	authadapters "github.com/nikolaymatrosov/nvelope/internal/auth/adapters"
-	authdomain "github.com/nikolaymatrosov/nvelope/internal/auth/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 	"github.com/nikolaymatrosov/nvelope/internal/tenant/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/tenant/domain"
@@ -25,10 +27,12 @@ type backend struct {
 	invitations func(t *testing.T) domain.InvitationRepository
 	settings    func(t *testing.T) domain.SettingsRepository
 	branding    func(t *testing.T) domain.BrandingRepository
-	// users seeds platform users through the auth context's repository for
-	// the same backend. On Postgres, memberships and invitations carry foreign
-	// keys to platform_users, and ListMembers joins it on both backends.
-	users func(t *testing.T) authdomain.UserRepository
+	// insertUser inserts a platform user with the given email directly and
+	// returns its id. On Postgres, memberships and invitations carry foreign
+	// keys to platform_users, and ListMembers joins it on both backends. The
+	// auth context owns user creation and its adapters are off-limits here
+	// (make lint-arch), so the row is written by hand.
+	insertUser func(t *testing.T, email string) string
 }
 
 var backends = []backend{
@@ -46,8 +50,14 @@ var backends = []backend{
 		branding: func(t *testing.T) domain.BrandingRepository {
 			return adapters.NewBranding(dbtest.AppPool(t))
 		},
-		users: func(t *testing.T) authdomain.UserRepository {
-			return authadapters.NewUsers(dbtest.AppPool(t))
+		insertUser: func(t *testing.T, email string) string {
+			var id string
+			err := dbtest.AppPool(t).QueryRow(context.Background(),
+				`INSERT INTO platform_users (email, password_hash, name)
+				 VALUES ($1, 'hash', $2) RETURNING id`,
+				email, testUserName).Scan(&id)
+			require.NoError(t, err)
+			return id
 		},
 	},
 	{
@@ -64,8 +74,22 @@ var backends = []backend{
 		branding: func(t *testing.T) domain.BrandingRepository {
 			return adapters.NewYDBBranding(dbtest.YDBMigrated(t))
 		},
-		users: func(t *testing.T) authdomain.UserRepository {
-			return authadapters.NewYDBUsers(dbtest.YDBMigrated(t))
+		insertUser: func(t *testing.T, email string) string {
+			id := uuid.NewString()
+			err := dbtest.YDBMigrated(t).Query().Exec(context.Background(), `DECLARE $id AS Utf8;
+DECLARE $email AS Utf8;
+DECLARE $email_key AS Utf8;
+DECLARE $name AS Utf8;
+INSERT INTO platform_users (id, email, email_key, password_hash, name, created_at, updated_at)
+VALUES ($id, $email, $email_key, 'hash', $name, CurrentUtcTimestamp(), CurrentUtcTimestamp());`,
+				query.WithParameters(ydb.ParamsBuilder().
+					Param("$id").Text(id).
+					Param("$email").Text(email).
+					Param("$email_key").Text(strings.ToLower(email)).
+					Param("$name").Text(testUserName).
+					Build()))
+			require.NoError(t, err)
+			return id
 		},
 	},
 }
@@ -81,18 +105,12 @@ func eachBackend(t *testing.T, body func(t *testing.T, b backend)) {
 	}
 }
 
-// newUser seeds a platform user with a fresh address through the backend's
-// auth repository and returns its id and email.
+// newUser seeds a platform user with a fresh address on the backend and
+// returns its id and email.
 func newUser(t *testing.T, b backend) (id, email string) {
 	t.Helper()
 	addr := dbtest.RandString() + "@example.com"
-	e, err := authdomain.NewEmail(addr)
-	require.NoError(t, err)
-	u, err := authdomain.NewUser(e, testUserName)
-	require.NoError(t, err)
-	created, err := b.users(t).Create(context.Background(), u, "hash")
-	require.NoError(t, err)
-	return created.ID(), addr
+	return b.insertUser(t, addr), addr
 }
 
 // createWorkspace creates a tenant with a fresh slug owned by ownerID and
