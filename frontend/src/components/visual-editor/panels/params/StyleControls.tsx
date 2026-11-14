@@ -3,11 +3,15 @@
 // email-safe values (color pickers, bounded numeric steppers, a curated font
 // dropdown, an alignment toggle) so the parameters editor can never produce a
 // value the validators reject (FR-015). Each field shows an "inherited" state
-// when unset and a per-field reset affordance (FR-019).
+// when unset and a per-field reset affordance (FR-019). Fields are grouped into
+// titled sections; border and corner radius sit behind switches whose "off"
+// clears the underlying fields.
 
 import { useState } from "react"
+import { AlignCenter, AlignLeft, AlignRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
+import type { Editor } from "@tiptap/core"
 import type { BlockStyle } from "@/lib/api-types"
 import { ALLOWED_FONT_FAMILIES, fontLabel } from "@/server/validate/fonts"
 
@@ -22,6 +26,8 @@ export type StyleField =
   | "padding"
   | "borderRadius"
   | "border"
+
+export type ParamsTab = "content" | "design"
 
 type Props = {
   value: BlockStyle
@@ -40,6 +46,13 @@ export type ParamFormProps = {
   onStyleChange: (patch: Partial<BlockStyle>) => void
   onAttrsChange: (patch: Record<string, unknown>) => void
   disabled?: boolean
+  // Settings tab being shown; a form renders only that tab's fields. Omitted
+  // (stories, standalone use) means both tabs' fields.
+  tab?: ParamsTab
+  // For actions that are more than an attr patch (replace image, edit raw
+  // HTML, change the column count). Null/omitted disables those actions.
+  editor?: Editor | null
+  pos?: number
 }
 
 // TextInput is a small labelled text control reused by the type-specific forms
@@ -75,20 +88,35 @@ export function TextInput({
 
 const FONT_OPTIONS = [...ALLOWED_FONT_FAMILIES]
 
+type SectionKey = "typography" | "spacing" | "background" | "border"
+
+const SECTIONS: ReadonlyArray<{ key: SectionKey; fields: ReadonlyArray<StyleField> }> = [
+  { key: "typography", fields: ["color", "fontFamily", "fontSize", "fontWeight", "lineHeight"] },
+  { key: "spacing", fields: ["padding", "textAlign"] },
+  { key: "background", fields: ["backgroundColor"] },
+  { key: "border", fields: ["border", "borderRadius"] },
+]
+
 export function StyleControls({ value, fields, onChange, disabled = false }: Props) {
   const { t } = useTranslation("visualEditor")
   return (
     <div className="ve-style-controls">
-      {fields.map((field) => (
-        <Field
-          key={field}
-          field={field}
-          value={value}
-          onChange={onChange}
-          disabled={disabled}
-          t={t}
-        />
-      ))}
+      {SECTIONS.map((section) => {
+        const present = section.fields.filter((f) => fields.includes(f))
+        if (present.length === 0) return null
+        return (
+          <section
+            key={section.key}
+            className="ve-style-controls__section"
+            data-testid={`ve-style-section-${section.key}`}
+          >
+            <h4 className="ve-style-controls__heading">{t(`params.sections.${section.key}`)}</h4>
+            {present.map((field) => (
+              <Field key={field} field={field} value={value} onChange={onChange} disabled={disabled} t={t} />
+            ))}
+          </section>
+        )
+      })}
     </div>
   )
 }
@@ -179,11 +207,7 @@ function Field({ field, value, onChange, disabled, t }: FieldProps) {
       return <PaddingGroup value={value} onChange={onChange} disabled={disabled} t={t} />
     case "borderRadius":
       return (
-        <NumberField
-          label={t("params.fields.borderRadius")}
-          testId="ve-param-borderRadius"
-          min={0}
-          max={48}
+        <RadiusField
           value={value.borderRadius}
           onChange={(v) => onChange({ borderRadius: v })}
           disabled={disabled}
@@ -205,6 +229,77 @@ function ResetButton({ onReset, disabled, t }: { onReset: () => void; disabled: 
     >
       ✕
     </button>
+  )
+}
+
+// Switch is a native checkbox styled as a toggle (role="switch"), with no
+// extra dependency and fully keyboard/screen-reader accessible.
+function Switch({
+  label,
+  testId,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string
+  testId: string
+  checked: boolean
+  onChange: (next: boolean) => void
+  disabled: boolean
+}) {
+  return (
+    <label className="ve-style-controls__toggle">
+      <input
+        type="checkbox"
+        role="switch"
+        data-testid={testId}
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
+      />
+      <span>{label}</span>
+    </label>
+  )
+}
+
+function RadiusField({
+  value,
+  onChange,
+  disabled,
+  t,
+}: {
+  value?: number
+  onChange: (v: number | undefined) => void
+  disabled: boolean
+  t: TFunction<"visualEditor">
+}) {
+  const [open, setOpen] = useState(value !== undefined)
+  const on = open || value !== undefined
+  return (
+    <div className="ve-style-controls__group">
+      <Switch
+        label={t("params.toggle.radius")}
+        testId="ve-param-borderRadius-toggle"
+        checked={on}
+        disabled={disabled}
+        onChange={(next) => {
+          setOpen(next)
+          if (!next) onChange(undefined)
+        }}
+      />
+      {on && (
+        <NumberField
+          label={t("params.fields.borderRadius")}
+          testId="ve-param-borderRadius"
+          min={0}
+          max={48}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          t={t}
+        />
+      )}
+    </div>
   )
 }
 
@@ -253,12 +348,14 @@ function NumberField({
   min,
   max,
   step,
+  compact = false,
   onChange,
   disabled,
   t,
 }: {
   label: string
   testId: string
+  compact?: boolean
   value?: number
   min: number
   max: number
@@ -277,6 +374,42 @@ function NumberField({
   const [focused, setFocused] = useState(false)
   const [draft, setDraft] = useState("")
   const display = focused ? draft : value?.toString() ?? ""
+  const input = (
+    <input
+      type="number"
+      data-testid={testId}
+      min={min}
+      max={max}
+      step={step ?? 1}
+      value={display}
+      placeholder={t("params.inherited")}
+      onFocus={() => {
+        setDraft(value?.toString() ?? "")
+        setFocused(true)
+      }}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => {
+        const raw = e.target.value
+        setDraft(raw)
+        if (raw === "") return onChange(undefined)
+        const n = Number(raw)
+        if (Number.isNaN(n)) return
+        onChange(Math.min(max, Math.max(min, n)))
+      }}
+      disabled={disabled}
+      aria-label={label}
+    />
+  )
+  if (compact) {
+    // Compact (padding row): label above, no reset button. Clearing the
+    // input is the reset.
+    return (
+      <label className="ve-style-controls__compact">
+        <span>{label}</span>
+        {input}
+      </label>
+    )
+  }
   return (
     <label className="ve-style-controls__row">
       <span className="ve-style-controls__label">{label}</span>
@@ -287,30 +420,7 @@ function NumberField({
         <span className="ve-style-controls__reset-slot">
           {value !== undefined && <ResetButton onReset={() => onChange(undefined)} disabled={disabled} t={t} />}
         </span>
-        <input
-          type="number"
-          data-testid={testId}
-          min={min}
-          max={max}
-          step={step ?? 1}
-          value={display}
-          placeholder={t("params.inherited")}
-          onFocus={() => {
-            setDraft(value?.toString() ?? "")
-            setFocused(true)
-          }}
-          onBlur={() => setFocused(false)}
-          onChange={(e) => {
-            const raw = e.target.value
-            setDraft(raw)
-            if (raw === "") return onChange(undefined)
-            const n = Number(raw)
-            if (Number.isNaN(n)) return
-            onChange(Math.min(max, Math.max(min, n)))
-          }}
-          disabled={disabled}
-          aria-label={label}
-        />
+        {input}
       </span>
     </label>
   )
@@ -355,6 +465,8 @@ function SelectField({
   )
 }
 
+const ALIGN_ICONS = { left: AlignLeft, center: AlignCenter, right: AlignRight } as const
+
 function AlignField({
   value,
   onChange,
@@ -371,19 +483,24 @@ function AlignField({
     <div className="ve-style-controls__row" role="group" aria-label={t("params.fields.textAlign")}>
       <span className="ve-style-controls__label">{t("params.fields.textAlign")}</span>
       <span className="ve-style-controls__field ve-style-controls__align">
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            data-testid={`ve-param-align-${opt}`}
-            aria-pressed={value === opt}
-            className={value === opt ? "is-active" : ""}
-            onClick={() => onChange(value === opt ? undefined : opt)}
-            disabled={disabled}
-          >
-            {t(`params.align.${opt}`)}
-          </button>
-        ))}
+        {options.map((opt) => {
+          const Icon = ALIGN_ICONS[opt]
+          return (
+            <button
+              key={opt}
+              type="button"
+              data-testid={`ve-param-align-${opt}`}
+              aria-pressed={value === opt}
+              aria-label={t(`params.align.${opt}`)}
+              title={t(`params.align.${opt}`)}
+              className={value === opt ? "is-active" : ""}
+              onClick={() => onChange(value === opt ? undefined : opt)}
+              disabled={disabled}
+            >
+              <Icon className="size-4" aria-hidden />
+            </button>
+          )
+        })}
       </span>
     </div>
   )
@@ -400,30 +517,32 @@ function PaddingGroup({
   disabled: boolean
   t: TFunction<"visualEditor">
 }) {
-  // `as const` keeps the label entries as literal translation keys so the
-  // strongly-typed t() accepts them (a widened `string` would not).
+  // Left / top / bottom / right — the order of the reference layout.
   const sides = [
-    ["paddingTop", "params.fields.paddingTop"],
-    ["paddingRight", "params.fields.paddingRight"],
-    ["paddingBottom", "params.fields.paddingBottom"],
     ["paddingLeft", "params.fields.paddingLeft"],
+    ["paddingTop", "params.fields.paddingTop"],
+    ["paddingBottom", "params.fields.paddingBottom"],
+    ["paddingRight", "params.fields.paddingRight"],
   ] as const
   return (
     <fieldset className="ve-style-controls__group">
       <legend>{t("params.fields.padding")}</legend>
-      {sides.map(([key, label]) => (
-        <NumberField
-          key={key}
-          label={t(label)}
-          testId={`ve-param-${key}`}
-          min={0}
-          max={64}
-          value={value[key]}
-          onChange={(v) => onChange({ [key]: v })}
-          disabled={disabled}
-          t={t}
-        />
-      ))}
+      <div className="ve-style-controls__padding">
+        {sides.map(([key, label]) => (
+          <NumberField
+            key={key}
+            compact
+            label={t(label)}
+            testId={`ve-param-${key}`}
+            min={0}
+            max={64}
+            value={value[key]}
+            onChange={(v) => onChange({ [key]: v })}
+            disabled={disabled}
+            t={t}
+          />
+        ))}
+      </div>
     </fieldset>
   )
 }
@@ -439,40 +558,57 @@ function BorderGroup({
   disabled: boolean
   t: TFunction<"visualEditor">
 }) {
+  const set =
+    value.borderWidth !== undefined || value.borderStyle !== undefined || value.borderColor !== undefined
+  const [open, setOpen] = useState(set)
+  const on = open || set
   return (
-    <fieldset className="ve-style-controls__group">
-      <legend>{t("params.sections.border")}</legend>
-      <NumberField
-        label={t("params.fields.borderWidth")}
-        testId="ve-param-borderWidth"
-        min={0}
-        max={8}
-        value={value.borderWidth}
-        onChange={(v) => onChange({ borderWidth: v })}
+    <div className="ve-style-controls__group">
+      <Switch
+        label={t("params.toggle.border")}
+        testId="ve-param-border-toggle"
+        checked={on}
         disabled={disabled}
-        t={t}
+        onChange={(next) => {
+          setOpen(next)
+          if (!next) onChange({ borderWidth: undefined, borderStyle: undefined, borderColor: undefined })
+        }}
       />
-      <SelectField
-        label={t("params.fields.borderStyle")}
-        testId="ve-param-borderStyle"
-        value={value.borderStyle}
-        options={[
-          { value: "solid", label: t("params.borderStyleOption.solid") },
-          { value: "dashed", label: t("params.borderStyleOption.dashed") },
-          { value: "dotted", label: t("params.borderStyleOption.dotted") },
-        ]}
-        onChange={(v) => onChange({ borderStyle: v as BlockStyle["borderStyle"] })}
-        disabled={disabled}
-        t={t}
-      />
-      <ColorField
-        label={t("params.fields.borderColor")}
-        testId="ve-param-borderColor"
-        value={value.borderColor}
-        onChange={(v) => onChange({ borderColor: v })}
-        disabled={disabled}
-        t={t}
-      />
-    </fieldset>
+      {on && (
+        <>
+        <NumberField
+          label={t("params.fields.borderWidth")}
+          testId="ve-param-borderWidth"
+          min={0}
+          max={8}
+          value={value.borderWidth}
+          onChange={(v) => onChange({ borderWidth: v })}
+          disabled={disabled}
+          t={t}
+        />
+        <SelectField
+          label={t("params.fields.borderStyle")}
+          testId="ve-param-borderStyle"
+          value={value.borderStyle}
+          options={[
+            { value: "solid", label: t("params.borderStyleOption.solid") },
+            { value: "dashed", label: t("params.borderStyleOption.dashed") },
+            { value: "dotted", label: t("params.borderStyleOption.dotted") },
+          ]}
+          onChange={(v) => onChange({ borderStyle: v as BlockStyle["borderStyle"] })}
+          disabled={disabled}
+          t={t}
+        />
+        <ColorField
+          label={t("params.fields.borderColor")}
+          testId="ve-param-borderColor"
+          value={value.borderColor}
+          onChange={(v) => onChange({ borderColor: v })}
+          disabled={disabled}
+          t={t}
+        />
+        </>
+      )}
+    </div>
   )
 }

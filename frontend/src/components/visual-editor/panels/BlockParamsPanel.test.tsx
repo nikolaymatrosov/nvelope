@@ -40,6 +40,7 @@ describe("BlockParamsPanel", () => {
 
   it("shows the button form with its applicable controls when a button is selected", () => {
     render(<BlockParamsPanel selection={selectionFor(buttonNode())} />)
+    fireEvent.click(screen.getByTestId("ve-param-borderRadius-toggle"))
     expect(screen.getByTestId("ve-params-button")).toBeTruthy()
     expect(screen.getByTestId("ve-param-backgroundColor")).toBeTruthy()
     expect(screen.getByTestId("ve-param-borderRadius")).toBeTruthy()
@@ -77,6 +78,7 @@ describe("BlockParamsPanel", () => {
   it("merges a new field over the existing style", () => {
     const sel = selectionFor(buttonNode({ style: { backgroundColor: "#111111" } }))
     render(<BlockParamsPanel selection={sel} />)
+    fireEvent.click(screen.getByTestId("ve-param-borderRadius-toggle"))
     fireEvent.change(screen.getByTestId("ve-param-borderRadius"), {
       target: { value: "10" },
     })
@@ -94,6 +96,7 @@ describe("BlockParamsPanel", () => {
 
   it("constrains numeric controls to their email-safe bounds", () => {
     render(<BlockParamsPanel selection={selectionFor(buttonNode())} />)
+    fireEvent.click(screen.getByTestId("ve-param-borderRadius-toggle"))
     const radius = screen.getByTestId("ve-param-borderRadius") as unknown as HTMLInputElement
     expect(radius.type).toBe("number")
     expect(radius.min).toBe("0")

@@ -504,22 +504,28 @@
 
 .ve-style-controls__align {
   display: inline-flex;
-  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #e4e4e7;
 }
 
 .ve-style-controls__align button {
-  font-size: 11px;
-  padding: 2px 6px;
-  border: 1px solid #d1d5db;
-  background: white;
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 4px 8px;
+  border: none;
   border-radius: 4px;
+  background: transparent;
+  color: #3f3f46;
+  cursor: pointer;
 }
 
 .ve-style-controls__align button.is-active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: white;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .ve-style-controls input[type="number"],
@@ -662,4 +668,83 @@
   width: 300px;
   max-width: 85vw;
   overflow: auto;
+}
+
+/* Grouped sections (Design tab) — editor shell 2026-11-14. */
+.ve-style-controls__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.ve-style-controls__section:last-child {
+  border-bottom: none;
+}
+
+.ve-style-controls__heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.ve-style-controls__padding {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ve-style-controls__compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.ve-style-controls__compact input {
+  width: 100%;
+  max-width: none;
+}
+
+.ve-style-controls__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ve-style-controls__toggle input[role="switch"] {
+  appearance: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  border-radius: 9px;
+  background: #d4d4d8;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ve-style-controls__toggle input[role="switch"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.ve-style-controls__toggle input[role="switch"]:checked {
+  background: #3f3f46;
+}
+
+.ve-style-controls__toggle input[role="switch"]:checked::before {
+  transform: translateX(14px);
 }

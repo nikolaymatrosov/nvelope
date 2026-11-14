@@ -69,6 +69,7 @@ export const EditsLabelHrefAndStyle: Story = {
     await expect(canvas.getByTestId("ve-param-href")).toHaveValue("https://acme.test")
 
     // Bounded numeric style field (corner radius, starts empty / inherited).
+    await userEvent.click(canvas.getByTestId("ve-param-borderRadius-toggle"))
     await userEvent.type(canvas.getByTestId("ve-param-borderRadius"), "12")
     await expect(canvas.getByTestId("ve-param-borderRadius")).toHaveValue(12)
   },
