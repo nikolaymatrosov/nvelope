@@ -1,5 +1,5 @@
-// Top-level visual editor for campaigns and templates. Hosts the TipTap
-// editor instance, the slash command menu, the bubble menu, the
+// Canvas of `EditorScreen`: the visual editor for campaigns and templates.
+// Hosts the TipTap editor instance, the slash command menu, the bubble menu, the
 // merge-tag picker, and (optionally) a desktop/mobile preview iframe.
 // The editor is fully controlled: the caller owns the canonical
 // `VisualDoc` JSON via `value` and receives every change via `onChange`.
@@ -44,7 +44,6 @@ import {
   SlashCommandExtension,
   useSlashCommandMenu,
 } from "./ui/SlashCommandMenu"
-import { ThemeControls } from "./ui/ThemeControls"
 import type { ImageBlockPickRequest } from "./extensions/ImageBlock"
 import type { RawHTMLEditRequest } from "./extensions/RawHTML"
 import type { Editor } from "@tiptap/core"
@@ -71,21 +70,9 @@ type Props = {
   // Editable defaults to true; set false for a read-only preview surface
   // (e.g. when the campaign is in a non-draft state).
   editable?: boolean
-  // Optional code-view toggle. When the operator presses the "View HTML"
-  // toolbar button, the editor calls this callback with the latest
-  // rendered HTML (if any) — the route owns the actual switch to code
-  // view because it also owns the save path.
-  onSwitchToCodeView?: () => void
-  // Optional "Edit as HTML only" opt-out affordance. The toolbar renders
-  // the button when supplied; the route owns the confirmation modal and
-  // the API call (clears body_doc per T093 / FR-029).
-  onOptOutVisual?: () => void
-  // Optional theme override the row carries. null = inherit tenant Phase 6
-  // branding. The editor renders the ThemeControls panel when `onThemeChange`
-  // is supplied; the panel mutates this value through that callback (per
-  // FR-022 / FR-023 / FR-024 — see T108).
+  // Theme override for the canvas CSS variables; null = tenant branding. The
+  // theme panel itself lives in the editor screen's right panel.
   theme?: Theme | null
-  onThemeChange?: (next: Theme | null) => void
   // Optional callback fired once the TipTap editor instance is created (and
   // again if it is recreated). The three-pane shell uses this to share the
   // editor with the structure outline and parameters panel via
@@ -105,19 +92,14 @@ export function VisualEmailEditor({
   onChange,
   placeholder,
   editable = true,
-  onSwitchToCodeView,
-  onOptOutVisual,
   theme = null,
-  onThemeChange,
   onEditorReady,
 }: Props) {
   const { t } = useTranslation(["visualEditor", "common"])
   // Resolve the effective theme. When the row carries a pinned override the
   // resolved theme is the override itself; otherwise we read tenant branding
   // and derive defaults (T107). The result feeds both the in-canvas CSS
-  // variables (so a freshly inserted button immediately matches the brand)
-  // and the ThemeControls panel's "Pin a theme override" copy-from-resolved
-  // pattern.
+  // variables (so a freshly inserted button immediately matches the brand).
   const { theme: resolvedTheme } = useEditorTheme(slug, theme)
   const themeStyles = useMemo(
     () => editorCssVariables(resolvedTheme),
@@ -277,46 +259,12 @@ export function VisualEmailEditor({
     [editor, imagePick],
   )
 
-  const showToolbar = Boolean(onSwitchToCodeView || onOptOutVisual)
-
   return (
     <div
       className="ve-root"
       data-testid="visual-email-editor"
       style={themeStyles}
     >
-      {showToolbar && (
-        <div className="ve-toolbar" data-testid="ve-toolbar">
-          {onSwitchToCodeView && (
-            <button
-              type="button"
-              className="ve-toolbar__btn"
-              data-testid="ve-switch-to-code"
-              onClick={onSwitchToCodeView}
-            >
-              {t("toolbar.viewHtml")}
-            </button>
-          )}
-          {onOptOutVisual && (
-            <button
-              type="button"
-              className="ve-toolbar__btn"
-              data-testid="ve-opt-out-visual"
-              onClick={onOptOutVisual}
-            >
-              {t("toolbar.editHtmlOnly")}
-            </button>
-          )}
-        </div>
-      )}
-      {onThemeChange && (
-        <ThemeControls
-          value={theme}
-          resolved={resolvedTheme}
-          onChange={onThemeChange}
-          disabled={!editable}
-        />
-      )}
       <EditorContent editor={editor} />
       <VisualBubbleMenu editor={editor} />
       {slashMenu}

@@ -213,27 +213,6 @@
   max-height: 180px;
 }
 
-.ve-toolbar {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  padding: 6px 0;
-}
-
-.ve-toolbar__btn {
-  font-size: 12px;
-  padding: 4px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: white;
-  color: #1f2937;
-  cursor: pointer;
-}
-
-.ve-toolbar__btn:hover {
-  background: #f3f4f6;
-}
-
 .ve-theme-controls {
   margin: 8px 0 12px;
   padding: 10px 12px;
@@ -348,26 +327,6 @@
 
 .ve-theme-controls__number-input {
   width: 100px;
-}
-
-/* ── Three-pane editor shell (feature 017) ─────────────────────────────── */
-
-.ve-three-pane {
-  height: 100%;
-  min-height: 480px;
-}
-
-.ve-three-pane__group {
-  height: 100%;
-}
-
-.ve-pane {
-  height: 100%;
-  overflow: auto;
-}
-
-.ve-pane--center {
-  min-width: 0;
 }
 
 /* Side panels (structure / parameters) */
@@ -629,41 +588,6 @@
 
 .ve-outline__row--root .ve-outline__type {
   font-weight: 600;
-}
-
-/* ── Three-pane chrome: toggle bar + overlays (feature 017, US3) ────────── */
-
-.ve-three-pane {
-  display: flex;
-  flex-direction: column;
-}
-
-.ve-three-pane__bar {
-  display: flex;
-  gap: 8px;
-  padding: 4px 8px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
-}
-
-.ve-three-pane__bar-btn {
-  font-size: 12px;
-  padding: 2px 8px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: white;
-  color: #374151;
-  cursor: pointer;
-}
-
-.ve-three-pane__group {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.ve-three-pane--narrow .ve-pane--center {
-  height: 100%;
-  min-height: 360px;
 }
 
 .ve-overlay-panel {

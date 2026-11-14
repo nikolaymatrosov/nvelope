@@ -1,8 +1,4 @@
 {
-  "toolbar": {
-    "viewHtml": "View HTML",
-    "editHtmlOnly": "Edit as HTML only"
-  },
   "rawHtmlModal": {
     "title": "Edit raw HTML block",
     "description": "These bytes are passed through verbatim. They run through the sanitizer at save time — disallowed constructs (script, event handlers, dangerous URL schemes) are stripped.",
@@ -50,11 +46,7 @@
   },
   "panel": {
     "structureTitle": "Layers",
-    "paramsTitle": "Properties",
-    "collapseLeft": "Collapse structure panel",
-    "collapseRight": "Collapse properties panel",
-    "expandLeft": "Show structure panel",
-    "expandRight": "Show properties panel"
+    "paramsTitle": "Properties"
   },
   "structure": {
     "empty": "The document is empty.",

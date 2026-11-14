@@ -438,7 +438,6 @@ export default interface Resources {
         "title": "Start this campaign?"
       },
       "content": {
-        "bodyLabel": "Body",
         "description": "Edit the campaign’s subject and content. HTML is sent as-is.",
         "htmlBodyLabel": "HTML body",
         "insertFromMedia": "Insert from media library",
@@ -467,10 +466,6 @@ export default interface Resources {
       },
       "save": "Save changes",
       "saveSuccess": "Campaign saved.",
-      "saveWarnings_few": "Campaign saved with {{count}} content warnings.",
-      "saveWarnings_many": "Campaign saved with {{count}} content warnings.",
-      "saveWarnings_one": "Campaign saved with {{count}} content warning.",
-      "saveWarnings_other": "Campaign saved with {{count}} content warnings.",
       "saving": "Saving…",
       "sender": {
         "description": "Choose a verified sending domain and the from address.",
@@ -528,22 +523,13 @@ export default interface Resources {
     },
     "visual": {
       "convert": "Convert to visual editor",
-      "convertedSuccess": "Converted to visual editor. Review and save to keep it.",
-      "convertedWarnings_few": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_many": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_one": "Converted to visual editor with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_other": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "converting": "Converting…",
-      "forceOverwrite": "Force overwrite",
       "optOut": {
         "confirm": "Switch to HTML only",
         "description": "Your structured visual document will be discarded. The last saved HTML body stays intact so the campaign remains sendable, but blocks, columns, and merge-tag chips will no longer be available unless you convert back later.",
         "switching": "Switching…",
         "title": "Switch to HTML-only editing?"
       },
-      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared.",
-      "reload": "Reload",
-      "staleTitle": "Changed in another tab/session"
+      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared."
     }
   },
   "common": {
@@ -1350,16 +1336,11 @@ export default interface Resources {
     },
     "detail": {
       "backToTemplates": "← Templates",
-      "bodyLabel": "Body",
       "htmlBodyLabel": "HTML body",
       "nameLabel": "Name",
       "nameRequired": "Enter a template name.",
       "save": "Save changes",
       "saveSuccess": "Template saved.",
-      "saveWarnings_few": "Template saved with {{count}} content warnings.",
-      "saveWarnings_many": "Template saved with {{count}} content warnings.",
-      "saveWarnings_one": "Template saved with {{count}} content warning.",
-      "saveWarnings_other": "Template saved with {{count}} content warnings.",
       "saving": "Saving…",
       "subjectLabel": "Subject",
       "subjectRequired": "Enter a subject.",
@@ -1391,22 +1372,13 @@ export default interface Resources {
     },
     "visual": {
       "convert": "Convert to visual editor",
-      "convertedSuccess": "Converted to visual editor. Review and save to keep it.",
-      "convertedWarnings_few": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_many": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_one": "Converted to visual editor with {{count}} block preserved as raw HTML. Review and save to keep the visual document.",
-      "convertedWarnings_other": "Converted to visual editor with {{count}} blocks preserved as raw HTML. Review and save to keep the visual document.",
-      "converting": "Converting…",
-      "forceOverwrite": "Force overwrite",
       "optOut": {
         "confirm": "Switch to HTML only",
         "description": "Your structured visual document will be discarded. The last saved HTML body stays intact so the template remains usable, but blocks, columns, and merge-tag chips will no longer be available unless you convert back later.",
         "switching": "Switching…",
         "title": "Switch to HTML-only editing?"
       },
-      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared.",
-      "reload": "Reload",
-      "staleTitle": "Changed in another tab/session"
+      "optOutSuccess": "Switched to HTML-only mode. The structured document was cleared."
     }
   },
   "transactional": {
@@ -1522,10 +1494,6 @@ export default interface Resources {
       "title": "Insert merge tag"
     },
     "panel": {
-      "collapseLeft": "Collapse structure panel",
-      "collapseRight": "Collapse properties panel",
-      "expandLeft": "Show structure panel",
-      "expandRight": "Show properties panel",
       "paramsTitle": "Properties",
       "structureTitle": "Layers"
     },
@@ -1693,10 +1661,6 @@ export default interface Resources {
       "resetDefaults": "Reset to tenant defaults",
       "textColor": "Text color",
       "title": "Theme"
-    },
-    "toolbar": {
-      "editHtmlOnly": "Edit as HTML only",
-      "viewHtml": "View HTML"
     }
   }
 }
