@@ -176,6 +176,10 @@ Each container is built from an existing image. There are no new binaries.
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
 | `jsonb` | `JsonDocument` where YQL queries into the document (audience attributes, segments). JSON that is only stored and read back whole (e.g. `sending_domains.dkim_records`) is a plain `Utf8` column. |
+| `text[]` read back whole (`roles.permissions`, `api_keys.permissions`) | a JSON array in a plain `Utf8` column (Plan B4) |
+| `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`), the column itself carries the unique index. Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
+| foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). |
+| `ORDER BY` on a text column | YDB orders `Utf8` by bytes, pg by the database collation, so mixed-case and non-ASCII values order differently. Acceptable for display lists (iam `roles` by `name`). If a later plan needs collation-equal order, sort in Go or store a sort key. |
 | bound parameters (`$1`, `@name`) | `$name` parameters, each declared explicitly with `DECLARE $name AS <Type>;`. String literals that target a `Utf8` column take the `u` suffix (`"pending"u`); a bare `"..."` literal is `String`. Identifiers avoid YQL keywords (e.g. `throttle_key`, not `key`). |
 | segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | needs its own YQL port, using `JSON_VALUE` / `JSON_EXISTS` on `JsonDocument` or equivalent. Exact functions **to verify in Plan B**. |
 | `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE` (V1 passed only for an ASCII literal against an ASCII literal; Utf8 columns, parameters and Cyrillic are **to verify in Plan B**). Otherwise a stored lowercase column with `LIKE`. |
@@ -602,6 +606,65 @@ previous run's container (environmental).
   pending row. No `PRECONDITION_FAILED` occurred, and exactly one pending row
   remained.
 
+### Plan B4 planning spike
+
+Run against `ydbplatform/local-ydb:26.3.1.23` while planning the iam port,
+on tables with the planned `000005_iam` columns (`state`, `action`, `target`,
+`metadata` and `permissions` are accepted as column names). One run, all
+passing. A dry run of the whole plan then passed on the real migration.
+
+- `Bool` column: binding with `.Bool(v)` and scanning into `bool`: PASS.
+- Nullable `String` (bytes) column: `DECLARE $x AS Optional<String>;`, bound
+  with `BeginOptional().Bytes(p).EndOptional()` where `p` is a `*[]byte`
+  (`nil` for NULL). Scanning into `*[]byte` gives `nil` for NULL and
+  round-trips bytes, including a NUL byte: PASS.
+- Two composite `GLOBAL UNIQUE SYNC` indexes on one table,
+  `(tenant_id, platform_user_id)` and `(tenant_id, email)`. A duplicate on
+  either fails a standalone `INSERT` with `db.IsYDBConflict` true. `VIEW` on a
+  composite index with both columns in the predicate: PASS.
+- An `UPDATE` inside `DoTx` that moves a row onto another row's unique-index
+  value. The conflict surfaces at the statement. `db.IsYDBConflict` is true
+  both for the statement error and for the error `DoTx` returns. The closure
+  ran once (no retry), and the row is unchanged. An `UPDATE` that writes the
+  row's own current value is not a conflict.
+- `DELETE ... WHERE <key> RETURNING id` through `QueryRow`: one row for an
+  existing key, `query.ErrNoRows` for a missing one.
+- A two-column `JOIN` (`ON r.tenant_id = ur.tenant_id AND r.id = ur.role_id`)
+  inside `DoTx`, with the left side filtered on its key prefix: PASS. A role
+  that exists only in another tenant is not joined.
+- `SELECT COUNT(*)` scans into `uint64`. `ORDER BY created_at DESC LIMIT
+  $limit OFFSET $offset`, with both declared `Uint64`: PASS. Limit 2 and
+  offset 1 over three rows returned the second and first rows.
+- A key-prefix `DELETE ... WHERE tenant_id = $t AND user_id = $u`, then an
+  `INSERT` of a just-deleted key in the same `DoTx`: no conflict, one attempt.
+- `UPDATE ... WHERE <full key> AND used_at IS NULL RETURNING code_hash`
+  outside a transaction: one row on the first call, `query.ErrNoRows` on the
+  second.
+
+Decisions for Plan B4:
+
+- iam `users.email` has no `email_key` column. `domain.NewTenantUser` already
+  lower-cases the email, and no other code writes it. A `GLOBAL UNIQUE SYNC`
+  index on `(tenant_id, email)` therefore reproduces the `citext` uniqueness,
+  as `tenants.slug` does. This corrects the B3 handover note.
+- `audit_log` is keyed `(tenant_id, created_at, id)`, the order `All` pages
+  through. The deliverability context writes to the same table.
+- Role assignments read the role inside the assigning `DoTx`, standing in for
+  the foreign key, and return `ErrRoleNotFound` when it is missing. The read
+  also makes a concurrent `Roles.Delete` abort one of the two transactions.
+  The user and the list are not checked: users are never deleted, and lists
+  belong to audience.
+- V6 iam rows:
+  - `audit_pg.go:82`: `YDBAudit.All` collects into a closure-local slice.
+  - `roles_pg.go:156` and `apikeys_pg.go:132`: `All` is one statement outside
+    `DoTx`, so nothing re-runs.
+  - `EffectiveFor` writes its map inside the pg closure; the YDB version
+    builds the map locally too.
+- iam sessions get TTL on `expires_at`, like `platform_sessions`. An expired
+  session already authenticates nothing. One difference is visible: once TTL
+  has deleted an expired TOTP-pending session, a request answers
+  `ErrUnauthenticated` instead of `ErrTOTPRequired`.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -630,6 +693,11 @@ These are known limits, marked in code with `ponytail:` comments.
   `GLOBAL SYNC` index on `(tenant_id, email_key)`, which fixes both cost and
   contention. When it lands, re-run `TestInvitationsCreateIsRaceFree`, since
   the guarantee would then rest on an index-range lock.
+- `YDBRoles.Delete` checks for remaining assignments by scanning the tenant's
+  `user_roles` and `user_list_roles` rows, because there is no `role_id`
+  index. Concurrent assignments in the tenant abort the delete, and the SDK
+  retries it. That is fine for one organisation's users. The upgrade path is
+  `GLOBAL SYNC` indexes on `(tenant_id, role_id)`.
 
 ## Implementation phasing
 
