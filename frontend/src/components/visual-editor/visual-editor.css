@@ -943,3 +943,34 @@
 .ve-block-toolbar button:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* ── Editor screen (editor shell 2026-11-14) ───────────────────────────── */
+
+.ve-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.ve-topbar__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ve-topbar__crumbs {
+  display: flex;
+  gap: 6px;
+  margin-right: 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.ve-topbar__name {
+  color: #111827;
+  font-weight: 500;
+}
