@@ -1,7 +1,7 @@
 # Email content security hardening — Design
 
 Date: 2026-11-14
-Status: Draft (pending review)
+Status: Implemented
 
 ## Goal
 
@@ -270,8 +270,8 @@ WHERE r.id = @recipient_id AND r.campaign_id = @campaign_id
 
 | Case | Result |
 |------|--------|
-| `off` without `accept_risk` | 400 `risk_acceptance_required` |
-| Body over 1 MiB | 400 `body-too-large` |
+| `off` without `accept_risk` | 422 `risk_acceptance_required` |
+| Body over 1 MiB | 422 `body-too-large` |
 | Sanitizer finds disallowed content | Never an error: strips it and returns a `sanitizer_stripped` warning |
 | Level lookup fails on save | Save fails (5xx); nothing is stored |
 | Tracking attribution fails | Pixel or redirect still served; failure logged |
