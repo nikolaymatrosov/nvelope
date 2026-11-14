@@ -141,12 +141,9 @@ export function VisualEmailEditor({
       SelectionDecoration,
       DragHandle,
       SlashCommandExtension.configure({
-        get menuApi() {
-          // The ref is populated on the first render; the suggestion
-          // plugin only fires after the editor mounts so the indirection
-          // is safe.
-          return slashRef.current?.api ?? defaultMenuApi
-        },
+        // Resolved per suggestion event: the ref is populated after the first
+        // render, i.e. after the editor (and its options) were created.
+        getMenuApi: () => slashRef.current?.api ?? defaultMenuApi,
       }),
     ]
   }, [slug])

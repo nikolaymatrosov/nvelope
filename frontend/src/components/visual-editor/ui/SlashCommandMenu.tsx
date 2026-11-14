@@ -69,21 +69,24 @@ type MenuApi = {
   onKeyDown: (e: { event: KeyboardEvent }) => boolean
 }
 
-export const SlashCommandExtension = Extension.create<{ menuApi: MenuApi }>({
+const NOOP_MENU_API: MenuApi = {
+  setItems: () => {},
+  setOnSelect: () => {},
+  open: () => {},
+  close: () => {},
+  onKeyDown: () => false,
+}
+
+// getMenuApi is a function, resolved on every suggestion event: configure()
+// deep-merges plain-object options at configure time, before the menu's ref
+// exists, which would freeze the no-op API forever.
+export const SlashCommandExtension = Extension.create<{ getMenuApi: () => MenuApi }>({
   name: "slashCommand",
   addOptions() {
-    return {
-      menuApi: {
-        setItems: () => {},
-        setOnSelect: () => {},
-        open: () => {},
-        close: () => {},
-        onKeyDown: () => false,
-      },
-    }
+    return { getMenuApi: () => NOOP_MENU_API }
   },
   addProseMirrorPlugins() {
-    const { menuApi } = this.options
+    const { getMenuApi } = this.options
     return [
       Suggestion({
         editor: this.editor,
@@ -96,17 +99,19 @@ export const SlashCommandExtension = Extension.create<{ menuApi: MenuApi }>({
         items: ({ query }) => slashItems(query),
         render: () => ({
           onStart: (props) => {
+            const menuApi = getMenuApi()
             menuApi.setItems(props.items)
             menuApi.setOnSelect((item) => props.command(item))
             menuApi.open(props.clientRect?.() ?? undefined)
           },
           onUpdate: (props) => {
+            const menuApi = getMenuApi()
             menuApi.setItems(props.items)
             menuApi.setOnSelect((item) => props.command(item))
             menuApi.open(props.clientRect?.() ?? undefined)
           },
-          onKeyDown: (props) => menuApi.onKeyDown(props),
-          onExit: () => menuApi.close(),
+          onKeyDown: (props) => getMenuApi().onKeyDown(props),
+          onExit: () => getMenuApi().close(),
         }),
       }),
     ]
@@ -168,6 +173,9 @@ function SlashCommandMenuRendered({ ref }: RenderedProps) {
           return true
         }
         if (event.key === "Escape") {
+          // Esc only closes the menu; keep it from reaching EditorScreen's
+          // window handler, which would also clear the block selection.
+          event.stopPropagation()
           setOpen(false)
           return true
         }

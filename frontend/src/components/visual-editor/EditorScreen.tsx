@@ -189,8 +189,10 @@ function EditorSession({
     enableBeforeUnload: () => session.dirty,
   })
 
-  // Cmd/Ctrl+S saves; Esc returns to the root «Email» unless an editor
-  // plugin (e.g. the slash menu) already handled the key.
+  // Cmd/Ctrl+S saves; Esc returns to the root «Email». ProseMirror always
+  // preventDefault()s Esc inside the canvas, so an Esc from the canvas always
+  // clears (the slash menu stops propagation when it consumes Esc). Elsewhere a
+  // preventDefault()ed Esc was a Radix overlay closing, so the selection stays.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
@@ -198,11 +200,13 @@ function EditorSession({
         if (editable && session.dirty && !session.saving) session.save()
         return
       }
-      if (e.key === "Escape" && !e.defaultPrevented) selection.clear()
+      if (e.key !== "Escape") return
+      const fromCanvas = e.target instanceof Node && editor?.view.dom.contains(e.target) === true
+      if (fromCanvas || !e.defaultPrevented) selection.clear()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [editable, session, selection])
+  }, [editable, editor, session, selection])
 
   const onInsert = (item: CatalogItem) => {
     if (!editor) return
@@ -297,11 +301,12 @@ function EditorSession({
           defaultLayout={defaultLayout}
           onLayoutChanged={onLayoutChanged}
         >
-          <ResizablePanel id="ve-main" defaultSize={74} minSize={40}>
+          {/* react-resizable-panels v4: numbers are pixels, so sizes are "%" strings. */}
+          <ResizablePanel id="ve-main" defaultSize="74%" minSize="40%">
             {canvas}
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel id="ve-side-panel" defaultSize={26} minSize={18} maxSize={45} className="ve-screen__side">
+          <ResizablePanel id="ve-side-panel" defaultSize="26%" minSize="18%" maxSize="45%" className="ve-screen__side">
             {side}
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -341,11 +346,11 @@ function SidePanel({
       defaultLayout={defaultLayout}
       onLayoutChanged={onLayoutChanged}
     >
-      <ResizablePanel id="ve-layers" defaultSize={40} minSize={15} className="ve-side__pane">
+      <ResizablePanel id="ve-layers" defaultSize="40%" minSize="15%" className="ve-side__pane">
         {editor ? <StructureOutline editor={editor} selection={selection} editable={editable} /> : null}
       </ResizablePanel>
       <ResizableHandle withHandle />
-      <ResizablePanel id="ve-settings" defaultSize={60} minSize={25} className="ve-side__pane">
+      <ResizablePanel id="ve-settings" defaultSize="60%" minSize="25%" className="ve-side__pane">
         <BlockParamsPanel selection={selection} editor={editor} root={root} disabled={!editable} />
       </ResizablePanel>
     </ResizablePanelGroup>

@@ -121,7 +121,9 @@ describe("EditorScreen", () => {
     renderScreen()
     await waitFor(() => expect(screen.getByTestId("ve-editor")).toBeTruthy())
     await insertDivider()
-    fireEvent.keyDown(screen.getByTestId("ve-editor"), { key: "Escape" })
+    expect(screen.getByTestId("ve-outline-root").classList.contains("is-selected")).toBe(false)
+    // keyCode 27 like a real browser: ProseMirror then preventDefault()s Esc.
+    fireEvent.keyDown(screen.getByTestId("ve-editor"), { key: "Escape", keyCode: 27 })
     await waitFor(() => expect(screen.getByTestId("ve-outline-root").classList.contains("is-selected")).toBe(true))
   })
 
