@@ -974,3 +974,95 @@
   color: #111827;
   font-weight: 500;
 }
+
+.ve-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100svh;
+  background: #f4f4f5;
+}
+
+.ve-screen__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ve-screen__side {
+  border-left: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.ve-screen__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px;
+  color: #6b7280;
+}
+
+/* Canvas: grey dotted backdrop with the white email page centered on it. */
+.ve-canvas {
+  height: 100%;
+  overflow: auto;
+  padding: 32px 24px 96px;
+  background-color: #f4f4f5;
+  background-image: radial-gradient(#d4d4d8 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.ve-page {
+  position: relative;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: width 0.15s ease;
+}
+
+.ve-page .ve-editor {
+  min-height: 480px;
+  border: none;
+  border-radius: 0;
+}
+
+/* Thin grey outline on hover; the blue selection outline only while a block
+   is selected (the decoration always marks ProseMirror's internal selection). */
+.ve-page .ve-editor > *:hover {
+  outline: 1px solid #cbd5e1;
+  outline-offset: 2px;
+}
+
+.ve-page .ve-editor .ve-selected {
+  outline: none;
+}
+
+.ve-page.ve-has-selection .ve-editor .ve-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.ve-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 16px;
+  padding: 32px;
+  border: 1px dashed #d4d4d8;
+  border-radius: 8px;
+  color: #52525b;
+  font-size: 14px;
+}
+
+.ve-side {
+  height: 100%;
+}
+
+.ve-side__pane {
+  overflow: auto;
+}
+
+.ve-side .ve-panel {
+  background: #fff;
+}
