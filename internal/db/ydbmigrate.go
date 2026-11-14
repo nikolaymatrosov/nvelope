@@ -40,17 +40,6 @@ func MigrateYDB(ctx context.Context, d *ydb.Driver) error {
 // statement and converges. A version is recorded only after all of its
 // statements succeed.
 func MigrateYDBFrom(ctx context.Context, q query.Executor, fsys fs.FS) error {
-	if err := q.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-    version_id Uint64    NOT NULL,
-    applied_at Timestamp NOT NULL,
-    PRIMARY KEY (version_id)
-);`); err != nil {
-		return fmt.Errorf("creating schema_migrations: %w", err)
-	}
-	applied, err := appliedYDBVersions(ctx, q)
-	if err != nil {
-		return err
-	}
 	names, err := fs.Glob(fsys, "*.up.sql")
 	if err != nil {
 		return fmt.Errorf("listing ydb migrations: %w", err)
@@ -68,6 +57,24 @@ func MigrateYDBFrom(ctx context.Context, q query.Executor, fsys fs.FS) error {
 		migrations = append(migrations, migration{version: version, name: name})
 	}
 	sort.Slice(migrations, func(i, j int) bool { return migrations[i].version < migrations[j].version })
+	for i := 1; i < len(migrations); i++ {
+		if migrations[i].version == migrations[i-1].version {
+			return fmt.Errorf("ydb migrations %s and %s share version %d",
+				migrations[i-1].name, migrations[i].name, migrations[i].version)
+		}
+	}
+
+	if err := q.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+    version_id Uint64    NOT NULL,
+    applied_at Timestamp NOT NULL,
+    PRIMARY KEY (version_id)
+);`); err != nil {
+		return fmt.Errorf("creating schema_migrations: %w", err)
+	}
+	applied, err := appliedYDBVersions(ctx, q)
+	if err != nil {
+		return err
+	}
 
 	for _, m := range migrations {
 		if applied[m.version] {
@@ -132,7 +139,8 @@ func ydbMigrationVersion(name string) (uint64, error) {
 // lines and "--" comments are dropped.
 //
 // ponytail: line-based, so a ";" at the end of a line inside a string literal
-// would split a statement; keep migration literals off line ends. Use a real
+// would split a statement, and so would a "--" comment line ending in ";"
+// inside one; keep migration literals and comments off line ends. Use a real
 // YQL lexer if that ever bites.
 func splitYQLStatements(sql string) []string {
 	var out []string
