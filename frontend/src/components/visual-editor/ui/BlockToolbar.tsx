@@ -29,9 +29,17 @@ export function BlockToolbar({ editor, selection, pageRef }: Props) {
       setCoords(null)
       return
     }
-    const block = dom.getBoundingClientRect()
-    const box = page.getBoundingClientRect()
-    setCoords({ top: block.bottom - box.top + 8, left: block.left - box.left + block.width / 2 })
+    const measure = () => {
+      const block = dom.getBoundingClientRect()
+      const box = page.getBoundingClientRect()
+      setCoords({ top: block.bottom - box.top + 8, left: block.left - box.left + block.width / 2 })
+    }
+    measure()
+    // Re-measure when the page width changes (the device toggle animates it).
+    if (typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(measure)
+    ro.observe(page)
+    return () => ro.disconnect()
   }, [editor, selectedPos, selectedNode, pageRef])
 
   if (selectedPos == null || selectedNode == null || coords == null) return null

@@ -4,7 +4,7 @@
 // concurrency flow. On 409 stale_row a toast offers Reload (take the server
 // copy) or Force overwrite (re-send the operator's copy with a fresh token).
 
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -24,14 +24,47 @@ type Options = {
   // True when the starting document is not what the server holds (a freshly
   // converted legacy row), so the session starts dirty.
   initiallyDirty?: boolean
+  // False for read-only sessions: they are never dirty.
+  editable?: boolean
   save: VisualSaveFn
   refetch: VisualRefetchFn
   onSaved?: () => Promise<void>
 }
 
-const keyOf = (s: VisualSnapshot): string => JSON.stringify([s.bodyDoc, s.theme])
+// canon normalises what the stored doc (Postgres jsonb key order, null attrs)
+// and the editor's getJSON() (TipTap key order, explicit null attrs) disagree on.
+function canon(v: unknown, parentKey?: string): unknown {
+  if (Array.isArray(v)) return v.map((x) => canon(x))
+  if (v === null || typeof v !== "object") return v
+  const out: Record<string, unknown> = {}
+  for (const k of Object.keys(v).sort()) {
+    const x = (v as Record<string, unknown>)[k]
+    if (parentKey === "attrs" && x == null) continue
+    const c = canon(x, k)
+    if (k === "attrs" && Object.keys(c as object).length === 0) continue
+    out[k] = c
+  }
+  return out
+}
 
-export function useVisualSave({ initial, initiallyDirty = false, save, refetch, onSaved }: Options) {
+const isEmptyParagraph = (n: unknown): boolean => {
+  const node = n as { type?: string; content?: Array<unknown>; attrs?: Record<string, unknown> }
+  return (
+    node.type === "paragraph" &&
+    (node.content?.length ?? 0) === 0 &&
+    Object.values(node.attrs ?? {}).every((x) => x == null)
+  )
+}
+
+// keyOf: canonical snapshot key. Ignores ONE trailing empty top-level
+// paragraph (TipTap's TrailingNode appends it after a non-paragraph block).
+export function keyOf(s: VisualSnapshot): string {
+  const content = [...s.bodyDoc.content]
+  if (content.length > 1 && isEmptyParagraph(content[content.length - 1])) content.pop()
+  return JSON.stringify(canon([{ ...s.bodyDoc, content }, s.theme]))
+}
+
+export function useVisualSave({ initial, initiallyDirty = false, editable = true, save, refetch, onSaved }: Options) {
   const { t } = useTranslation("visualEditor")
   const [bodyDoc, setBodyDoc] = useState(initial.bodyDoc)
   const [theme, setTheme] = useState(initial.theme)
@@ -39,7 +72,8 @@ export function useVisualSave({ initial, initiallyDirty = false, save, refetch, 
   // The row's last-known updated_at (FR-009 token). A ref, not state, so a
   // retry issued from a toast callback always reads the latest value.
   const token = useRef(initial.updatedAt)
-  const dirty = savedKey !== keyOf({ bodyDoc, theme })
+  const currentKey = useMemo(() => keyOf({ bodyDoc, theme }), [bodyDoc, theme])
+  const dirty = editable && savedKey !== currentKey
 
   async function reload() {
     const fresh = await refetch()

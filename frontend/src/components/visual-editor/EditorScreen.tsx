@@ -66,13 +66,14 @@ export type EditorScreenProps = {
 
 const EMPTY_DOC: VisualDoc = { version: 1, type: "doc", content: [{ type: "paragraph", content: [] }] }
 const MOBILE_WIDTH = 375
-const NARROW_QUERY = "(max-width: 1024px)"
+const NARROW_QUERY = "(width < 1024px)"
 
 // useIsNarrow: too narrow for canvas + side panel side by side. Defaults to
-// wide so no-matchMedia environments get the full layout.
+// wide; stays wide where matchMedia is missing.
 function useIsNarrow(): boolean {
   const [narrow, setNarrow] = useState(false)
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") return
     const mq = window.matchMedia(NARROW_QUERY)
     const update = () => setNarrow(mq.matches)
     update()
@@ -152,6 +153,7 @@ function EditorSession({
   const session = useVisualSave({
     initial: { bodyDoc: initialDoc, theme: row.theme ?? null, updatedAt: row.updated_at },
     initiallyDirty,
+    editable,
     save,
     refetch: async () => {
       const fresh = await refetch()
@@ -282,7 +284,7 @@ function EditorSession({
         <>
           <div className="ve-screen__body">{canvas}</div>
           <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
-            <SheetContent side="right" className="ve-overlay-panel">
+            <SheetContent side="right" className="ve-overlay-panel" aria-describedby={undefined}>
               <SheetTitle className="sr-only">{t("screen.openPanel")}</SheetTitle>
               {side}
             </SheetContent>
@@ -306,7 +308,7 @@ function EditorSession({
       )}
       <BlockLibrary open={libraryOpen} onOpenChange={setLibraryOpen} onInsert={onInsert} />
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="flex h-[90vh] flex-col sm:max-w-5xl" data-testid="ve-preview-dialog">
+        <DialogContent aria-describedby={undefined} className="flex h-[90vh] flex-col sm:max-w-5xl" data-testid="ve-preview-dialog">
           <DialogTitle>{t("screen.previewTitle")}</DialogTitle>
           {previewOpen && <PreviewIframe slug={slug} doc={session.bodyDoc} theme={session.theme} sample={null} />}
         </DialogContent>

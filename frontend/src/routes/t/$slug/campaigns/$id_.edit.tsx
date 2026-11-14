@@ -24,9 +24,10 @@ export function CampaignEditPage() {
   const queryClient = useQueryClient()
   const { can } = usePermissions(slug)
 
+  const queryFn = async () => (await api.getCampaign(slug, id)).data
   const query = useQuery({
     queryKey: queryKeys.campaign(slug, id),
-    queryFn: async () => (await api.getCampaign(slug, id)).data,
+    queryFn,
   })
 
   const onBack = () => {
@@ -52,7 +53,7 @@ export function CampaignEditPage() {
           onBack={onBack}
           convert={() => api.campaigns.convertToVisual(slug, id)}
           save={(v) => api.campaigns.saveVisual(slug, id, { subject: campaign.subject, ...v })}
-          refetch={async () => (await api.getCampaign(slug, id)).data}
+          refetch={() => queryClient.fetchQuery({ queryKey: queryKeys.campaign(slug, id), queryFn, staleTime: 0 })}
           onSaved={async () => {
             await queryClient.invalidateQueries({ queryKey: queryKeys.campaign(slug, id) })
             await queryClient.invalidateQueries({ queryKey: queryKeys.campaigns(slug) })

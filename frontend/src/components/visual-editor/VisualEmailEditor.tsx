@@ -181,7 +181,7 @@ export function VisualEmailEditor({
   }, [editor, value])
 
   useEffect(() => {
-    editor.setEditable(editable)
+    editor.setEditable(editable, false)
   }, [editor, editable])
 
   // Share the editor instance with the three-pane shell (structure outline +

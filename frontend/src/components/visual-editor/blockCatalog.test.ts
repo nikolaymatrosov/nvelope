@@ -114,3 +114,16 @@ describe("insertBlock", () => {
     expect(childTypes(editor)[0]).toBe("heading")
   })
 })
+
+describe("insertBlock appending", () => {
+  it("replaces the trailing empty paragraph instead of leaving it mid-doc", () => {
+    const editor = makeEditor({
+      type: "doc",
+      content: [para("a"), { type: "divider" }, { type: "paragraph" }],
+    })
+    insertBlock(editor, null, { type: "divider" })
+    const types = childTypes(editor)
+    const first = types.indexOf("divider")
+    expect(types[first + 1]).toBe("divider")
+  })
+})

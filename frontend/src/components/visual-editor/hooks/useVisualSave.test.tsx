@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { useVisualSave } from "./useVisualSave"
+import { keyOf, useVisualSave } from "./useVisualSave"
 import type { ReactNode } from "react"
 import type { VisualDoc } from "@/lib/api-types"
 import { ApiError } from "@/lib/errors"
@@ -134,5 +134,41 @@ describe("useVisualSave", () => {
     })
     await waitFor(() => expect(result.current.dirty).toBe(false))
     expect(save).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("keyOf", () => {
+  const snap = (bodyDoc: unknown) => ({ bodyDoc: bodyDoc as VisualDoc, theme: null })
+  // jsonb order: shorter keys first, then bytewise.
+  const jsonb = { type: "doc", content: [{ type: "paragraph", content: [{ text: "a", type: "text" }] }], version: 1 }
+  const tiptap = { version: 1, type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "a" }] }] }
+
+  it("ignores key order", () => {
+    expect(keyOf(snap(jsonb))).toBe(keyOf(snap(tiptap)))
+  })
+
+  it("treats null attrs like missing attrs", () => {
+    const a = { ...tiptap, content: [{ type: "paragraph", attrs: { x: null }, content: tiptap.content[0].content }] }
+    expect(keyOf(snap(a))).toBe(keyOf(snap(tiptap)))
+  })
+
+  it("ignores one trailing empty paragraph", () => {
+    const a = { ...tiptap, content: [...tiptap.content, { type: "paragraph" }] }
+    expect(keyOf(snap(a))).toBe(keyOf(snap(tiptap)))
+  })
+
+  it("detects a real text change", () => {
+    const a = { ...tiptap, content: [{ type: "paragraph", content: [{ type: "text", text: "b" }] }] }
+    expect(keyOf(snap(a))).not.toBe(keyOf(snap(tiptap)))
+  })
+})
+
+describe("useVisualSave editable", () => {
+  it("is never dirty when read-only", () => {
+    const { result } = renderHook(
+      () => useVisualSave({ initial, initiallyDirty: true, editable: false, save: vi.fn(), refetch: vi.fn() }),
+      { wrapper },
+    )
+    expect(result.current.dirty).toBe(false)
   })
 })

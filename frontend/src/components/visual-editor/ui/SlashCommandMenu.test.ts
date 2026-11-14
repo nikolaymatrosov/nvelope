@@ -18,4 +18,8 @@ describe("slashItems", () => {
   it("filters by the typed query, case-insensitively", () => {
     expect(slashItems("HEAD").map((i) => i.key)).toEqual(["heading-1", "heading-2", "heading-3"])
   })
+
+  it("matches the catalog key regardless of the translated label", () => {
+    expect(slashItems("divider").map((i) => i.key)).toContain("divider")
+  })
 })

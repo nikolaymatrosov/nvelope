@@ -168,4 +168,46 @@ describe("EditorScreen", () => {
     fireEvent.click(screen.getByTestId("ve-open-panel"))
     expect(await screen.findByTestId("ve-params-panel")).toBeTruthy()
   })
+
+  it("opens a jsonb-ordered row clean, even when it ends in a divider", async () => {
+    const jsonb = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ text: "hi", type: "text" }] }, { type: "divider" }],
+      version: 1,
+    } as unknown as VisualDoc
+    renderScreen({ row: { ...row, body_doc: jsonb } })
+    await waitFor(() => expect(screen.getByTestId("ve-editor")).toBeTruthy())
+    fireEvent.click(await screen.findByTestId("ve-outline-select-4"))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByTestId<HTMLButtonElement>("ve-save").disabled).toBe(true)
+  })
+
+  it("never registers a dirty guard for a read-only session", async () => {
+    renderScreen({
+      editable: false,
+      row: { ...row, body_doc: null, body_html: "<p>legacy</p>" },
+      convert: vi.fn().mockResolvedValue({ data: { bodyDoc: doc, warnings: [] } }),
+    })
+    await waitFor(() => expect(screen.getByTestId("ve-editor")).toBeTruthy())
+    const opts = vi.mocked(useBlocker).mock.lastCall![0] as unknown as { enableBeforeUnload: () => boolean }
+    expect(opts.enableBeforeUnload()).toBe(false)
+  })
+
+  it("keeps focus in a Content-tab field while typing", async () => {
+    const buttonDoc: VisualDoc = {
+      version: 1,
+      type: "doc",
+      content: [{ type: "button", attrs: { label: "Go", href: "https://example.com" } }],
+    }
+    renderScreen({ row: { ...row, body_doc: buttonDoc } })
+    fireEvent.click(await screen.findByTestId("ve-outline-select-0"))
+    const input = await screen.findByTestId<HTMLInputElement>("ve-param-label")
+    // Let selectBlock's rAF-delayed canvas focus land before typing.
+    await new Promise((r) => requestAnimationFrame(r))
+    input.focus()
+    fireEvent.change(input, { target: { value: "Buy" } })
+    await new Promise((r) => requestAnimationFrame(r))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.activeElement).toBe(screen.getByTestId("ve-param-label"))
+  })
 })

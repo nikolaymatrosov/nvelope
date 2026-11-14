@@ -55,7 +55,7 @@ export function slashItems(query: string): Array<SlashItem> {
     },
   })
   const q = query.toLowerCase()
-  return items.filter((i) => i.label.toLowerCase().includes(q))
+  return items.filter((i) => i.label.toLowerCase().includes(q) || i.key.includes(q))
 }
 
 // React state container that exposes a ref API the suggestion plugin can

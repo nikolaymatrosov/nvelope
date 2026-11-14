@@ -75,11 +75,10 @@ export function useBlockSelection(editor: Editor | null): BlockSelection {
   const activeRef = useRef(false)
 
   useEffect(() => {
-    if (!editor) {
-      activeRef.current = false
-      setState({ pos: null, node: null })
-      return
-    }
+    // New (or no) editor instance: its default caret must not read as selected.
+    activeRef.current = false
+    setState({ pos: null, node: null })
+    if (!editor) return
     const sync = () => {
       setState(activeRef.current ? resolveSelection(editor) : { pos: null, node: null })
     }
@@ -129,7 +128,6 @@ export function useBlockSelection(editor: Editor | null): BlockSelection {
       const pos = state.pos
       editor
         .chain()
-        .focus()
         .command(({ tr }) => {
           const node = tr.doc.nodeAt(pos)
           if (!node) return false

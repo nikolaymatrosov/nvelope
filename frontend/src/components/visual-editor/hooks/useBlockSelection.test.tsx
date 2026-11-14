@@ -6,12 +6,12 @@
 // selected block is deleted.
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, renderHook, waitFor } from "@testing-library/react"
 import { EditorContent, useEditor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
+import { Editor } from "@tiptap/core"
 import { Divider } from "../extensions/Divider"
 import { useBlockSelection } from "./useBlockSelection"
-import type { Editor } from "@tiptap/core"
 
 beforeAll(() => {
   // jsdom doesn't implement Range rect APIs that ProseMirror's coordsAtPos /
@@ -155,5 +155,27 @@ describe("useBlockSelection", () => {
       editor.commands.insertContentAt(editor.state.doc.content.size, { type: "paragraph" })
     })
     expect(get().selectedPos).toBeNull()
+  })
+})
+
+describe("useBlockSelection editor swap", () => {
+  it("resets the active flag when the editor instance changes", async () => {
+    const mk = () =>
+      new Editor({ extensions: [StarterKit.configure({ hardBreak: false }), Divider], content })
+    const a = mk()
+    const b = mk()
+    const { result, rerender } = renderHook(({ ed }: { ed: Editor }) => useBlockSelection(ed), {
+      initialProps: { ed: a },
+    })
+    fireEvent.mouseDown(a.view.dom)
+    a.commands.setTextSelection(2)
+    await waitFor(() => expect(result.current.selectedPos).not.toBeNull())
+    rerender({ ed: b })
+    await waitFor(() => expect(result.current.selectedPos).toBeNull())
+    fireEvent.mouseDown(b.view.dom)
+    b.commands.setTextSelection(2)
+    await waitFor(() => expect(result.current.selectedPos).not.toBeNull())
+    a.destroy()
+    b.destroy()
   })
 })

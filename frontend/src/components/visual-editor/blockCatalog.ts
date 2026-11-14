@@ -104,6 +104,14 @@ export function insertBlock(
     const top = $pos.depth === 0 ? selectedPos : $pos.before(1)
     const topNode = doc.nodeAt(top)
     if (topNode) at = top + topNode.nodeSize
+  } else {
+    // Appending: reuse the trailing empty paragraph (TrailingNode re-adds one).
+    const last = doc.lastChild
+    if (last?.type.name === "paragraph" && last.content.size === 0) {
+      const lastStart = doc.content.size - last.nodeSize
+      editor.chain().insertContentAt({ from: lastStart, to: doc.content.size }, content).run()
+      return lastStart
+    }
   }
   editor.chain().insertContentAt(at, content).run()
   return at

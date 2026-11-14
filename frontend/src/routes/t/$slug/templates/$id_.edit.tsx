@@ -25,9 +25,10 @@ export function TemplateEditPage() {
   const queryClient = useQueryClient()
   const { can } = usePermissions(slug)
 
+  const queryFn = async () => (await api.getTemplate(slug, id)).data
   const query = useQuery({
     queryKey: queryKeys.template(slug, id),
-    queryFn: async () => (await api.getTemplate(slug, id)).data,
+    queryFn,
   })
 
   const onBack = () => {
@@ -68,7 +69,7 @@ export function TemplateEditPage() {
                 ...v,
               })
             }
-            refetch={async () => (await api.getTemplate(slug, id)).data}
+            refetch={() => queryClient.fetchQuery({ queryKey: queryKeys.template(slug, id), queryFn, staleTime: 0 })}
             onSaved={async () => {
               await queryClient.invalidateQueries({ queryKey: queryKeys.templates(slug) })
               await queryClient.invalidateQueries({ queryKey: queryKeys.template(slug, id) })
