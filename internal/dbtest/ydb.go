@@ -13,6 +13,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	ydb "github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/balancers"
+
+	"github.com/nikolaymatrosov/nvelope/internal/db"
 )
 
 // ydbContainerName is the fixed name of the shared local-YDB test container.
@@ -128,4 +130,30 @@ func waitYDBReady(ctx context.Context, dsn string) error {
 		time.Sleep(time.Second)
 	}
 	return fmt.Errorf("local YDB not ready after %s: %w", ydbReadyTimeout, lastErr)
+}
+
+var (
+	ydbMigrateOnce sync.Once
+	ydbMigrateErr  error
+)
+
+// YDBMigrated returns a driver for the test YDB with every embedded YDB
+// migration (internal/db/ydbmigrations) applied, once per test binary. Test
+// binaries in one `go test ./...` run share the container and may race on the
+// same idempotent DDL, so a failed attempt is retried until it converges.
+func YDBMigrated(t *testing.T) *ydb.Driver {
+	t.Helper()
+	d := YDB(t)
+	ydbMigrateOnce.Do(func() {
+		deadline := time.Now().Add(ydbReadyTimeout)
+		for {
+			ydbMigrateErr = db.MigrateYDB(context.Background(), d)
+			if ydbMigrateErr == nil || time.Now().After(deadline) {
+				return
+			}
+			time.Sleep(time.Second)
+		}
+	})
+	require.NoError(t, ydbMigrateErr)
+	return d
 }
