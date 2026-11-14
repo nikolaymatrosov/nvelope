@@ -131,3 +131,22 @@ describe("renderVisualDoc — produced <img> URLs (T101)", () => {
     expect(bodyHtml).toContain(`src="${original}"`)
   })
 })
+
+describe("renderVisualDoc — image width", () => {
+  it("emits the width attribute and fluid CSS when the block has a width", async () => {
+    const doc: VisualDoc = {
+      version: 1,
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: { mediaRef: `${TENANT_MEDIA_PREFIX}wide.png`, alt: "Wide", href: "", width: 600 },
+        },
+      ],
+    }
+    const { bodyHtml } = await renderVisualDoc(doc, PlatformDefaultTheme)
+    expect(bodyHtml).toMatch(/<img[^>]*\swidth="600"/)
+    expect(bodyHtml).toMatch(/<img[^>]*max-width:100%/)
+    expect(bodyHtml).toMatch(/<img[^>]*height:auto/)
+  })
+})

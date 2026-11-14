@@ -4,7 +4,7 @@ import type { VisualDoc } from "../render/types"
 
 const ctx = () => ({
   knownSlugs: new Set(["first_name", "email", "country"]),
-  mediaUrlPrefix: "https://media.test/tenants/abc/",
+  mediaUrlPrefix: "https://app.test/t/abc/api/media/",
 })
 
 function doc(...content: VisualDoc["content"]): VisualDoc {
@@ -24,7 +24,7 @@ describe("validateVisualDoc", () => {
       {
         type: "image",
         attrs: {
-          mediaRef: "https://media.test/tenants/abc/x.png",
+          mediaRef: "https://app.test/t/abc/api/media/0b9f3c3e-6a7d-4c1e-9a55-2f1d7e4b8c90/content",
           alt: "x",
           href: "",
         },

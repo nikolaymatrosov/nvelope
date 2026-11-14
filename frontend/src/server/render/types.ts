@@ -84,7 +84,7 @@ export type CodeBlock = {
 }
 export type ImageBlock = {
   type: "image"
-  attrs: { mediaRef: string; alt: string; href: string; style?: BlockStyle }
+  attrs: { mediaRef: string; alt: string; href: string; width?: number | null; style?: BlockStyle }
 }
 export type ButtonBlock = {
   type: "button"

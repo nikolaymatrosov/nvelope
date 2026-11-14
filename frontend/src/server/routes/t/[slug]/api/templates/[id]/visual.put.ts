@@ -6,6 +6,7 @@
 
 import { defineHandler } from "nitro"
 import type { Theme, VisualDoc } from "@/server/render/types"
+import { mediaLibraryPrefix } from "@/server/validate/blocks"
 import { runVisualTemplateSave } from "@/server/routes/visual-save"
 
 type IncomingBody = {
@@ -48,7 +49,7 @@ export default defineHandler(async (event) => {
     cookie,
     requestId,
     goApiBaseUrl: process.env.NV_GO_API_URL,
-    mediaUrlPrefix: process.env.OBJECT_STORAGE_PUBLIC_BASE_URL ?? "",
+    mediaUrlPrefix: mediaLibraryPrefix(process.env.NVELOPE_BASE_URL, slug),
     body: {
       name: raw.name,
       kind: raw.kind,

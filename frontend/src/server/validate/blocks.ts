@@ -84,9 +84,9 @@ export type ValidateBlocksContext = {
   // tenant's custom field slugs, fetched from Go's GET /subscriber-fields
   // by the Nitro route before validation runs.
   knownSlugs: Set<string>
-  // mediaUrlPrefix is the tenant's media-library base URL — every
-  // ImageBlock.mediaRef must start with this prefix (FR-021). Resolved
-  // from process.env.OBJECT_STORAGE_PUBLIC_BASE_URL at startup.
+  // mediaUrlPrefix is the tenant's library URL prefix,
+  // `${NVELOPE_BASE_URL}/t/${slug}/api/media/` (see mediaLibraryPrefix).
+  // Every ImageBlock.mediaRef must be that prefix plus `<uuid>/content` (FR-021).
   mediaUrlPrefix: string
   // unknownPlaceholders accumulates every subscriber-namespace merge tag
   // whose slug is not in knownSlugs, so the route can return them all at
@@ -130,6 +130,12 @@ export function validateBlock(block: VisualBlock, ctx: ValidateBlocksContext): v
           "invalid_media_ref",
           "image mediaRef must point at the tenant media library",
         )
+      }
+      if (block.attrs.width != null) {
+        const w = block.attrs.width
+        if (!Number.isInteger(w) || w < 1 || w > 600) {
+          throw new ValidatorError("invalid_doc", "image width must be a whole number from 1 to 600")
+        }
       }
       if (block.attrs.href) validateLink(block.attrs.href)
       return
@@ -241,11 +247,19 @@ function validateMergeTag(
   )
 }
 
+// mediaLibraryPrefix is the start of every library URL for one tenant:
+// `${NVELOPE_BASE_URL}/t/${slug}/api/media/`. It is empty when the base URL
+// is unset (local dev without config), which disables the check; Go's
+// publish step still refuses assets of other tenants.
+export function mediaLibraryPrefix(baseUrl: string | undefined, slug: string): string {
+  if (!baseUrl) return ""
+  return `${baseUrl.replace(/\/+$/, "")}/t/${slug}/api/media/`
+}
+
+const LIBRARY_URL_TAIL =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/content$/
+
 function isTenantMediaRef(ref: string, prefix: string): boolean {
-  if (!prefix) {
-    // No prefix configured — accept anything; the Go-side revalidation pass
-    // is the authoritative gate in this configuration (dev only).
-    return true
-  }
-  return ref.startsWith(prefix)
+  if (!prefix) return true
+  return ref.startsWith(prefix) && LIBRARY_URL_TAIL.test(ref.slice(prefix.length))
 }
