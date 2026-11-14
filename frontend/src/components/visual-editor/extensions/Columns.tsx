@@ -6,7 +6,10 @@
 // requires (per FR-015 and research.md § R4).
 
 import { Node, mergeAttributes } from "@tiptap/core"
+import { NodeSelection } from "@tiptap/pm/state"
 import { blockStyleAttributeSpec } from "./styleAttr"
+import type { Editor } from "@tiptap/core"
+import type { Node as PMNode } from "@tiptap/pm/model"
 
 export type ColumnsCount = 2 | 3 | 4
 
@@ -85,4 +88,43 @@ export function buildColumnsNode(count: ColumnsCount) {
       content: [{ type: "paragraph" }],
     })),
   }
+}
+
+// setColumnsCount changes a columns block to `count` columns in one
+// transaction, keeping `attrs.count === content length` (validation
+// invariant). Growing appends empty columns. Shrinking folds the removed
+// columns' content into the last kept column, so nothing is lost. The columns
+// block stays node-selected so the parameters panel keeps showing it.
+export function setColumnsCount(editor: Editor, pos: number, count: ColumnsCount): void {
+  const node = editor.state.doc.nodeAt(pos)
+  if (!node || node.type.name !== "columns" || node.childCount === count) return
+  const { schema } = editor
+  const columns: Array<PMNode> = []
+  node.forEach((child) => columns.push(child))
+
+  let next: Array<PMNode>
+  if (count > columns.length) {
+    const added = Array.from({ length: count - columns.length }, () =>
+      schema.nodes.column.create(null, schema.nodes.paragraph.create()),
+    )
+    next = [...columns, ...added]
+  } else {
+    const kept = columns.slice(0, count)
+    const last = kept[count - 1]
+    const merged = columns
+      .slice(count)
+      .reduce((acc, col) => acc.append(col.content), last.content)
+    next = [...kept.slice(0, count - 1), last.copy(merged)]
+  }
+
+  const replacement = node.type.create({ ...node.attrs, count }, next)
+  editor
+    .chain()
+    .focus()
+    .command(({ tr }) => {
+      tr.replaceWith(pos, pos + node.nodeSize, replacement)
+      tr.setSelection(NodeSelection.create(tr.doc, pos))
+      return true
+    })
+    .run()
 }
