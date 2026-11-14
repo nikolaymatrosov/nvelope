@@ -49,17 +49,25 @@ export function useVisualSave({ initial, initiallyDirty = false, save, refetch, 
     setSavedKey(keyOf(fresh))
   }
 
+  // True from the moment a save is issued until it settles. A ref, not
+  // mutation.isPending: two calls in one render see the same stale isPending.
+  const inFlight = useRef(false)
+
   const mutation = useMutation({
     mutationFn: (v: { snapshot: VisualSnapshot; ifUnmodifiedSince: string }) =>
       save({ ...v.snapshot, ifUnmodifiedSince: v.ifUnmodifiedSince }),
-    onSuccess: async (res, v) => {
+    onSuccess: (res, v) => {
       token.current = res.data.updatedAt
       // Mark what was *sent* as saved: edits typed during the request stay dirty.
       setSavedKey(keyOf(v.snapshot))
-      await onSaved?.()
       const warnings = res.data.warnings.length
       if (warnings > 0) toast.warning(t("save.warnings", { count: warnings }))
       else toast.success(t("save.success"))
+      // Not awaited: a failing onSaved must not reach onError and report a persisted save as failed.
+      onSaved?.().catch((err: unknown) => toast.error(errorMessage(err)))
+    },
+    onSettled: () => {
+      inFlight.current = false
     },
     onError: (e, v) => {
       if (e instanceof ApiError && e.status === 409 && e.slug === "stale_row") {
@@ -86,10 +94,13 @@ export function useVisualSave({ initial, initiallyDirty = false, save, refetch, 
   })
 
   async function forceOverwrite(snapshot: VisualSnapshot, currentUpdatedAt: string | null) {
+    if (inFlight.current) return
+    inFlight.current = true
     try {
       const ifUnmodifiedSince = currentUpdatedAt ?? (await refetch()).updatedAt
       mutation.mutate({ snapshot, ifUnmodifiedSince })
     } catch (err) {
+      inFlight.current = false
       toast.error(errorMessage(err))
     }
   }
@@ -101,6 +112,10 @@ export function useVisualSave({ initial, initiallyDirty = false, save, refetch, 
     setTheme,
     dirty,
     saving: mutation.isPending,
-    save: () => mutation.mutate({ snapshot: { bodyDoc, theme }, ifUnmodifiedSince: token.current }),
+    save: () => {
+      if (inFlight.current) return
+      inFlight.current = true
+      mutation.mutate({ snapshot: { bodyDoc, theme }, ifUnmodifiedSince: token.current })
+    },
   }
 }

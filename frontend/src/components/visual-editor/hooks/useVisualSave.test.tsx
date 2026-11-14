@@ -103,4 +103,36 @@ describe("useVisualSave", () => {
     act(() => result.current.save())
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
   })
+
+  it("a rejected onSaved does not turn a persisted save into an error", async () => {
+    const save = okSave("2026-02-02T00:00:00Z")
+    const onSaved = vi.fn().mockRejectedValue(new Error("refresh failed"))
+    const { result } = renderHook(() => useVisualSave({ initial, save, refetch: vi.fn(), onSaved }), { wrapper })
+    act(() => result.current.setBodyDoc(doc("b")))
+    act(() => result.current.save())
+    await waitFor(() => expect(result.current.dirty).toBe(false))
+    expect(toast.success).toHaveBeenCalled()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("refresh failed"))
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores a second save while one is in flight", async () => {
+    let resolveSave: (v: unknown) => void = () => undefined
+    const save = vi.fn().mockImplementation(
+      () => new Promise((resolve) => { resolveSave = resolve }),
+    )
+    const { result } = renderHook(() => useVisualSave({ initial, save, refetch: vi.fn() }), { wrapper })
+    act(() => result.current.setBodyDoc(doc("b")))
+    act(() => {
+      result.current.save()
+      result.current.save()
+    })
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    act(() => {
+      resolveSave({ data: { updatedAt: "2026-02-02T00:00:00Z", warnings: [] } })
+    })
+    await waitFor(() => expect(result.current.dirty).toBe(false))
+    expect(save).toHaveBeenCalledTimes(1)
+  })
 })
