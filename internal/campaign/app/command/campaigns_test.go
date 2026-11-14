@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -225,4 +226,15 @@ func TestUpdateCampaignSanitizesRawHTML(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, campaigns.byID[id].BodyHTML(), "<iframe")
 	require.Len(t, res.Warnings, 1)
+}
+
+func TestCreateCampaignRejectsOversizeBodyBeforePolicy(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	h := command.NewCreateCampaignHandler(campaigns, newFakeTemplateRepo(),
+		fakeRawHTMLPolicy{err: errors.New("policy must not be consulted")})
+	_, err := h.Handle(context.Background(), command.CreateCampaign{
+		TenantID: "tenant-1", Name: "Big", BodyHTML: strings.Repeat("a", domain.MaxBodyBytes+1),
+	})
+	require.ErrorIs(t, err, domain.ErrBodyTooLarge)
 }

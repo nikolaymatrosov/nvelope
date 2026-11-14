@@ -24,6 +24,9 @@ func applyRawHTMLPolicy(ctx context.Context, policy RawHTMLPolicy, tenantID, bod
 	if strings.TrimSpace(body) == "" {
 		return body, nil, nil
 	}
+	if len(body) > domain.MaxBodyBytes {
+		return "", nil, domain.ErrBodyTooLarge // bound the sanitizer's input
+	}
 	sanitize, err := policy.SanitizesRawHTML(ctx, tenantID)
 	if err != nil {
 		return "", nil, err
