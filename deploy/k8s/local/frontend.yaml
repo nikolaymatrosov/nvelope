@@ -26,6 +26,14 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
+          env:
+            # The BFF validates image mediaRefs against the tenant's library
+            # URL prefix, built from the same base URL the Go API uses.
+            - name: NVELOPE_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: nvelope-config
+                  key: NVELOPE_BASE_URL
           readinessProbe:
             httpGet:
               path: /

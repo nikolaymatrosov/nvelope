@@ -1,7 +1,7 @@
 # Private media library, publish-on-send, image optimization — Design
 
 Date: 2026-11-14
-Status: Approved
+Status: Implemented
 
 ## Goal
 
