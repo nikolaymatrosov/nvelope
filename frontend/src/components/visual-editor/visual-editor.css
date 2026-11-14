@@ -704,7 +704,7 @@
   color: #6b7280;
 }
 
-.ve-style-controls__compact input {
+.ve-style-controls .ve-style-controls__compact input[type="number"] {
   width: 100%;
   max-width: none;
 }
@@ -766,6 +766,6 @@
   pointer-events: none;
 }
 
-.ve-style-controls__px input {
+.ve-style-controls .ve-style-controls__px input[type="number"] {
   padding-right: 22px;
 }
