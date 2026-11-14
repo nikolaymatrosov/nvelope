@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
@@ -66,9 +65,7 @@ func TestSendPipelineResumesAfterWorkerCrash(t *testing.T) {
 	// Materialise recipients and the single batch via the start worker.
 	start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
 		f.source, f.enqueuer, nil, 100)
-	require.NoError(t, start.Work(context.Background(), &river.Job[jobs.CampaignStartArgs]{
-		Args: jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID},
-	}))
+	require.NoError(t, start.Work(context.Background(), jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID}))
 	require.Len(t, f.enqueuer.batches, 1)
 
 	messenger := &crashingMessenger{sent: map[string]int{}, crashAt: 4}
@@ -78,9 +75,7 @@ func TestSendPipelineResumesAfterWorkerCrash(t *testing.T) {
 			noopSuppression{}, nil, nil, nil, nil,
 			domain.Limit{Max: limit.Max, Window: limit.Window}, "https://track.test")
 	}
-	job := &river.Job[jobs.CampaignBatchArgs]{
-		Args: jobs.CampaignBatchArgs{TenantID: f.tenantID, CampaignID: f.campaignID, Offset: 0, Limit: 100},
-	}
+	job := jobs.CampaignBatchArgs{TenantID: f.tenantID, CampaignID: f.campaignID, Offset: 0, Limit: 100}
 
 	// First run: the worker is "killed" after crashAt sends.
 	crashCtx, cancel := context.WithCancel(context.Background())

@@ -32,10 +32,10 @@ run-scheduler:
 test:
 	$(GO) test ./...
 
-# Integration tests reuse a single testcontainers-managed Postgres container
-# that persists between runs for speed. test-db-clean removes it.
+# Integration tests share testcontainers-managed Postgres and local-YDB
+# containers, reused by name. test-db-clean removes any that are left over.
 test-db-clean:
-	docker rm -f nvelope-test-pg
+	docker rm -f nvelope-test-pg nvelope-test-ydb 2>/dev/null || true
 
 lint:
 	golangci-lint run
@@ -46,12 +46,11 @@ lint-arch:
 	go-cleanarch $(CLEANARCH_FLAGS) internal/iam
 	go-cleanarch $(CLEANARCH_FLAGS) internal/audience
 	@echo '[arch] domain packages import no transport or driver code'
-	@! $(GO) list -deps ./internal/auth/domain/... ./internal/tenant/domain/... \
-		./internal/iam/domain/... ./internal/audience/domain/... \
-		| grep -E 'net/http|jackc/pgx|go-chi'
+	@! $(GO) list -deps ./internal/.../domain/... \
+		| grep -E 'net/http|jackc/pgx|ydb-platform|go-chi'
 	@echo '[arch] the transport layer imports no driver or adapter code'
 	@! $(GO) list -deps ./internal/api/... \
-		| grep -E 'jackc/pgx|nvelope/internal/[a-z]+/adapters'
+		| grep -E 'jackc/pgx|ydb-platform|nvelope/internal/[a-z]+/adapters'
 	@echo '[arch] clean'
 
 # verify runs the per-increment verification bundle from quickstart.md: the

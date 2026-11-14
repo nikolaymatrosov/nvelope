@@ -92,7 +92,7 @@ func (ts *testServer) startCampaignWorkers(messenger campaigndomain.Messenger) {
 	enqueuer := jobs.NewSendEnqueuer(insertClient, ts.sendQueue)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
+	jobs.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
 		source, enqueuer, nil, 500))
 	subscriberLookup := service.NewSubscriberLookup(audienceadapters.NewSubscribers(ts.pool))
 	// A real UnsubscribeLinker so `{{ campaign.unsubscribe_url }}` substitutes
@@ -100,7 +100,7 @@ func (ts *testServer) startCampaignWorkers(messenger campaigndomain.Messenger) {
 	// — the URL only has to be stable and per-recipient-unique, not verifiable.
 	unsubscribeLinker := campaignadapters.NewUnsubscribeLinker(
 		token.NewSigner([]byte("test-unsubscribe-key-fixed-for-tests")), ts.URL)
-	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
+	jobs.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
 		messenger, campaignadapters.NewRateLimiter(limiter), lookup,
 		deliverabilityadapters.NewSuppressionChecker(ts.pool), nil, unsubscribeLinker,
 		subscriberLookup, nil,
