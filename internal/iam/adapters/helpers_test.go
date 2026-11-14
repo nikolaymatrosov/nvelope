@@ -19,11 +19,13 @@ import (
 // contract test. Every contract test body runs once per backend, so the
 // Postgres and YDB adapters are held to the same behaviour.
 type backend struct {
-	name     string
-	users    func(t *testing.T) domain.UserRepository
-	sessions func(t *testing.T) domain.SessionRepository
-	roles    func(t *testing.T) domain.RoleRepository
-	audit    func(t *testing.T) domain.AuditRepository
+	name          string
+	users         func(t *testing.T) domain.UserRepository
+	sessions      func(t *testing.T) domain.SessionRepository
+	roles         func(t *testing.T) domain.RoleRepository
+	apiKeys       func(t *testing.T) domain.APIKeyRepository
+	recoveryCodes func(t *testing.T) domain.RecoveryCodeRepository
+	audit         func(t *testing.T) domain.AuditRepository
 	// newTenant, newPlatformUser and newList return ids of rows other contexts
 	// own. On Postgres the iam tables carry foreign keys to them, so the pg
 	// backend inserts real rows. YDB has no foreign keys and no iam query reads
@@ -45,6 +47,12 @@ var backends = []backend{
 		roles: func(t *testing.T) domain.RoleRepository {
 			return adapters.NewRoles(dbtest.AppPool(t))
 		},
+		apiKeys: func(t *testing.T) domain.APIKeyRepository {
+			return adapters.NewAPIKeys(dbtest.AppPool(t))
+		},
+		recoveryCodes: func(t *testing.T) domain.RecoveryCodeRepository {
+			return adapters.NewRecoveryCodes(dbtest.AppPool(t))
+		},
 		audit: func(t *testing.T) domain.AuditRepository {
 			return adapters.NewAudit(dbtest.AppPool(t))
 		},
@@ -62,6 +70,12 @@ var backends = []backend{
 		},
 		roles: func(t *testing.T) domain.RoleRepository {
 			return adapters.NewYDBRoles(dbtest.YDBMigrated(t))
+		},
+		apiKeys: func(t *testing.T) domain.APIKeyRepository {
+			return adapters.NewYDBAPIKeys(dbtest.YDBMigrated(t))
+		},
+		recoveryCodes: func(t *testing.T) domain.RecoveryCodeRepository {
+			return adapters.NewYDBRecoveryCodes(dbtest.YDBMigrated(t))
 		},
 		audit: func(t *testing.T) domain.AuditRepository {
 			return adapters.NewYDBAudit(dbtest.YDBMigrated(t))
@@ -126,16 +140,5 @@ func seedPlatformUser(t *testing.T, pool *pgxpool.Pool) string {
 		`INSERT INTO platform_users (email, password_hash, name)
 		 VALUES ($1, 'hash', 'User') RETURNING id`,
 		dbtest.RandString()+"@example.com").Scan(&id))
-	return id
-}
-
-// seedTenantUser inserts a tenant-plane user and returns its id.
-func seedTenantUser(t *testing.T, pool *pgxpool.Pool, tenantID string) string {
-	t.Helper()
-	platformID := seedPlatformUser(t, pool)
-	u, err := domain.NewTenantUser(tenantID, platformID, dbtest.RandString()+"@example.com", "Member")
-	require.NoError(t, err)
-	id, err := adapters.NewUsers(pool).Add(context.Background(), tenantID, u)
-	require.NoError(t, err)
 	return id
 }
