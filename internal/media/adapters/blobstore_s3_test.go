@@ -81,9 +81,8 @@ func startMinIO(t *testing.T) string {
 	return minioEndpoint
 }
 
-// ensureBucket creates the test bucket if it doesn't exist and grants
-// anonymous read access on the media/ prefix — the same shape production
-// deployments use so email clients can fetch embedded images.
+// ensureBucket creates the test bucket if needed and applies a policy that
+// grants anonymous read on the published/ prefix only — the same shape production uses: library objects stay private, public copies are readable.
 func ensureBucket(t *testing.T, endpoint string) {
 	t.Helper()
 	client := s3.New(s3.Options{
@@ -101,7 +100,7 @@ func ensureBucket(t *testing.T, endpoint string) {
 		require.NoError(t, err)
 	}
 	policy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` +
-		minioTestBucket + `/media/*"]}]}`
+		minioTestBucket + `/published/*"]}]}`
 	_, err := client.PutBucketPolicy(ctx, &s3.PutBucketPolicyInput{
 		Bucket: awscfg.String(minioTestBucket),
 		Policy: awscfg.String(policy),
@@ -125,7 +124,7 @@ func newTestStore(t *testing.T) *adapters.S3BlobStore {
 	return store
 }
 
-func TestS3BlobStore_PutGetDelete(t *testing.T) {
+func TestS3BlobStore_LibraryObjectsArePrivate(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -135,18 +134,54 @@ func TestS3BlobStore_PutGetDelete(t *testing.T) {
 
 	resp, err := http.Get(store.PublicURL(key))
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusForbidden, resp.StatusCode,
+		"a library object must not be anonymously readable")
+
+	signed, err := store.PresignGet(ctx, key, time.Minute, "inline")
+	require.NoError(t, err)
+	resp, err = http.Get(signed)
+	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	require.Equal(t, http.StatusOK, resp.StatusCode, "uploaded asset must be publicly fetchable")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "inline", resp.Header.Get("Content-Disposition"))
 	got, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, body, got)
 
 	require.NoError(t, store.Delete(ctx, key))
-	resp, err = http.Get(store.PublicURL(key))
+}
+
+func TestS3BlobStore_PublishMakesAPublicCopy(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	src := store.BuildKey("tenant-a", "asset-2", "price list.pdf")
+	dst := store.PublishedKey("tenant-a", "asset-2", "price list.pdf")
+	body := []byte("%PDF-1.4 fake")
+	require.NoError(t, store.Put(ctx, src, "application/pdf", int64(len(body)), bytes.NewReader(body)))
+
+	const disposition = `attachment; filename="price list.pdf"`
+	require.NoError(t, store.Publish(ctx, src, dst, "application/pdf", disposition))
+	require.NoError(t, store.Publish(ctx, src, dst, "application/pdf", disposition),
+		"publishing again overwrites the copy")
+
+	resp, err := http.Get(store.PublicURL(dst))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.NotEqual(t, http.StatusOK, resp.StatusCode,
-		"the deleted asset must not be fetchable")
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "application/pdf", resp.Header.Get("Content-Type"))
+	require.Equal(t, disposition, resp.Header.Get("Content-Disposition"))
+	got, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, body, got)
+
+	require.NoError(t, store.Delete(ctx, src))
+	again, err := http.Get(store.PublicURL(dst))
+	require.NoError(t, err)
+	require.NoError(t, again.Body.Close())
+	require.Equal(t, http.StatusOK, again.StatusCode, "the public copy outlives the library object")
+	require.NoError(t, store.Delete(ctx, dst))
 }
 
 func TestS3BlobStore_DeleteMissingIsNotAnError(t *testing.T) {
@@ -161,4 +196,6 @@ func TestS3BlobStore_KeysAreTenantPrefixed(t *testing.T) {
 		store.BuildKey("tenant-a", "asset-1", "file.png"))
 	require.Equal(t, "media/tenant-b/asset-1/file.png",
 		store.BuildKey("tenant-b", "asset-1", "file.png"))
+	require.Equal(t, "published/tenant-a/asset-1/file.png",
+		store.PublishedKey("tenant-a", "asset-1", "file.png"))
 }
