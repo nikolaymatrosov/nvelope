@@ -61,8 +61,10 @@ in uploaded photos; decompression bombs once images are decoded.
 - Domain: `SetRawHTMLSanitization(level, acceptRisk bool) error`. Switching to
   `off` with `acceptRisk == false` returns an incorrect-input error, code
   `risk_acceptance_required`. Switching to `standard` needs no flag.
-- HTTP: the existing `PUT /settings` (`handleUpdateSettings`, permission
-  `settings:manage`) accepts `raw_html_sanitization` and `accept_risk`;
+- HTTP: a dedicated `PUT /t/{slug}/api/settings/raw-html-sanitization` with
+  body `{"level", "accept_risk"}`, registered in the `authz` group and gated
+  on `settings:manage`. It is separate from `PUT /settings` because that
+  endpoint replaces every field and checks no permission.
   `GET /settings` returns the level. On change the handler calls
   `recordAudit(ctx, "settings.raw_html_sanitization", tenantID,
   {"from": old, "to": new})`.
@@ -98,10 +100,13 @@ in uploaded photos; decompression bombs once images are decoded.
 - URL schemes: `http`, `https`, `mailto`, `tel`; `data:image/*` in `src`
   only.
 - Why `<style>` content is safe to pass through: current engines execute no
-  script from CSS, and the output is re-serialized from the parse tree, so
-  `</style>` break-out is impossible. Keeping `style` elements needs
-  bluemonday's `AllowUnsafe(true)`; `script` stays off the allow-list. Tests
-  pin both facts.
+  script from CSS, and bluemonday's tokenizer applies the browser's raw-text
+  rules, so the first `</style>` always ends the element. Keeping `style`
+  elements needs bluemonday's `AllowUnsafe(true)`; `script` stays off the
+  allow-list. Tests pin both facts.
+- bluemonday drops `<!DOCTYPE>`. `SanitizeDocument` re-prepends the input's
+  leading `<!DOCTYPE html …>` (matched with `[^<>]*`, so it cannot carry
+  markup); without it the archive renders in quirks mode.
 - Warnings: the same `sanitizer_stripped` signal the visual path emits
   (regex detection of a visible disallowed construct), with the detection
   regex adjusted for this policy. `style` and `data:image` are no longer
@@ -116,8 +121,8 @@ in uploaded photos; decompression bombs once images are decoded.
   `campaign/app/command`:
 
   ```go
-  type RawHTMLPolicyLookup interface {
-      RawHTMLSanitization(ctx context.Context, tenantID string) (domain.RawHTMLSanitization, error)
+  type RawHTMLPolicy interface {
+      SanitizesRawHTML(ctx context.Context, tenantID string) (bool, error)
   }
   ```
 
@@ -135,20 +140,22 @@ in uploaded photos; decompression bombs once images are decoded.
   later saves; stored bodies are not rewritten.
 
 **Size cap.** Campaign and template constructors and `Recompose` reject a
-`bodyHTML` or `bodyText` over 1 MiB with code `body_too_large`. The same check
+`bodyHTML` or `bodyText` over 1 MiB with code `body-too-large` (the campaign
+context's hyphenated code style). The same check
 runs in `Campaign.ApplyVisualSave` and `Template.ApplyVisualSave`.
 
 ### 2. Public surface: headers and archive containment
 
-A new middleware, `publicSecurityHeaders`, wraps every anonymous route: the
-`mountPublicRoutes` group (`/t/{slug}/subscribe`, `/confirm`, `/archive`,
-`/feed.xml`) and the token and tracking routes (`/p`, `/u`, `/o`, `/l`).
+A new middleware, `publicSecurityHeaders`, wraps every anonymous HTML route:
+the `mountPublicRoutes` group (`/t/{slug}/subscribe`, `/confirm`, `/archive`,
+`/feed.xml`) and the token routes (`/p`, `/u`). The tracking pixel `/o` and the
+click redirect `/l` render no HTML and are left alone.
 
 Default headers, for every public response:
 
 ```
 Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline';
-  img-src 'self' <media-origin> <logo-origin>; font-src 'self' <media-origin>;
+  img-src 'self' https: data:; font-src 'self' https: data:;
   form-action 'self'; base-uri 'none'; frame-ancestors 'none'
 X-Content-Type-Options: nosniff
 Referrer-Policy: no-referrer
@@ -156,10 +163,9 @@ Referrer-Policy: no-referrer
 
 - There is no `script-src`, so it falls back to `'none'`. Public templates
   ship no JS: `internal/api/templates` contains no `<script>`.
-- `<media-origin>` is the origin of `ObjectStoragePublicBaseURL`.
-- `<logo-origin>` is the origin of the tenant's logo URL, computed per request
-  from the branding the chrome already loads. It is omitted when no logo is
-  set.
+- The policy is static. Images and fonts may come from any `https:` host:
+  the tenant logo is an arbitrary https URL, and narrowing `img-src` per tenant
+  would buy little (see §5).
 - `Referrer-Policy: no-referrer` keeps `/p/{token}` and `/u/{token}` out of
   `Referer` headers sent to the logo host and to outbound links.
 
@@ -186,19 +192,14 @@ plumbing for the TanStack Start hydration scripts. That is a separate task.
 
 ### 3. Merge values
 
-**Campaign sends.** `sending.Substitute` substitutes three parts, each with
-its own encoding:
+**Campaign sends.** `sending.Substitute(html, text, …)` keeps its signature;
+the HTML part now gets `html.EscapeString(value)` and the text part stays raw.
+A new `SubstituteSubject(subject, …)` substitutes raw values; the messenger
+Q-encodes the subject later.
 
-```go
-type Parts struct{ HTML, Text, Subject string }
-func Substitute(p Parts, sub SubscriberView, ctx CampaignContext) Parts
-```
-
-- HTML gets `html.EscapeString(value)`. Text and Subject get the raw value;
-  the messenger Q-encodes the subject later.
 - Today `batch_worker.go:220` feeds the subject through the `html` slot. With
-  escaping that would turn `&` into `&amp;` in subjects. The three-part
-  signature removes that trap.
+  escaping that would turn `&` into `&amp;` in subjects, so that call switches
+  to `SubstituteSubject`.
 - Escaping applies to every namespace, `campaign.unsubscribe_url` included:
   `&` → `&amp;` is correct inside an attribute.
 
@@ -207,10 +208,11 @@ replacer over `\{\{\{(key)\}\}\}|\{\{(key)\}\}`, keeping today's exact,
 whitespace-free syntax:
 
 - `{{key}}` in HTML is escaped. In Subject and Text it is raw.
-- `{{{key}}}` in HTML is inserted raw. When the tenant level is `standard`
-  and the template contains at least one triple-brace placeholder, the
-  substituted HTML then goes through `SanitizeDocument`. In Subject and Text
-  `{{{key}}}` behaves like `{{key}}`.
+- `{{{key}}}` in HTML is inserted raw. When at least one triple-brace
+  placeholder was substituted, the whole HTML then goes through
+  `SanitizeDocument`, whatever the tenant's level: the level governs HTML the
+  tenant authored, while variables carry runtime data from the API caller.
+  In Subject and Text `{{{key}}}` behaves like `{{key}}`.
 - Single pass: inserted values are never rescanned, which removes the
   map-order re-expansion.
 - Unknown keys stay literal, as today.
@@ -239,8 +241,9 @@ WHERE r.id = @recipient_id AND r.campaign_id = @campaign_id
 
 ### 5. Tenant CSS and logo
 
-- The CSS deny-list stays as a backstop. CSP (§2) becomes the boundary:
-  `url()` reaches only `'self'`, the media origin, and the logo origin.
+- The CSS deny-list stays. CSP (§2) blocks script but lets `url()` reach any
+  `https:` host, so CSS beacons and attribute-selector reads stay possible;
+  see Accepted risks.
 - `SetLogoURL` requires `https://`; today it accepts `http(s)://`. An `http`
   logo would be mixed content and would widen the CSP.
 
@@ -256,6 +259,10 @@ WHERE r.id = @recipient_id AND r.campaign_id = @campaign_id
 - **Tracking links are unsigned.** Link and recipient ids are UUIDv4 and
   appear only in that recipient's email; §4 removes cross-campaign
   attribution.
+- **Tenant CSS may load `https:` resources on public pages.** The tenant can
+  already point its logo at any host, so it learns about page visits either
+  way. Reading form values through attribute selectors would only expose the
+  tenant's own subscribers to a tenant member with `branding:manage`.
 - **Level `off`.** The tenant's own recipients may receive active content.
   Platform surfaces stay contained by §2 and the admin preview sandbox.
 
@@ -264,7 +271,7 @@ WHERE r.id = @recipient_id AND r.campaign_id = @campaign_id
 | Case | Result |
 |------|--------|
 | `off` without `accept_risk` | 400 `risk_acceptance_required` |
-| Body over 1 MiB | 400 `body_too_large` |
+| Body over 1 MiB | 400 `body-too-large` |
 | Sanitizer finds disallowed content | Never an error: strips it and returns a `sanitizer_stripped` warning |
 | Level lookup fails on save | Save fails (5xx); nothing is stored |
 | Tracking attribution fails | Pixel or redirect still served; failure logged |
@@ -289,11 +296,11 @@ WHERE r.id = @recipient_id AND r.campaign_id = @campaign_id
   escaped while Text and Subject are raw.
 - **Transactional**:
   - `{{k}}` is escaped.
-  - `{{{k}}}` is raw and then sanitized under `standard`.
+  - `{{{k}}}` is raw and then sanitized.
   - A value containing `{{other}}` is not expanded.
 - **API e2e**:
   - The archive response carries the sandbox CSP.
-  - Public pages carry the default CSP with the media and logo origins.
+  - Public pages carry the default CSP.
   - A `<script>` saved in a raw campaign under `standard` never reaches the
     archive HTML.
 - **Tracking integration** (Postgres): a foreign recipient gives a 302 and
