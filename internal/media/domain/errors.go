@@ -31,4 +31,10 @@ var (
 	// allocated, so a decompression bomb never reaches the decoder.
 	ErrImageTooLarge = apperr.NewIncorrectInput("image_too_large",
 		"this image has too many pixels (the limit is 25 megapixels)")
+
+	// ErrMediaMissing is returned when content that is going live references
+	// a library asset that no longer exists (or belongs to another tenant).
+	// Nothing is published or sent.
+	ErrMediaMissing = apperr.NewIncorrectInput("media_missing",
+		"a referenced media asset no longer exists")
 )

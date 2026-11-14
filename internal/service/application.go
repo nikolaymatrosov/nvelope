@@ -287,6 +287,9 @@ func buildMedia(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				"UploadAsset", logger),
 			DeleteAsset: decorator.ApplyCommandDecorators(
 				mediacommand.NewDeleteAssetHandler(assets, blobs), "DeleteAsset", logger),
+			PublishAssets: decorator.ApplyResultCommandDecorators(
+				mediacommand.NewPublishAssetsHandler(assets, blobs, cfg.BaseURL),
+				"PublishAssets", logger),
 		},
 		Queries: mediaapp.Queries{
 			ListAssets: decorator.ApplyQueryDecorators(

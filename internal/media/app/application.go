@@ -16,8 +16,9 @@ type Application struct {
 
 // Commands gathers the media context's state-changing handlers.
 type Commands struct {
-	UploadAsset decorator.ResultCommandHandler[command.UploadAsset, command.UploadAssetResult]
-	DeleteAsset decorator.CommandHandler[command.DeleteAsset]
+	UploadAsset   decorator.ResultCommandHandler[command.UploadAsset, command.UploadAssetResult]
+	DeleteAsset   decorator.CommandHandler[command.DeleteAsset]
+	PublishAssets decorator.ResultCommandHandler[command.PublishAssets, command.PublishAssetsResult]
 }
 
 // Queries gathers the media context's read-only handlers.
