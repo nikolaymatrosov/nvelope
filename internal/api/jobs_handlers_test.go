@@ -32,8 +32,8 @@ func (ts *testServer) startWorker() {
 	memberships := audienceadapters.NewMemberships(ts.pool)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, audienceadapters.NewImportWorker(jobRepo, subscribers, memberships))
-	river.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
+	jobs.AddWorker(workers, audienceadapters.NewImportWorker(jobRepo, subscribers, memberships))
+	jobs.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
 
 	client, err := jobs.NewWorkerClient(ts.pool, "import_export", 2, workers)
 	require.NoError(ts.t, err)

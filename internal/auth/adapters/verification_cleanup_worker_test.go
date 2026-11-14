@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/auth/adapters"
@@ -31,9 +30,7 @@ func TestVerificationCleanupWorkerSweepsExpiredTokens(t *testing.T) {
 	require.NoError(t, err)
 
 	worker := adapters.NewVerificationCleanupWorker(repo)
-	require.NoError(t, worker.Work(ctx, &river.Job[jobs.VerificationCleanupArgs]{
-		Args: jobs.VerificationCleanupArgs{},
-	}))
+	require.NoError(t, worker.Work(ctx, jobs.VerificationCleanupArgs{}))
 
 	_, err = repo.GetByTokenHash(ctx, "cleanup-worker-expired-hash")
 	require.ErrorIs(t, err, domain.ErrVerificationLinkInvalid,

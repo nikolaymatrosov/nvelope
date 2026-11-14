@@ -104,18 +104,18 @@ func main() {
 	enqueuer := jobs.NewSendEnqueuer(insertClient, cfg.WorkerSendQueue)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, audienceadapters.NewImportWorker(jobRepo, subscribers, memberships))
-	river.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
-	river.AddWorker(workers, audienceadapters.NewOptinWorker(pendingSubscriptions, subscriptionPages,
+	jobs.AddWorker(workers, audienceadapters.NewImportWorker(jobRepo, subscribers, memberships))
+	jobs.AddWorker(workers, audienceadapters.NewExportWorker(jobRepo, subscribers))
+	jobs.AddWorker(workers, audienceadapters.NewOptinWorker(pendingSubscriptions, subscriptionPages,
 		service.NewSendingDomainResolver(sendingDomains), service.NewConfirmationMailer(messenger),
 		cfg.PublicBaseURL))
 
 	// Registration email-verification sends ride the sending queue too.
-	river.AddWorker(workers, authadapters.NewVerificationWorker(
+	jobs.AddWorker(workers, authadapters.NewVerificationWorker(
 		authadapters.NewUsers(pool), service.NewVerificationMailer(messenger),
 		cfg.VerificationSenderDomain, cfg.VerificationSenderName, cfg.PublicBaseURL))
 	// The cleanup sweep prunes expired email-verification tokens.
-	river.AddWorker(workers, authadapters.NewVerificationCleanupWorker(
+	jobs.AddWorker(workers, authadapters.NewVerificationCleanupWorker(
 		authadapters.NewEmailVerifications(pool)))
 	jobs.AddWorker(workers, sendingadapters.NewVerifyWorker(sendingDomains, verifier,
 		cfg.SendingDomainVerifyInterval, cfg.SendingDomainVerifyWindow))
@@ -147,9 +147,9 @@ func main() {
 	subscriberLookup := service.NewSubscriberLookup(subscribers)
 	tenantNameLookup := service.NewTenantNameLookup(tenantadapters.NewTenants(pool))
 
-	river.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
+	jobs.AddWorker(workers, campaignadapters.NewStartWorker(campaigns, recipients, tracking,
 		recipientSource, enqueuer, quotaGate, cfg.CampaignBatchSize))
-	river.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
+	jobs.AddWorker(workers, campaignadapters.NewBatchWorker(campaigns, recipients, tracking,
 		messenger, rateLimiter, domainLookup, campaignSuppression, usageRecorder,
 		unsubscribeLinker, subscriberLookup, tenantNameLookup, perTenant, cfg.BaseURL))
 
@@ -161,12 +161,12 @@ func main() {
 		deliverabilitySettings)
 	processFeedback := deliverabilitycommand.NewProcessFeedbackHandler(
 		deliverabilityEvents, suppressor, logger)
-	river.AddWorker(workers, deliverabilityadapters.NewFeedbackWorker(processFeedback))
+	jobs.AddWorker(workers, deliverabilityadapters.NewFeedbackWorker(processFeedback))
 
 	// Deliverability: periodic per-tenant campaign analytics refresh.
 	deliverabilityAnalytics := deliverabilityadapters.NewAnalytics(pool)
 	refreshAnalytics := deliverabilitycommand.NewRefreshAnalyticsHandler(deliverabilityAnalytics)
-	river.AddWorker(workers, deliverabilityadapters.NewAnalyticsWorker(refreshAnalytics))
+	jobs.AddWorker(workers, deliverabilityadapters.NewAnalyticsWorker(refreshAnalytics))
 
 	// Billing: the renewal/dunning sweep, per-subscription charges, and usage
 	// rollup. The MockGateway approves by default; a real provider is a later,
@@ -177,9 +177,9 @@ func main() {
 	sweepHandler := billingcommand.NewRunBillingSweepHandler(billingDue, enqueuer)
 	rollupHandler := billingcommand.NewRollupUsageHandler(
 		billingUsage, billingSubscriptions, billingPlans)
-	river.AddWorker(workers, billingadapters.NewSweepWorker(sweepHandler))
-	river.AddWorker(workers, billingadapters.NewChargeWorker(chargeHandler))
-	river.AddWorker(workers, billingadapters.NewRollupWorker(rollupHandler))
+	jobs.AddWorker(workers, billingadapters.NewSweepWorker(sweepHandler))
+	jobs.AddWorker(workers, billingadapters.NewChargeWorker(chargeHandler))
+	jobs.AddWorker(workers, billingadapters.NewRollupWorker(rollupHandler))
 
 	client, err := jobs.NewWorkerClientForQueues(pool, map[string]int{
 		cfg.WorkerQueue:     cfg.WorkerTenantConcurrency,

@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/riverqueue/river"
-
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
-// VerificationCleanupWorker is the River worker that prunes expired
+// VerificationCleanupWorker is the job worker that prunes expired
 // email-verification tokens, so the email_verification_tokens table stays
 // bounded to the tokens still within their validity window.
 type VerificationCleanupWorker struct {
-	river.WorkerDefaults[jobs.VerificationCleanupArgs]
 	verifications *EmailVerifications
 }
 
@@ -29,7 +26,7 @@ func NewVerificationCleanupWorker(verifications *EmailVerifications) *Verificati
 
 // Work deletes every verification token that has passed its expiry.
 func (w *VerificationCleanupWorker) Work(ctx context.Context,
-	_ *river.Job[jobs.VerificationCleanupArgs]) error {
+	_ jobs.VerificationCleanupArgs) error {
 
 	if _, err := w.verifications.DeleteExpiredBefore(ctx, time.Now()); err != nil {
 		return fmt.Errorf("sweeping expired verification tokens: %w", err)

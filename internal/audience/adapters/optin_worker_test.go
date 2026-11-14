@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
@@ -66,13 +65,11 @@ func TestOptinWorkerSendsConfirmationEmail(t *testing.T) {
 	}
 	worker := adapters.NewOptinWorker(pending, pages, resolver, mailer, "https://pages.example.com")
 
-	require.NoError(t, worker.Work(ctx, &river.Job[jobs.OptinSendArgs]{
-		Args: jobs.OptinSendArgs{
-			TenantID:              tenantID,
-			TenantSlug:            "acme",
-			PendingSubscriptionID: pendingID,
-			ConfirmationToken:     rawToken,
-		},
+	require.NoError(t, worker.Work(ctx, jobs.OptinSendArgs{
+		TenantID:              tenantID,
+		TenantSlug:            "acme",
+		PendingSubscriptionID: pendingID,
+		ConfirmationToken:     rawToken,
 	}))
 
 	require.Equal(t, 1, mailer.sent)
@@ -95,12 +92,10 @@ func TestOptinWorkerIgnoresMissingPending(t *testing.T) {
 		mailer, "https://pages.example.com")
 
 	// A confirmed-and-deleted pending subscription must not fail a redelivery.
-	require.NoError(t, worker.Work(ctx, &river.Job[jobs.OptinSendArgs]{
-		Args: jobs.OptinSendArgs{
-			TenantID:              tenantID,
-			PendingSubscriptionID: "00000000-0000-0000-0000-000000000000",
-			ConfirmationToken:     "irrelevant",
-		},
+	require.NoError(t, worker.Work(ctx, jobs.OptinSendArgs{
+		TenantID:              tenantID,
+		PendingSubscriptionID: "00000000-0000-0000-0000-000000000000",
+		ConfirmationToken:     "irrelevant",
 	}))
 	require.Equal(t, 0, mailer.sent)
 }

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
@@ -168,9 +167,7 @@ func (f *pipelineFixture) run(t *testing.T, batchSize int, perTenant ratelimit.L
 
 	start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
 		f.source, f.enqueuer, nil, batchSize)
-	require.NoError(t, start.Work(ctx, &river.Job[jobs.CampaignStartArgs]{
-		Args: jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID},
-	}))
+	require.NoError(t, start.Work(ctx, jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID}))
 
 	batch := adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
 		f.messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
@@ -179,11 +176,9 @@ func (f *pipelineFixture) run(t *testing.T, batchSize int, perTenant ratelimit.L
 
 	for _, b := range f.enqueuer.batches {
 		for attempt := 0; attempt < 50; attempt++ {
-			err := batch.Work(ctx, &river.Job[jobs.CampaignBatchArgs]{
-				Args: jobs.CampaignBatchArgs{
-					TenantID: f.tenantID, CampaignID: f.campaignID,
-					Offset: b[0], Limit: b[1],
-				},
+			err := batch.Work(ctx, jobs.CampaignBatchArgs{
+				TenantID: f.tenantID, CampaignID: f.campaignID,
+				Offset: b[0], Limit: b[1],
 			})
 			if err == nil {
 				break
