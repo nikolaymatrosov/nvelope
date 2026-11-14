@@ -145,8 +145,16 @@ Each container is built from an existing image. There are no new binaries.
 - **Baseline migration rules.** YDB does not run DDL inside a transaction, so a
   failure partway through a file can leave a partial schema. `/admin/migrate`
   stays idempotent only if every DDL statement uses `IF NOT EXISTS` (and
-  `IF EXISTS` for drops). The spike did not test this failure path; Plan B
-  must.
+  `IF EXISTS` for drops). Plan B1 tested this failure path
+  (`TestMigrateYDBConvergesAfterPartialFailure`): a half-applied file is not
+  recorded, and the re-run converges.
+- **Non-idempotent statements sit alone in their own file.** YQL
+  `ALTER TABLE … ADD/DROP COLUMN` has no `IF NOT EXISTS` form, so the
+  idempotency rule cannot hold for schema changes after the first release. A
+  file that holds such a statement holds nothing else. Ceiling: if the
+  statement succeeds but recording the version fails, the re-run fails on the
+  already-applied change and needs a manual fix. The upgrade path is recording
+  progress per statement.
 - Tenant-scoped tables use a primary key starting with `tenant_id`, e.g.
   `(tenant_id, id)`, so the explicit predicate is a key-prefix lookup.
 - **IDs are generated in Go** (`uuid.NewString()`, v4). Today 36 tables default
@@ -539,6 +547,25 @@ No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier,
 
 All other sites are `safe`.
 
+### Plan B2 planning spike
+
+Run against `ydbplatform/local-ydb:26.3.1.23` while planning the auth port.
+
+- `SELECT ... FROM t VIEW idx WHERE col = $x` through a `GLOBAL UNIQUE SYNC`
+  index: PASS.
+- A unique-index conflict on `INSERT` inside `DoTx` surfaces **at the
+  statement**, not at commit. `db.IsYDBConflict` is true both for the
+  statement error and for the error `DoTx` returns, and the transaction is
+  rolled back (no row written). Not tested: continuing the transaction after
+  the conflict, which `Recipients.BulkInsert` would need (still to verify in
+  the campaign plan).
+- `DELETE FROM t ON SELECT id FROM t VIEW idx WHERE ...`: PASS.
+- `DELETE ... ON SELECT` followed by `INSERT ... RETURNING created_at` on the
+  same table in one `DoTx`: PASS (read after write in one transaction works).
+- `UPDATE ... WHERE id = $id RETURNING id`: one row for an existing id, zero
+  rows and no error for a missing one.
+- `QueryRow` on zero rows: `errors.Is(err, query.ErrNoRows)` is true.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -568,7 +595,9 @@ The plan is split into three plans. Each one merges to `main` on its own.
 - **Plan B: YDB adapters.** Split into B1 (the migration runner, the
   contract-test harness and the sending context as its pilot, the snooze
   reset from V6, and `ydbthrottle`) and one plan per remaining context, in
-  this order: tenant, iam, auth, audience, campaign, deliverability, media.
+  this order: auth, tenant, iam, audience, campaign, deliverability, media.
+  Auth comes before tenant because `Tenants.ListMembers` joins
+  `platform_users`, which auth owns, and auth depends on no tenant table.
   Each context converts its `*_pg_test.go` into a pg+ydb contract suite in the
   same task that adds its YDB adapter. The harness shape is fixed by the first
   context (sending, the smallest). Building it earlier, with only one
