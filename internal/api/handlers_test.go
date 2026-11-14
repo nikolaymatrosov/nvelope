@@ -417,3 +417,23 @@ func TestSetRawHTMLSanitization(t *testing.T) {
 	require.NotNil(t, found, "the change is audited")
 	require.Equal(t, map[string]any{"from": "standard", "to": "off"}, found["Metadata"])
 }
+
+func TestSetRawHTMLSanitizationRequiresSettingsManage(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	member, _ := ts.addMember(slug)
+	ts.enterWorkspaceOn(member, slug)
+
+	status, _ := ts.do(member, http.MethodPut, base+"/settings/raw-html-sanitization",
+		map[string]any{"level": "off", "accept_risk": true})
+	require.Equal(t, http.StatusForbidden, status, "no settings:manage permission")
+
+	status, body := ts.request(http.MethodGet, base+"/settings", nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "standard", body["settings"].(map[string]any)["raw_html_sanitization"])
+}
