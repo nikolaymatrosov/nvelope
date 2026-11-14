@@ -110,9 +110,10 @@ Each container is built from an existing image. There are no new binaries.
 
 ### Transactions
 
-- `ydbtx.Do(ctx, db, fn)` replaces `tenantdb.WithTenant`. It is built on
-  `db.Query().DoTx` from `ydb-go-sdk/v3` (already in `go.mod`), uses
-  serializable isolation. It only runs the transaction. Tenant scoping is the
+- Adapters call `db.Query().DoTx` from `ydb-go-sdk/v3` (already in `go.mod`)
+  directly, in place of `tenantdb.WithTenant`. It is serializable read-write by
+  default. A one-line `ydbtx.Do` wrapper was planned and dropped (Plan B1): it
+  would add nothing. `DoTx` only runs the transaction. Tenant scoping is the
   adapter's responsibility: every YQL query filters by the `tenantID` the port
   already receives, through an explicit `tenant_id` predicate. The reasons are
   isolation of parallel contract tests (see Testing) and keeping the
@@ -125,16 +126,19 @@ Each container is built from an existing image. There are no new binaries.
 
 ### Schema and migrations
 
-- One baseline YQL migration in `internal/db/ydbmigrations/000001_baseline.up.sql`
-  covering the in-scope tables (about 38 of the 45). The 21-migration Postgres
-  history is not replayed.
+- One YQL migration file per ported context in `internal/db/ydbmigrations/`,
+  numbered in port order (`000001_sending.up.sql`, `000002_throttle.up.sql`,
+  …), covering the in-scope tables (about 38 of the 45) once all contexts are
+  ported. Nothing is released yet, so there is no history to keep, and the
+  21-migration Postgres history is not replayed.
 - Runner: `golang-migrate` v4.19.1 has **no** `ydb` driver (checked during
   planning). The default is a small in-repo runner:
   - embedded `*.up.sql` files are applied in order, one `db.Query().Exec` per
     statement (files are split on lines ending in `;`), because the general YDB
     query-text limit is 10 KB (V5) and the current pg migrations total 59 KB
     with 45 `CREATE TABLE`s;
-  - applied versions are recorded in a `schema_migrations` table.
+  - applied versions are recorded in a `schema_migrations (version_id Uint64)`
+    table; a version is recorded only after all of its statements succeed.
 
   If this runner proves unworkable, the fallback is `pressly/goose` v3.30.1,
   which has a `ydb` dialect.
@@ -163,7 +167,8 @@ Each container is built from an existing image. There are no new binaries.
 | `SELECT ... FOR UPDATE` (7) | removed. A serializable conflict aborts the tx and the SDK retries it. |
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
-| `jsonb` | `JsonDocument` |
+| `jsonb` | `JsonDocument` where YQL queries into the document (audience attributes, segments). JSON that is only stored and read back whole (e.g. `sending_domains.dkim_records`) is a plain `Utf8` column. |
+| bound parameters (`$1`, `@name`) | `$name` parameters, each declared explicitly with `DECLARE $name AS <Type>;`. String literals that target a `Utf8` column take the `u` suffix (`"pending"u`); a bare `"..."` literal is `String`. Identifiers avoid YQL keywords (e.g. `throttle_key`, not `key`). |
 | segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | needs its own YQL port, using `JSON_VALUE` / `JSON_EXISTS` on `JsonDocument` or equivalent. Exact functions **to verify in Plan B**. |
 | `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE` (V1 passed only for an ASCII literal against an ASCII literal; Utf8 columns, parameters and Cyrillic are **to verify in Plan B**). Otherwise a stored lowercase column with `LIKE`. |
 | `SECURITY DEFINER` functions (6) | ordinary queries. With no RLS, the privilege bypass they existed for is unnecessary. Billing-only functions are dropped. |
@@ -171,11 +176,14 @@ Each container is built from an existing image. There are no new binaries.
 ### Throttling
 
 `ydbthrottle.Counter` is a fixed-window counter on a table
-`throttle_windows(key Utf8, window_start Timestamp, count Uint64, expire_at Timestamp)`
-with TTL on `expire_at`. `Allow(key, limit)` runs one read-modify-write
-transaction. It reads the current window's row, then `UPSERT`s `count + 1`. The
-SDK retries on a serializable conflict. When the limit is exceeded it returns
-`retryAfter = window_end - now`. It implements all three existing ports:
+`throttle_windows(throttle_key Utf8, window_start Timestamp, hits Uint64, expire_at Timestamp)`,
+primary key `(throttle_key, window_start)`, with TTL on `expire_at`.
+`Allow(ctx, windows...)` runs one read-modify-write transaction over one or
+more windows. It admits the hit only when every window has room, and only then
+counts it in all of them, matching the Redis limiter's semantics (a denial
+never consumes one window's budget while another is full). The SDK retries on
+a serializable conflict. When denied it returns `retryAfter` = the longest
+wait until a full window rolls over. It backs all three existing ports:
 
 - `campaign/domain.RateLimiter` (send limiter, today `platform/ratelimit` on Redis)
 - the auth verification-resend throttle (today `auth/adapters/resend_throttle.go`)
@@ -557,13 +565,14 @@ The plan is split into three plans. Each one merges to `main` on its own.
 - **Plan A: SaaS-safe groundwork.** Worker decoupling (`Work(ctx, args)`,
   `jobs.AddWorker`); the `dbtest.YDB` local-YDB test container; the V1, V2, V4,
   V5 and V6 spikes and audit, with findings recorded in this spec.
-- **Plan B: YDB adapters.** `ydbtx`, the migration runner and baseline schema,
-  then per-context adapters in this order: sending, tenant, iam, auth,
-  audience, campaign, deliverability, media. Each context converts its
-  `*_pg_test.go` into a pg+ydb contract suite in the same task that adds its
-  YDB adapter. The harness shape is fixed by the first context (sending, the
-  smallest). Building it earlier, with only one implementation, would be a
-  speculative abstraction. Then `ydbthrottle`.
+- **Plan B: YDB adapters.** Split into B1 (the migration runner, the
+  contract-test harness and the sending context as its pilot, the snooze
+  reset from V6, and `ydbthrottle`) and one plan per remaining context, in
+  this order: tenant, iam, auth, audience, campaign, deliverability, media.
+  Each context converts its `*_pg_test.go` into a pg+ydb contract suite in the
+  same task that adds its YDB adapter. The harness shape is fixed by the first
+  context (sending, the smallest). Building it earlier, with only one
+  implementation, would be a speculative abstraction.
 - **Plan C: Serverless runtime and packaging.** YMQ enqueuer; `/jobs`, `/cron`,
   `/feedback` and `/admin/migrate`; the serverless composition root;
   single-tenant bootstrap; `/api/platform/config` and the frontend flags; the
