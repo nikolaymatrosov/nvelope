@@ -138,3 +138,90 @@ func rawHTMLToText(in string) string {
 }
 
 var tagRE = regexp.MustCompile(`<[^>]+>`)
+
+// SanitizeDocument is the save-time gate for raw (non-visual) campaign and
+// template HTML under a tenant's "standard" raw-HTML level.
+//
+// Unlike Sanitize, it keeps a full email document intact: doctype, <head>,
+// <style> blocks with media queries, MSO conditional comments, legacy table
+// attributes, and unrestricted inline style.
+//
+// It strips only active content: scripts, frames, plugins, forms, <base>,
+// <link>, inline SVG/MathML, event handlers, meta refresh, and script or
+// non-image data: URLs. It returns one sanitizer_stripped warning when the
+// input held any such construct.
+func SanitizeDocument(bodyHTML string) (sanitized string, warnings []domain.RenderWarning) {
+	if bodyHTML == "" {
+		return "", nil
+	}
+	out := documentPolicy.Sanitize(bodyHTML)
+	// bluemonday drops the doctype, and without one the archive renders in
+	// quirks mode. The match excludes '<' and '>', so it cannot carry markup.
+	if m := doctypeRE.FindStringSubmatch(bodyHTML); m != nil {
+		out = m[1] + out
+	}
+	if documentStripped(bodyHTML) {
+		warnings = append(warnings, domain.RenderWarning{
+			Kind:   "sanitizer_stripped",
+			Detail: "removed active HTML (scripts, frames, forms, event handlers, or unsafe URLs)",
+		})
+	}
+	return out, warnings
+}
+
+var (
+	doctypeRE               = regexp.MustCompile(`(?i)^\s*(<!doctype\s+html[^<>]*>)`)
+	documentDisallowedTagRE = regexp.MustCompile(`(?i)<\s*(script|iframe|frame|frameset|object|embed|applet|form|input|button|select|textarea|base|link|svg|math)\b`)
+	metaRefreshRE           = regexp.MustCompile(`(?i)http-equiv\s*=\s*["']?\s*refresh`)
+	scriptSchemeRE          = regexp.MustCompile(`(?i)\b(?:javascript|vbscript|file):`)
+	dataURIRE               = regexp.MustCompile(`(?i)\bdata:[a-z0-9.+-]*/?`)
+	httpURLRE               = regexp.MustCompile(`(?i)^https?://`)
+	metaNameRE              = regexp.MustCompile(`(?i)^(viewport|format-detection|x-apple-disable-message-reformatting|color-scheme|supported-color-schemes)$`)
+	metaHTTPEquivRE         = regexp.MustCompile(`(?i)^(content-type|x-ua-compatible)$`)
+)
+
+// documentStripped reports whether the input held a construct the document
+// policy removes. It drives the operator-facing warning only. The policy
+// does the stripping.
+func documentStripped(in string) bool {
+	if documentDisallowedTagRE.MatchString(in) || onEventAttrRE.MatchString(in) ||
+		metaRefreshRE.MatchString(in) || scriptSchemeRE.MatchString(in) {
+		return true
+	}
+	for _, m := range dataURIRE.FindAllString(in, -1) {
+		if !strings.HasPrefix(strings.ToLower(m), "data:image/") {
+			return true
+		}
+	}
+	return false
+}
+
+// documentPolicy is the bluemonday policy behind SanitizeDocument. It is
+// built once; a Policy is safe for concurrent use.
+var documentPolicy = func() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	// Keeping <style> elements requires AllowUnsafe. <script> is never on the
+	// allow-list, so it is still removed together with its content. CSS
+	// cannot run script in current engines, and the tokenizer applies the
+	// browser's raw-text rules, so the first </style> always closes the
+	// element.
+	p.AllowUnsafe(true)
+	p.AllowElements("html", "head", "body", "title", "style", "meta", "center", "font")
+	p.AllowNoAttrs().OnElements("center", "font")
+	p.AllowComments() // MSO conditional comments
+	p.AllowAttrs("style", "class", "id").Globally()
+	p.AllowAttrs("color", "face", "size").OnElements("font")
+	p.AllowAttrs("bgcolor", "align", "valign", "width", "height", "border",
+		"cellpadding", "cellspacing").
+		OnElements("body", "table", "thead", "tbody", "tfoot", "tr", "td", "th",
+			"img", "div", "p", "center")
+	p.AllowAttrs("background").Matching(httpURLRE).OnElements("body", "table", "td", "th")
+	p.AllowAttrs("colspan", "rowspan").OnElements("td", "th")
+	p.AllowAttrs("charset").OnElements("meta")
+	p.AllowAttrs("name").Matching(metaNameRE).OnElements("meta")
+	p.AllowAttrs("http-equiv").Matching(metaHTTPEquivRE).OnElements("meta")
+	p.AllowAttrs("content").OnElements("meta")
+	p.AllowURLSchemes("http", "https", "mailto", "tel")
+	p.AllowDataURIImages()
+	return p
+}()
