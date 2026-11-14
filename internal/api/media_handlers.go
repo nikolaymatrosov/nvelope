@@ -92,18 +92,27 @@ func (s *Server) handleMediaContent(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
-// handleDeleteMedia removes an asset's metadata row and its bytes.
+// handleDeleteMedia removes an asset's metadata row and private object. With
+// ?unpublish=true it also takes down the public copy (audited), which breaks
+// the image in sent emails and the archive.
 func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
 	ws := tenantFromContext(r.Context())
 	if _, ok := s.requirePermission(w, r, iamdomain.PermMediaManage); !ok {
 		return
 	}
-	if err := s.media.Commands.DeleteAsset.Handle(r.Context(), mediacommand.DeleteAsset{
-		TenantID: ws.ID,
-		AssetID:  chi.URLParam(r, "id"),
-	}); err != nil {
+	assetID := chi.URLParam(r, "id")
+	res, err := s.media.Commands.DeleteAsset.Handle(r.Context(), mediacommand.DeleteAsset{
+		TenantID:  ws.ID,
+		AssetID:   assetID,
+		Unpublish: r.URL.Query().Get("unpublish") == "true",
+	})
+	if err != nil {
 		s.fail(w, r, "delete media", err)
 		return
+	}
+	if res.Unpublished {
+		s.recordAudit(r.Context(), "media.unpublished", assetID,
+			map[string]any{"filename": res.Filename})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

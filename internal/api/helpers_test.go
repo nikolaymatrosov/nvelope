@@ -95,11 +95,13 @@ type testServer struct {
 	pool        *pgxpool.Pool
 	sendQueue   string
 	txMessenger *capturingMessenger
+	blobs       *mediaadapters.MemoryBlobStore
 }
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 	pool := dbtest.AppPool(t)
+	blobs := mediaadapters.NewMemoryBlobStore("https://media.test")
 	// Every signup enqueues a verification-email job, so the River queue tables
 	// must exist before the first request.
 	ensureRiverMigrated(t)
@@ -123,7 +125,7 @@ func newTestServer(t *testing.T) *testServer {
 	app := service.NewApplication(pool, cfg, logger,
 		service.WithSendingProvisioner(fakeProvisioner{}),
 		service.WithCampaignSender(txMessenger, permissiveLimiter{}),
-		service.WithMediaBlobStore(mediaadapters.NewMemoryBlobStore("https://media.test")))
+		service.WithMediaBlobStore(blobs))
 	handler := New(app.Auth, app.Tenant, app.Audience, app.IAM, app.Sending,
 		app.Campaign, app.Deliverability, app.Billing, app.Media, app.Tracking,
 		app.Audit, cfg, logger, http.NotFoundHandler()).Handler()
@@ -140,7 +142,7 @@ func newTestServer(t *testing.T) *testServer {
 
 	return &testServer{
 		Server: hs, t: t, client: client, pool: pool,
-		sendQueue: sendQueue, txMessenger: txMessenger,
+		sendQueue: sendQueue, txMessenger: txMessenger, blobs: blobs,
 	}
 }
 

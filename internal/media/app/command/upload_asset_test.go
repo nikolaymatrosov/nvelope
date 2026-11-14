@@ -234,17 +234,54 @@ func TestDeleteAsset_removesRowAndObject(t *testing.T) {
 	blobs := adapters.NewMemoryBlobStore("https://media.test")
 	logo := uploadPNG(t, repo, blobs, "logo.png")
 
-	require.NoError(t, command.NewDeleteAssetHandler(repo, blobs).Handle(context.Background(),
-		command.DeleteAsset{TenantID: "tenant-1", AssetID: logo.AssetID}))
+	res, err := command.NewDeleteAssetHandler(repo, blobs).Handle(context.Background(),
+		command.DeleteAsset{TenantID: "tenant-1", AssetID: logo.AssetID})
+	require.NoError(t, err)
+	require.False(t, res.Unpublished)
 	require.Zero(t, blobs.Len())
-	_, err := repo.Get(context.Background(), "tenant-1", logo.AssetID)
+	_, err = repo.Get(context.Background(), "tenant-1", logo.AssetID)
 	require.ErrorIs(t, err, domain.ErrMediaNotFound)
 }
 
 func TestDeleteAsset_unknownIsNotFound(t *testing.T) {
 	repo := &fakeAssets{}
 	blobs := adapters.NewMemoryBlobStore("https://media.test")
-	err := command.NewDeleteAssetHandler(repo, blobs).Handle(context.Background(),
+	_, err := command.NewDeleteAssetHandler(repo, blobs).Handle(context.Background(),
 		command.DeleteAsset{TenantID: "tenant-1", AssetID: "nope"})
 	require.ErrorIs(t, err, domain.ErrMediaNotFound)
+}
+
+func TestDeleteAsset_keepsPublicCopyByDefault(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeAssets{}
+	blobs := adapters.NewMemoryBlobStore("https://media.test")
+	logo := uploadPNG(t, repo, blobs, "logo.png")
+	_, err := command.NewPublishAssetsHandler(repo, blobs, "https://app.test").Handle(ctx,
+		command.PublishAssets{TenantID: "tenant-1", Texts: []string{logo.URL}})
+	require.NoError(t, err)
+
+	res, err := command.NewDeleteAssetHandler(repo, blobs).Handle(ctx,
+		command.DeleteAsset{TenantID: "tenant-1", AssetID: logo.AssetID})
+	require.NoError(t, err)
+	require.False(t, res.Unpublished)
+	_, _, ok := blobs.Get("published/tenant-1/" + logo.AssetID + "/logo.png")
+	require.True(t, ok, "sent emails keep working")
+	require.Equal(t, 1, blobs.Len())
+}
+
+func TestDeleteAsset_unpublishRemovesPublicCopy(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeAssets{}
+	blobs := adapters.NewMemoryBlobStore("https://media.test")
+	logo := uploadPNG(t, repo, blobs, "logo.png")
+	_, err := command.NewPublishAssetsHandler(repo, blobs, "https://app.test").Handle(ctx,
+		command.PublishAssets{TenantID: "tenant-1", Texts: []string{logo.URL}})
+	require.NoError(t, err)
+
+	res, err := command.NewDeleteAssetHandler(repo, blobs).Handle(ctx,
+		command.DeleteAsset{TenantID: "tenant-1", AssetID: logo.AssetID, Unpublish: true})
+	require.NoError(t, err)
+	require.True(t, res.Unpublished)
+	require.Equal(t, "logo.png", res.Filename)
+	require.Zero(t, blobs.Len())
 }

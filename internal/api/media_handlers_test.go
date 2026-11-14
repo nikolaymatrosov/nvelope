@@ -191,3 +191,24 @@ func TestCampaignStartBlockedByDeletedMedia(t *testing.T) {
 	_, body = ts.request(http.MethodGet, base+"/campaigns/"+campaignID, nil)
 	require.Equal(t, "draft", body["status"])
 }
+
+func TestMediaDeleteCanTakeDownThePublicCopy(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	base, assetID, _ := ts.startCampaignWithLogo()
+	require.Equal(t, 2, ts.blobs.Len(), "the library object and its public copy")
+
+	status, _ := ts.request(http.MethodDelete, base+"/media/"+assetID+"?unpublish=true", nil)
+	require.Equal(t, http.StatusNoContent, status)
+	require.Zero(t, ts.blobs.Len())
+
+	status, body := ts.request(http.MethodGet, base+"/audit?limit=100", nil)
+	require.Equal(t, http.StatusOK, status)
+	var found bool
+	for _, r := range body["records"].([]any) {
+		if r.(map[string]any)["Action"] == "media.unpublished" {
+			found = true
+		}
+	}
+	require.True(t, found, "the takedown is audited")
+}
