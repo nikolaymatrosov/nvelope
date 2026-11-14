@@ -28,14 +28,16 @@ type CreateTemplateResult struct {
 type CreateTemplateHandler struct {
 	templates domain.TemplateRepository
 	policy    RawHTMLPolicy
+	media     MediaPublisher
 }
 
 // NewCreateTemplateHandler builds the handler, failing fast on a nil dependency.
-func NewCreateTemplateHandler(templates domain.TemplateRepository, policy RawHTMLPolicy) CreateTemplateHandler {
-	if templates == nil || policy == nil {
+func NewCreateTemplateHandler(templates domain.TemplateRepository, policy RawHTMLPolicy,
+	media MediaPublisher) CreateTemplateHandler {
+	if templates == nil || policy == nil || media == nil {
 		panic("nil dependency")
 	}
-	return CreateTemplateHandler{templates: templates, policy: policy}
+	return CreateTemplateHandler{templates: templates, policy: policy, media: media}
 }
 
 // Handle validates the request through the domain constructor and persists the
@@ -45,8 +47,13 @@ func (h CreateTemplateHandler) Handle(ctx context.Context, cmd CreateTemplate) (
 	if err != nil {
 		return CreateTemplateResult{}, err
 	}
+	bodyHTML, bodyText, err := publishIfTransactional(ctx, h.media, cmd.TenantID,
+		domain.Kind(cmd.Kind), bodyHTML, cmd.BodyText)
+	if err != nil {
+		return CreateTemplateResult{}, err
+	}
 	tpl, err := domain.NewTemplate(cmd.TenantID, cmd.Name, domain.Kind(cmd.Kind),
-		cmd.Subject, bodyHTML, cmd.BodyText)
+		cmd.Subject, bodyHTML, bodyText)
 	if err != nil {
 		return CreateTemplateResult{}, err
 	}
@@ -76,14 +83,16 @@ type UpdateTemplateResult struct {
 type UpdateTemplateHandler struct {
 	templates domain.TemplateRepository
 	policy    RawHTMLPolicy
+	media     MediaPublisher
 }
 
 // NewUpdateTemplateHandler builds the handler, failing fast on a nil dependency.
-func NewUpdateTemplateHandler(templates domain.TemplateRepository, policy RawHTMLPolicy) UpdateTemplateHandler {
-	if templates == nil || policy == nil {
+func NewUpdateTemplateHandler(templates domain.TemplateRepository, policy RawHTMLPolicy,
+	media MediaPublisher) UpdateTemplateHandler {
+	if templates == nil || policy == nil || media == nil {
 		panic("nil dependency")
 	}
-	return UpdateTemplateHandler{templates: templates, policy: policy}
+	return UpdateTemplateHandler{templates: templates, policy: policy, media: media}
 }
 
 // Handle sanitizes the raw body per the tenant's policy and applies the new
@@ -95,7 +104,12 @@ func (h UpdateTemplateHandler) Handle(ctx context.Context, cmd UpdateTemplate) (
 	}
 	if err := h.templates.Update(ctx, cmd.TenantID, cmd.TemplateID,
 		func(tpl *domain.Template) (*domain.Template, error) {
-			return tpl, tpl.Recompose(cmd.Name, cmd.Subject, bodyHTML, cmd.BodyText)
+			html, text, err := publishIfTransactional(ctx, h.media, cmd.TenantID, tpl.Kind(),
+				bodyHTML, cmd.BodyText)
+			if err != nil {
+				return nil, err
+			}
+			return tpl, tpl.Recompose(cmd.Name, cmd.Subject, html, text)
 		}); err != nil {
 		return UpdateTemplateResult{}, err
 	}

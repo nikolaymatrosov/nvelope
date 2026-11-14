@@ -50,6 +50,7 @@ type SaveVisualTemplateHandler struct {
 	templates domain.TemplateRepository
 	fields    FieldsProvider
 	mediaRefs MediaRefValidator
+	media     MediaPublisher
 }
 
 // NewSaveVisualTemplateHandler builds the handler, failing fast on a nil
@@ -57,11 +58,11 @@ type SaveVisualTemplateHandler struct {
 // fields/mediaRefs providers are pure read-side and called outside the
 // write transaction.
 func NewSaveVisualTemplateHandler(templates domain.TemplateRepository,
-	fields FieldsProvider, mediaRefs MediaRefValidator) SaveVisualTemplateHandler {
-	if templates == nil || fields == nil || mediaRefs == nil {
+	fields FieldsProvider, mediaRefs MediaRefValidator, media MediaPublisher) SaveVisualTemplateHandler {
+	if templates == nil || fields == nil || mediaRefs == nil || media == nil {
 		panic("nil dependency")
 	}
-	return SaveVisualTemplateHandler{templates: templates, fields: fields, mediaRefs: mediaRefs}
+	return SaveVisualTemplateHandler{templates: templates, fields: fields, mediaRefs: mediaRefs, media: media}
 }
 
 // Handle runs the save: resolve the field set, sanitize the BFF-rendered
@@ -90,9 +91,14 @@ func (h SaveVisualTemplateHandler) Handle(ctx context.Context,
 				res.CurrentUpdatedAt = t.UpdatedAt()
 				return nil, domain.ErrStaleRow
 			}
+			html, text, err := publishIfTransactional(ctx, h.media, cmd.TenantID, t.Kind(),
+				sanitizedHTML, cmd.BodyText)
+			if err != nil {
+				return nil, err
+			}
 			if err := t.ApplyVisualSave(
 				cmd.Subject, cmd.Doc, cmd.PinnedTheme,
-				sanitizedHTML, cmd.BodyText,
+				html, text,
 				cmd.DocJSON, cmd.ThemeJSON, warnings,
 				slugSetFieldSet(slugs), h.mediaRefs,
 			); err != nil {

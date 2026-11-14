@@ -496,9 +496,9 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 	app := campaignapp.Application{
 		Commands: campaignapp.Commands{
 			CreateTemplate: decorator.ApplyResultCommandDecorators(
-				campaigncommand.NewCreateTemplateHandler(templates, rawPolicy), "CreateTemplate", logger),
+				campaigncommand.NewCreateTemplateHandler(templates, rawPolicy, media), "CreateTemplate", logger),
 			UpdateTemplate: decorator.ApplyResultCommandDecorators(
-				campaigncommand.NewUpdateTemplateHandler(templates, rawPolicy), "UpdateTemplate", logger),
+				campaigncommand.NewUpdateTemplateHandler(templates, rawPolicy, media), "UpdateTemplate", logger),
 			DeleteTemplate: decorator.ApplyCommandDecorators(
 				campaigncommand.NewDeleteTemplateHandler(templates), "DeleteTemplate", logger),
 			CreateCampaign: decorator.ApplyResultCommandDecorators(
@@ -525,7 +525,7 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 				campaigncommand.NewSaveVisualCampaignHandler(campaigns, fields, mediaRefs),
 				"SaveVisualCampaign", logger),
 			SaveVisualTemplate: decorator.ApplyResultCommandDecorators(
-				campaigncommand.NewSaveVisualTemplateHandler(templates, fields, mediaRefs),
+				campaigncommand.NewSaveVisualTemplateHandler(templates, fields, mediaRefs, media),
 				"SaveVisualTemplate", logger),
 			ConvertCampaignToVisual: decorator.ApplyResultCommandDecorators(
 				campaigncommand.NewConvertCampaignToVisualHandler(campaigns, mediaRefs),
