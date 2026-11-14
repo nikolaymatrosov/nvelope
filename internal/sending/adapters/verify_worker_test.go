@@ -116,3 +116,39 @@ func TestVerifyWorkerTerminalDomainNoOp(t *testing.T) {
 	w := adapters.NewVerifyWorker(repo, fakeVerifier{verified: false}, time.Minute, 72*time.Hour)
 	require.NoError(t, w.Work(ctx, verifyJob(tenantID, id)), "a verified domain is left untouched")
 }
+
+// retryingDomains is a SendingDomainRepository whose Update runs fn twice, the
+// way a retried YDB transaction does: first on a pending copy, then — after a
+// concurrent writer verified the domain — on a verified copy. Only Get and
+// Update are implemented; the embedded nil interface panics on anything else.
+type retryingDomains struct {
+	domain.SendingDomainRepository
+	pending, verified *domain.SendingDomain
+}
+
+func (r retryingDomains) Get(context.Context, string, string) (*domain.SendingDomain, error) {
+	return r.pending, nil
+}
+
+func (r retryingDomains) Update(_ context.Context, _, _ string,
+	fn func(*domain.SendingDomain) (*domain.SendingDomain, error)) error {
+	if _, err := fn(r.pending); err != nil {
+		return err
+	}
+	_, err := fn(r.verified)
+	return err
+}
+
+func TestVerifyWorkerRetriedUpdateDoesNotSnoozeTerminalDomain(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	pending := domain.HydrateSendingDomain("d1", "t1", "mail.acme.com", domain.StatusPending,
+		nil, "", "", "identity", "", now, nil, nil)
+	verified := domain.HydrateSendingDomain("d1", "t1", "mail.acme.com", domain.StatusVerified,
+		nil, "", "", "identity", "", now, &now, &now)
+
+	w := adapters.NewVerifyWorker(retryingDomains{pending: pending, verified: verified},
+		fakeVerifier{verified: false}, time.Minute, 72*time.Hour)
+	require.NoError(t, w.Work(context.Background(), verifyJob("t1", "d1")),
+		"the last run of the retried transaction saw a verified domain, so the job must not snooze")
+}

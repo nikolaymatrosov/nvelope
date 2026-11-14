@@ -52,6 +52,9 @@ func (w *VerifyWorker) Work(ctx context.Context, args jobs.DomainVerifyArgs) err
 	var snooze bool
 	err = w.domains.Update(ctx, tenantID, domainID,
 		func(d *domain.SendingDomain) (*domain.SendingDomain, error) {
+			// The closure may run more than once (a retried YDB transaction), so
+			// the outcome is decided by its last run only.
+			snooze = false
 			if !d.IsPending() {
 				return d, nil
 			}
