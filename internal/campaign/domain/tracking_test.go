@@ -70,3 +70,16 @@ func TestApplyVariablesKeepsUnknownKeysAndIsRawInText(t *testing.T) {
 	require.Equal(t, "Hi Tom & Jerry {{missing}}", domain.ApplyVariables("Hi {{name}} {{missing}}", vars))
 	require.Equal(t, "Hi Tom & Jerry", domain.ApplyVariables("Hi {{{name}}}", vars))
 }
+
+func TestExtractLinksDecodesEntities(t *testing.T) {
+	t.Parallel()
+	links := domain.ExtractLinks(`<a href="https://a.test/?x=1&amp;y=2">A</a>`)
+	require.Equal(t, []string{"https://a.test/?x=1&y=2"}, links)
+}
+
+func TestRenderTrackedMatchesDecodedURL(t *testing.T) {
+	t.Parallel()
+	out := domain.RenderTracked(`<a href="https://a.test/?x=1&amp;y=2">A</a>`, "https://t.test",
+		"c", "r", map[string]string{"https://a.test/?x=1&y=2": "link-1"})
+	require.Contains(t, out, `href="https://t.test/l/link-1?s=r"`)
+}

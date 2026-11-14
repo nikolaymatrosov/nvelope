@@ -97,7 +97,11 @@ type TrackingRepository interface {
 	// UpsertLinks ensures one links row per distinct URL and returns the map
 	// from URL to its links-row id.
 	UpsertLinks(ctx context.Context, tenantID, campaignID string, urls []string) (map[string]string, error)
-	// RecordClick records a click and returns the link's original URL.
+	// RecordClick records a click and returns the link's original URL. The URL
+	// is returned even when recording fails (with the error) so the caller can
+	// still redirect. A missing, malformed, or foreign recipient records
+	// nothing and is not an error. An unknown link yields ErrLinkNotFound with
+	// an empty URL.
 	RecordClick(ctx context.Context, tenantID, linkID, recipientID string) (originalURL string, err error)
 	// RecordView records an open.
 	RecordView(ctx context.Context, tenantID, campaignID, recipientID string) error

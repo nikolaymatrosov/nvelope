@@ -60,7 +60,7 @@ func ExtractLinks(html string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, m := range hrefPattern.FindAllStringSubmatch(html, -1) {
-		url := m[1]
+		url := stdhtml.UnescapeString(m[1])
 		if !seen[url] {
 			seen[url] = true
 			out = append(out, url)
@@ -77,7 +77,7 @@ func RenderTracked(html, baseURL, campaignID, recipientID string, linkIDs map[st
 	base := strings.TrimRight(baseURL, "/")
 	rewritten := hrefPattern.ReplaceAllStringFunc(html, func(match string) string {
 		sub := hrefPattern.FindStringSubmatch(match)
-		linkID, ok := linkIDs[sub[1]]
+		linkID, ok := linkIDs[stdhtml.UnescapeString(sub[1])]
 		if !ok {
 			return match
 		}
