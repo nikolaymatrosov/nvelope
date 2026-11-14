@@ -60,6 +60,9 @@ func (s *Server) handleArchiveIndex(w http.ResponseWriter, r *http.Request) {
 // handleArchiveCampaign renders one archive-visible campaign as a standalone
 // page.
 func (s *Server) handleArchiveCampaign(w http.ResponseWriter, r *http.Request) {
+	// Campaign HTML is tenant-authored; render it in a sandboxed, opaque
+	// origin (overrides the default public CSP).
+	w.Header().Set("Content-Security-Policy", archiveCSP)
 	ws := tenantFromContext(r.Context())
 	view, err := s.campaign.Queries.GetArchivedCampaign.Handle(r.Context(),
 		campaignquery.GetArchivedCampaign{TenantID: ws.ID, CampaignID: chi.URLParam(r, "campaignId")})

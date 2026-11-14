@@ -258,10 +258,13 @@ func (s *Server) Handler() http.Handler {
 
 	// Subscriber preference page and one-click unsubscribe (Phase 6 US2). The
 	// signed token carries the tenant, so these routes are not slug-scoped.
-	r.Get("/p/{token}", s.handlePreferencesForm)
-	r.Post("/p/{token}", s.handlePreferencesSubmit)
-	r.Get("/u/{token}", s.handleUnsubscribe)
-	r.Post("/u/{token}", s.handleUnsubscribe)
+	r.Group(func(r chi.Router) {
+		r.Use(publicSecurityHeaders)
+		r.Get("/p/{token}", s.handlePreferencesForm)
+		r.Post("/p/{token}", s.handlePreferencesSubmit)
+		r.Get("/u/{token}", s.handleUnsubscribe)
+		r.Post("/u/{token}", s.handleUnsubscribe)
+	})
 
 	return r
 }
@@ -271,6 +274,7 @@ func (s *Server) Handler() http.Handler {
 // campaign archive, and RSS feed — none of which require a session.
 func (s *Server) mountPublicRoutes(r chi.Router) {
 	r.Route("/t/{slug}", func(r chi.Router) {
+		r.Use(publicSecurityHeaders)
 		r.Use(s.resolvePublicTenant)
 
 		// Public subscription + double opt-in (Phase 6 US1).
