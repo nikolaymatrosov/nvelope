@@ -395,6 +395,31 @@ its shape.
 
   *(Plan A audit.)*
 
+## Spike findings (Plan A)
+
+Run against `ydbplatform/local-ydb:26.3.1.23`.
+
+### V1 — `ILIKE`
+
+PASS. `SELECT "Alice@Example.com" ILIKE "alice%" AS hit;` returns true. The `String::AsciiToLower` fallback was not needed.
+
+Decision: subscriber search uses ILIKE
+
+### V4 — DDL, uniqueness, RETURNING, CurrentUtcTimestamp
+
+- Multi-statement DDL in one `Exec`: PASS (two `CREATE TABLE` statements in one `Exec`; Fallback A not needed)
+- TTL + inline `GLOBAL UNIQUE SYNC` index in `CREATE TABLE`: PASS
+- Duplicate unique-index value error: `operation/PRECONDITION_FAILED (code = 400120, issues = [{#2012 'Conflict with existing key'}])`
+- Duplicate primary key on `INSERT` error: `operation/PRECONDITION_FAILED (code = 400120, issues = [{#2012 'Conflict with existing key'}])` (identical to the unique-index error, so Plan B cannot tell the two apart by status; map `PRECONDITION_FAILED` with "Conflict with existing key" to "already exists")
+- `UPSERT ... RETURNING`: PASS (`UPSERT INTO ... VALUES (...) RETURNING count` scans a `Uint64` of 7)
+- `CurrentUtcTimestamp()` scan into `time.Time`: PASS (within one minute of the host clock)
+
+Notes for Plan B:
+- `CurrentUtcTimestamp() + Interval(...)` is `Optional<Timestamp>`; inserting it into a `NOT NULL Timestamp` column fails with `Failed to convert 'expire_at': Optional<Timestamp> to Timestamp`. Wrap it in `Unwrap(...)`.
+- Right after a fresh container start, DDL can fail with `database doesn't have storage pools at all to create tablet channels to storage pool binding by profile id` even though `SELECT 1` already succeeds; `waitYDBReady` should probe with DDL.
+
+Decision: in-repo runner, one Exec per file
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
