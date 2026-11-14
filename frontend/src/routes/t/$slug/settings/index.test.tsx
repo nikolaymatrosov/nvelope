@@ -12,6 +12,12 @@ vi.mock("@tanstack/react-router", () => ({
   }),
 }))
 
+let canMock: (p: string) => boolean = () => true
+
+vi.mock("@/hooks/use-permissions", () => ({
+  usePermissions: () => ({ can: (p: string) => canMock(p) }),
+}))
+
 vi.mock("@/lib/api", () => ({
   api: { getSettings: vi.fn(), updateSettings: vi.fn(), setRawHTMLSanitization: vi.fn() },
 }))
@@ -21,6 +27,7 @@ const ok = <T,>(data: T) => ({ status: 200, ok: true, data })
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  canMock = () => true
 })
 
 describe("SettingsView", () => {
@@ -64,5 +71,16 @@ describe("SettingsView", () => {
         accept_risk: true,
       }),
     )
+  })
+
+  it("hides the sanitization controls without settings:manage", async () => {
+    canMock = (p) => p !== "settings:manage"
+    vi.mocked(api.getSettings).mockResolvedValue(
+      ok({ display_name: "Acme", timezone: "UTC", raw_html_sanitization: "standard" }),
+    )
+    renderWithClient(<SettingsView />)
+
+    await screen.findByLabelText(/display name/i)
+    expect(screen.queryByRole("button", { name: /disable sanitization/i })).toBeNull()
   })
 })

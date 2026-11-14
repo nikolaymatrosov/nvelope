@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import type { RawHTMLSanitization, WorkspaceSettings } from "@/lib/api-types"
 import { api } from "@/lib/api"
+import { usePermissions } from "@/hooks/use-permissions"
 import { queryKeys } from "@/lib/query"
 import { errorMessage } from "@/lib/errors"
 import {
@@ -153,6 +154,7 @@ function RawHTMLSanitizationCard({
   level: RawHTMLSanitization
 }) {
   const queryClient = useQueryClient()
+  const { can } = usePermissions(slug)
   const { t } = useTranslation(["settings", "common"])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [accepted, setAccepted] = useState(false)
@@ -178,7 +180,7 @@ function RawHTMLSanitizationCard({
       </CardHeader>
       <CardContent className="flex flex-col items-start gap-3">
         <p className="text-sm">{off ? t("rawHtml.statusOff") : t("rawHtml.statusStandard")}</p>
-        {off ? (
+        {!can("settings:manage") ? null : off ? (
           <Button
             variant="outline"
             disabled={change.isPending}
