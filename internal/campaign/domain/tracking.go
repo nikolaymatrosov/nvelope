@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	stdhtml "html"
 	"regexp"
 	"strings"
 )
@@ -9,13 +10,48 @@ import (
 // hrefPattern matches an href attribute pointing at an http(s) URL.
 var hrefPattern = regexp.MustCompile(`(?i)href\s*=\s*"(https?://[^"]+)"`)
 
-// ApplyVariables substitutes every {{key}} placeholder in text with its value
-// from vars. A placeholder with no matching variable is left untouched.
+// variablePattern matches a transactional placeholder: {{{key}}} (group 1,
+// raw) or {{key}} (group 2).
+var variablePattern = regexp.MustCompile(`\{\{\{([^{}]+)\}\}\}|\{\{([^{}]+)\}\}`)
+
+// ApplyVariables substitutes {{key}} and {{{key}}} placeholders in a plain
+// part (subject or text body) with the raw value. It is a single pass, so an
+// inserted value is never rescanned. A placeholder with no matching
+// variable is left untouched.
 func ApplyVariables(text string, vars map[string]string) string {
-	for key, value := range vars {
-		text = strings.ReplaceAll(text, "{{"+key+"}}", value)
-	}
-	return text
+	out, _ := applyVariables(text, vars, false)
+	return out
+}
+
+// ApplyHTMLVariables substitutes placeholders in an HTML part: {{key}} is
+// HTML-escaped and {{{key}}} is inserted raw. rawUsed reports whether any
+// raw placeholder was substituted, so the caller can sanitize the result.
+func ApplyHTMLVariables(html string, vars map[string]string) (out string, rawUsed bool) {
+	return applyVariables(html, vars, true)
+}
+
+func applyVariables(in string, vars map[string]string, escapeHTML bool) (string, bool) {
+	rawUsed := false
+	out := variablePattern.ReplaceAllStringFunc(in, func(match string) string {
+		m := variablePattern.FindStringSubmatch(match)
+		key, raw := m[2], false
+		if m[1] != "" {
+			key, raw = m[1], true
+		}
+		value, ok := vars[key]
+		if !ok {
+			return match
+		}
+		if raw {
+			rawUsed = true
+			return value
+		}
+		if escapeHTML {
+			return stdhtml.EscapeString(value)
+		}
+		return value
+	})
+	return out, rawUsed
 }
 
 // ExtractLinks returns the distinct http(s) URLs referenced by href attributes

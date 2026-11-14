@@ -207,3 +207,33 @@ func TestSendTransactionalBlockedBySuspension(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrTenantSuspended)
 	require.Empty(t, msgr.sent)
 }
+
+func TestSendTransactionalEscapesVariablesInHTML(t *testing.T) {
+	t.Parallel()
+	templates := newFakeTemplateRepo()
+	tpl, err := domain.NewTemplate("tenant-1", "Order", domain.KindTransactional,
+		"Order for {{name}}", `<p>Hi {{name}}</p><table>{{{rows}}}</table>`, "Hi {{name}}")
+	require.NoError(t, err)
+	tplID, err := templates.Add(context.Background(), "tenant-1", tpl)
+	require.NoError(t, err)
+	msgr := &txMessenger{}
+
+	h := command.NewSendTransactionalHandler(templates, fakeDomainLookup{verified: true},
+		msgr, txLimiter{allow: true}, &fakeTxMessages{}, stubSuppression{}, nil, nil, perTenant())
+	_, err = h.Handle(context.Background(), command.SendTransactional{
+		TenantID: "tenant-1", TemplateID: tplID, To: "sam@example.com",
+		SendingDomainID: "dom-1", FromName: "Acme", FromLocalPart: "noreply",
+		Variables: map[string]string{
+			"name": `<a href="https://evil.example">Sam</a>`,
+			"rows": `<tr><td>1 × Mug</td></tr><script>alert(1)</script>`,
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, msgr.sent, 1)
+	msg := msgr.sent[0]
+	require.Contains(t, msg.HTMLBody, `Hi &lt;a href=&#34;https://evil.example&#34;&gt;Sam&lt;/a&gt;`)
+	require.Contains(t, msg.HTMLBody, `<tr><td>1 × Mug</td></tr>`, "triple braces insert HTML")
+	require.NotContains(t, msg.HTMLBody, "<script", "raw insertions are sanitized")
+	require.Equal(t, `Order for <a href="https://evil.example">Sam</a>`, msg.Subject, "subjects stay raw")
+	require.Equal(t, `Hi <a href="https://evil.example">Sam</a>`, msg.TextBody)
+}

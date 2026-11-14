@@ -41,3 +41,32 @@ func TestRenderTrackedLeavesUnknownLinks(t *testing.T) {
 	require.Contains(t, out, `href="https://acme.com/unknown"`,
 		"a URL with no links row is left untouched")
 }
+
+func TestApplyHTMLVariablesEscapesDoubleBraces(t *testing.T) {
+	t.Parallel()
+	out, raw := domain.ApplyHTMLVariables(`<p>Hi {{name}}</p>`, map[string]string{"name": `<b>Sam</b> & co`})
+	require.Equal(t, `<p>Hi &lt;b&gt;Sam&lt;/b&gt; &amp; co</p>`, out)
+	require.False(t, raw)
+}
+
+func TestApplyHTMLVariablesInsertsTripleBracesRaw(t *testing.T) {
+	t.Parallel()
+	out, raw := domain.ApplyHTMLVariables(`<table>{{{rows}}}</table>`, map[string]string{"rows": `<tr><td>1</td></tr>`})
+	require.Equal(t, `<table><tr><td>1</td></tr></table>`, out)
+	require.True(t, raw)
+}
+
+func TestApplyVariablesIsSinglePass(t *testing.T) {
+	t.Parallel()
+	vars := map[string]string{"a": "{{b}}", "b": "leaked"}
+	require.Equal(t, "x {{b}} y leaked", domain.ApplyVariables("x {{a}} y {{b}}", vars))
+	out, _ := domain.ApplyHTMLVariables("{{a}}", vars)
+	require.Equal(t, "{{b}}", out, "an inserted value is never rescanned")
+}
+
+func TestApplyVariablesKeepsUnknownKeysAndIsRawInText(t *testing.T) {
+	t.Parallel()
+	vars := map[string]string{"name": "Tom & Jerry"}
+	require.Equal(t, "Hi Tom & Jerry {{missing}}", domain.ApplyVariables("Hi {{name}} {{missing}}", vars))
+	require.Equal(t, "Hi Tom & Jerry", domain.ApplyVariables("Hi {{{name}}}", vars))
+}

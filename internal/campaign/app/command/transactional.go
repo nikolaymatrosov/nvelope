@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
+	"github.com/nikolaymatrosov/nvelope/internal/campaign/visualrender"
 )
 
 // SendTransactional is the request to send one transactional message.
@@ -113,12 +114,20 @@ func (h SendTransactionalHandler) Handle(ctx context.Context, cmd SendTransactio
 		return SendTransactionalResult{RetryAfter: retryAfter}, domain.ErrRateLimited
 	}
 
+	htmlBody, rawUsed := domain.ApplyHTMLVariables(tpl.BodyHTML(), cmd.Variables)
+	if rawUsed {
+		// {{{key}}} inserted caller-supplied HTML. Whatever the tenant's
+		// raw-HTML level, runtime values go through the standard policy:
+		// they usually carry the tenant's end-user input.
+		htmlBody, _ = visualrender.SanitizeDocument(htmlBody)
+	}
+
 	ref, err := h.messenger.Send(ctx, domain.OutboundMessage{
 		FromName:    cmd.FromName,
 		FromAddress: cmd.FromLocalPart + "@" + domainName,
 		To:          cmd.To,
 		Subject:     domain.ApplyVariables(tpl.Subject(), cmd.Variables),
-		HTMLBody:    domain.ApplyVariables(tpl.BodyHTML(), cmd.Variables),
+		HTMLBody:    htmlBody,
 		TextBody:    domain.ApplyVariables(tpl.BodyText(), cmd.Variables),
 		Headers:     map[string]string{"X-Tenant": cmd.TenantID},
 	})
