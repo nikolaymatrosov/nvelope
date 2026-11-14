@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	iamdomain "github.com/nikolaymatrosov/nvelope/internal/iam/domain"
 	tenantcommand "github.com/nikolaymatrosov/nvelope/internal/tenant/app/command"
 	tenantquery "github.com/nikolaymatrosov/nvelope/internal/tenant/app/query"
 )
@@ -57,6 +58,35 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			"timezone":     result.Timezone,
 		},
 	})
+}
+
+// handleSetRawHTMLSanitization changes how the workspace's raw campaign and
+// template HTML is sanitized on save. Turning it off requires accept_risk;
+// every change is audited.
+func (s *Server) handleSetRawHTMLSanitization(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermSettingsManage); !ok {
+		return
+	}
+	var req struct {
+		Level      string `json:"level"`
+		AcceptRisk bool   `json:"accept_risk"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	res, err := s.tenant.Commands.SetRawHTMLSanitization.Handle(r.Context(),
+		tenantcommand.SetRawHTMLSanitization{TenantID: ws.ID, Level: req.Level, AcceptRisk: req.AcceptRisk})
+	if err != nil {
+		s.fail(w, r, "set raw html sanitization", err)
+		return
+	}
+	if res.Previous != res.Current {
+		s.recordAudit(r.Context(), "settings.raw_html_sanitization", ws.ID,
+			map[string]any{"from": res.Previous, "to": res.Current})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"raw_html_sanitization": res.Current})
 }
 
 func (s *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Request) {

@@ -130,6 +130,9 @@ func (s *Server) Handler() http.Handler {
 			// appear in both places, or chi panics on the duplicate pattern.
 			s.mountGeneratedTenantAPI(r)
 
+			// Workspace content-safety setting (feature: content security).
+			r.Put("/settings/raw-html-sanitization", s.handleSetRawHTMLSanitization)
+
 			// Audience — lists, subscribers, and import/export (US1, US3) are
 			// fully migrated to the generated mount above.
 

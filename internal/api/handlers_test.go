@@ -383,3 +383,37 @@ func TestRevokeInvitationEndpoint(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 	require.Empty(t, body["invitations"], "the revoked invitation is no longer pending")
 }
+
+func TestSetRawHTMLSanitization(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	status, body := ts.request(http.MethodGet, base+"/settings", nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "standard", body["settings"].(map[string]any)["raw_html_sanitization"])
+
+	status, body = ts.request(http.MethodPut, base+"/settings/raw-html-sanitization",
+		map[string]any{"level": "off"})
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+	require.Equal(t, "risk_acceptance_required", body["code"])
+
+	status, body = ts.request(http.MethodPut, base+"/settings/raw-html-sanitization",
+		map[string]any{"level": "off", "accept_risk": true})
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "off", body["raw_html_sanitization"])
+
+	status, body = ts.request(http.MethodGet, base+"/audit", nil)
+	require.Equal(t, http.StatusOK, status)
+	var found map[string]any
+	for _, rec := range body["records"].([]any) {
+		if r := rec.(map[string]any); r["Action"] == "settings.raw_html_sanitization" {
+			found = r
+		}
+	}
+	require.NotNil(t, found, "the change is audited")
+	require.Equal(t, map[string]any{"from": "standard", "to": "off"}, found["Metadata"])
+}
