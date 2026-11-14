@@ -9,8 +9,6 @@ import { CampaignStatusBadge } from "./index"
 import type {
   CampaignView,
   MediaAssetView,
-  Theme,
-  VisualDoc,
 } from "@/lib/api-types"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
@@ -27,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ThreePaneEditor } from "@/components/visual-editor/ThreePaneEditor"
+import { VisualBodyPreview } from "@/components/visual-editor/VisualBodyPreview"
 import {
   Dialog,
   DialogContent,
@@ -117,12 +115,6 @@ function initialEditorMode(campaign: CampaignView): "visual" | "code" {
   return "code"
 }
 
-const EMPTY_VISUAL_DOC: VisualDoc = {
-  version: 1,
-  type: "doc",
-  content: [{ type: "paragraph", content: [] }],
-}
-
 function CampaignEditor({
   slug,
   campaign,
@@ -133,7 +125,7 @@ function CampaignEditor({
   canManage: boolean
 }) {
   const queryClient = useQueryClient()
-  const { t } = useTranslation(["campaigns", "common"])
+  const { t } = useTranslation(["campaigns", "common", "visualEditor"])
   const isDraft = campaign.status === "draft"
 
   const [domainId, setDomainId] = useState(campaign.sending_domain_id ?? "")
@@ -155,24 +147,6 @@ function CampaignEditor({
     initialEditorMode(campaign),
   )
   const [confirmOptOut, setConfirmOptOut] = useState(false)
-  const [bodyDoc, setBodyDoc] = useState<VisualDoc>(
-    () => campaign.body_doc ?? EMPTY_VISUAL_DOC,
-  )
-  // Theme override for the row. null = inherit tenant branding; an object =
-  // pinned override. The ThemeControls panel inside VisualEmailEditor mutates
-  // this via `setThemeOverride`; it is forwarded to the visual save body
-  // (per FR-022 / FR-023 / FR-024 — T109).
-  const [themeOverride, setThemeOverride] = useState<Theme | null>(
-    () => campaign.theme ?? null,
-  )
-  // Optimistic-concurrency token (FR-009). Updated every time the row's
-  // visual save returns a new `updatedAt`; on `409 stale_row` the operator
-  // can Reload (refetch + discard local edits) or Force overwrite (refetch
-  // + retry the save with the row's now-current timestamp).
-  const [ifUnmodifiedSince, setIfUnmodifiedSince] = useState<string>(
-    campaign.updated_at,
-  )
-
   const domainsQuery = useQuery({
     queryKey: queryKeys.sendingDomains(slug),
     queryFn: async () => (await api.listSendingDomains(slug)).data.domains,
@@ -220,114 +194,6 @@ function CampaignEditor({
     onSuccess: async () => {
       await invalidate()
       toast.success(t("detail.saveSuccess"))
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
-
-  async function refetchCampaign(): Promise<CampaignView | undefined> {
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.campaign(slug, campaign.id),
-    })
-    const fresh = (await api.getCampaign(slug, campaign.id)).data
-    setBodyDoc(fresh.body_doc ?? EMPTY_VISUAL_DOC)
-    setThemeOverride(fresh.theme ?? null)
-    setIfUnmodifiedSince(fresh.updated_at)
-    return fresh
-  }
-
-  // Visual save (Phase 7). Carries the operator's structured doc, the
-  // current subject, the optional theme override, and the row's last-known
-  // `updated_at` as the FR-009 concurrency token. On `409 stale_row` the
-  // sonner toast surfaces both Reload and Force-overwrite affordances.
-  const saveVisual = useMutation({
-    mutationFn: (v: { subject: string }) =>
-      api.campaigns.saveVisual(slug, campaign.id, {
-        subject: v.subject,
-        bodyDoc,
-        theme: themeOverride,
-        ifUnmodifiedSince,
-      }),
-    onSuccess: async (res) => {
-      setIfUnmodifiedSince(res.data.updatedAt)
-      await invalidate()
-      const warnings = res.data.warnings.length
-      if (warnings > 0) {
-        toast.warning(t("detail.saveWarnings", { count: warnings }))
-      } else {
-        toast.success(t("detail.saveSuccess"))
-      }
-    },
-    onError: (e, vars) => {
-      if (e instanceof ApiError && e.status === 409 && e.slug === "stale_row") {
-        const currentUpdatedAt =
-          typeof e.data?.currentUpdatedAt === "string"
-            ? e.data.currentUpdatedAt
-            : null
-        toast.warning(t("visual.staleTitle"), {
-          duration: 12_000,
-          action: {
-            label: t("visual.reload"),
-            onClick: () => {
-              void refetchCampaign()
-            },
-          },
-          // sonner's secondary `cancel` slot is used for the second
-          // affordance. The operator's pending body stays in local state
-          // so Force-overwrite re-issues the same save with the fresh
-          // token.
-          cancel: {
-            label: t("visual.forceOverwrite"),
-            onClick: () => {
-              if (!currentUpdatedAt) {
-                void refetchCampaign().then((fresh) => {
-                  if (!fresh) return
-                  saveVisual.mutate(vars)
-                })
-                return
-              }
-              setIfUnmodifiedSince(currentUpdatedAt)
-              // Re-issue with the new token. We bypass the React state
-              // update timing by passing the token directly through a
-              // throwaway mutation call.
-              api.campaigns
-                .saveVisual(slug, campaign.id, {
-                  subject: vars.subject,
-                  bodyDoc,
-                  theme: themeOverride,
-                  ifUnmodifiedSince: currentUpdatedAt,
-                })
-                .then(async (res) => {
-                  setIfUnmodifiedSince(res.data.updatedAt)
-                  await invalidate()
-                  toast.success(t("detail.saveSuccess"))
-                })
-                .catch((err) => toast.error(errorMessage(err)))
-            },
-          },
-        })
-        return
-      }
-      toast.error(errorMessage(e))
-    },
-  })
-
-  // Convert legacy raw-HTML → VisualDoc (T092). Non-persisting: the
-  // returned doc lands in local state and the editor swaps into visual
-  // mode; the operator reviews any rawhtml-fallback warnings and saves
-  // through the regular visual PUT.
-  const convertToVisual = useMutation({
-    mutationFn: () => api.campaigns.convertToVisual(slug, campaign.id),
-    onSuccess: (res) => {
-      setBodyDoc(res.data.bodyDoc)
-      setEditorMode("visual")
-      const warnings = res.data.warnings.length
-      if (warnings > 0) {
-        toast.warning(t("visual.convertedWarnings", { count: warnings }), {
-          duration: 12_000,
-        })
-      } else {
-        toast.success(t("visual.convertedSuccess"))
-      }
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -411,21 +277,14 @@ function CampaignEditor({
       fromLocalPart: campaign.from_local_part,
     },
     onSubmit: async ({ value }) => {
-      if (editorMode === "visual") {
-        // The legacy update handles name + sender + recipients (the
-        // visual save endpoint only accepts subject + bodyDoc + theme).
-        // Run both so a single click persists the full draft.
-        await save
-          .mutateAsync({
-            ...value,
-            bodyHtml: campaign.body_html,
-            bodyText: campaign.body_text,
-          })
-          .catch(() => {})
-        await saveVisual.mutateAsync({ subject: value.subject }).catch(() => {})
-        return
-      }
-      await save.mutateAsync(value).catch(() => {})
+      // In visual mode the body belongs to the full-screen editor; this form
+      // saves name, sender and recipients and sends the stored body back
+      // unchanged (the legacy update never touches body_doc).
+      const body =
+        editorMode === "visual"
+          ? { bodyHtml: campaign.body_html, bodyText: campaign.body_text }
+          : {}
+      await save.mutateAsync({ ...value, ...body }).catch(() => {})
     },
   })
 
@@ -615,24 +474,36 @@ function CampaignEditor({
                   />
                 )}
               </form.Field>
-              {editorMode === "visual" && canManage ? (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="campaign-visual-editor">
-                    {t("detail.content.bodyLabel")}
-                  </Label>
-                  <ThreePaneEditor
-                    slug={slug}
-                    value={bodyDoc}
-                    onChange={setBodyDoc}
-                    theme={themeOverride}
-                    onThemeChange={setThemeOverride}
-                    onOptOutVisual={
-                      campaign.body_doc
-                        ? () => setConfirmOptOut(true)
-                        : undefined
-                    }
-                  />
-                </div>
+              {editorMode === "visual" ? (
+                <VisualBodyPreview
+                  html={campaign.body_html}
+                  actions={
+                    canManage && (
+                      <>
+                        <Button asChild size="sm">
+                          <Link
+                            to="/t/$slug/campaigns/$id/edit"
+                            params={{ slug, id: campaign.id }}
+                            data-testid="open-visual-editor"
+                          >
+                            {t("visualEditor:body.openEditor")}
+                          </Link>
+                        </Button>
+                        {campaign.body_doc && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setConfirmOptOut(true)}
+                            data-testid="ve-opt-out-visual"
+                          >
+                            {t("visualEditor:body.editHtmlOnly")}
+                          </Button>
+                        )}
+                      </>
+                    )
+                  }
+                />
               ) : (
                 <>
                   <form.Field name="bodyHtml">
@@ -644,17 +515,14 @@ function CampaignEditor({
                           </Label>
                           <div className="flex items-center gap-2">
                             {canManage && field.state.value.trim() !== "" && !campaign.body_doc && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={convertToVisual.isPending}
-                                onClick={() => convertToVisual.mutate()}
-                                data-testid="convert-to-visual"
-                              >
-                                {convertToVisual.isPending
-                                  ? t("visual.converting")
-                                  : t("visual.convert")}
+                              <Button asChild variant="outline" size="sm">
+                                <Link
+                                  to="/t/$slug/campaigns/$id/edit"
+                                  params={{ slug, id: campaign.id }}
+                                  data-testid="convert-to-visual"
+                                >
+                                  {t("visual.convert")}
+                                </Link>
                               </Button>
                             )}
                             {canPickMedia && (
@@ -830,9 +698,9 @@ function CampaignEditor({
             <div>
               <Button
                 type="submit"
-                disabled={save.isPending || saveVisual.isPending}
+                disabled={save.isPending}
               >
-                {save.isPending || saveVisual.isPending
+                {save.isPending
                   ? t("detail.saving")
                   : t("detail.save")}
               </Button>

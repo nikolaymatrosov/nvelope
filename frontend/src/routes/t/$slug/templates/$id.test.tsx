@@ -11,8 +11,10 @@ vi.mock("@tanstack/react-router", () => ({
     useParams: () => ({ slug: "acme", id: "tpl-1" }),
   }),
   useNavigate: () => vi.fn(),
-  Link: ({ children, to }: { children: unknown; to?: unknown }) => (
-    <a href={typeof to === "string" ? to : "#"}>{children as never}</a>
+  Link: ({ children, to, "data-testid": testId }: { children: unknown; to?: unknown; "data-testid"?: string }) => (
+    <a href={typeof to === "string" ? to : "#"} data-testid={testId}>
+      {children as never}
+    </a>
   ),
 }))
 
@@ -29,23 +31,6 @@ vi.mock("@/lib/api", () => ({
       optOutVisual: vi.fn(),
     },
   },
-}))
-
-// VisualEmailEditor mounts TipTap, which jsdom can't drive — the unit-level
-// editor tests cover the editor behaviour. Here the heavy component is
-// stubbed out so the route tests stay focused on swap-in logic and save
-// flow.
-vi.mock("@/components/visual-editor/VisualEmailEditor", () => ({
-  VisualEmailEditor: ({
-    value,
-  }: {
-    value: { content: Array<unknown> }
-  }) => (
-    <div
-      data-testid="visual-email-editor"
-      data-doc-blocks={String(value.content.length)}
-    />
-  ),
 }))
 
 const ok = <T,>(data: T) => ({ status: 200, ok: true, data })
@@ -111,211 +96,59 @@ describe("TemplateDetail — code-only path", () => {
   })
 })
 
-// T082 — Templates editor route test (visual swap-in + legacy raw-HTML fallback).
-describe("TemplateDetail — visual editor surface (T082)", () => {
-  it("renders <VisualEmailEditor /> when the row has body_doc", async () => {
+describe("TemplateDetail — visual body", () => {
+  it("shows the saved-body preview and an Open editor link for a visual row", async () => {
     setupOwner()
-    vi.mocked(api.getTemplate).mockResolvedValue(
-      ok(template({ body_doc: visualDoc })),
-    )
+    vi.mocked(api.getTemplate).mockResolvedValue(ok(template({ body_doc: visualDoc })))
     renderWithClient(<TemplateDetail />)
-    expect(await screen.findByTestId("visual-email-editor")).toBeTruthy()
-    // Legacy code-editor surface is not mounted in visual mode.
+    expect(await screen.findByTestId("ve-body-preview")).toBeTruthy()
+    expect(screen.getByTestId("open-visual-editor").getAttribute("href")).toBe("/t/$slug/templates/$id/edit")
     expect(screen.queryByText(/html body/i)).toBeNull()
   })
 
-  it("keeps the code editor when the row is a legacy raw-HTML template", async () => {
+  it("keeps the code editor for a legacy raw-HTML template and links Convert to the editor", async () => {
     setupOwner()
-    // body_doc null + non-empty body_html ⇒ pre-Phase-7 raw-HTML template.
-    vi.mocked(api.getTemplate).mockResolvedValue(
-      ok(template({ body_doc: null, body_html: "<p>legacy</p>" })),
-    )
+    vi.mocked(api.getTemplate).mockResolvedValue(ok(template({ body_doc: null, body_html: "<p>legacy</p>" })))
     renderWithClient(<TemplateDetail />)
     expect(await screen.findByText(/html body/i)).toBeTruthy()
-    expect(screen.queryByTestId("visual-email-editor")).toBeNull()
+    expect(screen.getByTestId("convert-to-visual").getAttribute("href")).toBe("/t/$slug/templates/$id/edit")
+    expect(api.templates.convertToVisual).not.toHaveBeenCalled()
   })
 
-  it("saves via templates.saveVisual with the row's updated_at as ifUnmodifiedSince", async () => {
+  it("hides Convert on transactional templates", async () => {
     setupOwner()
-    vi.mocked(api.getTemplate).mockResolvedValue(
-      ok(
-        template({
-          body_doc: visualDoc,
-          updated_at: "2026-05-20T12:34:56Z",
-        }),
-      ),
-    )
-    vi.mocked(api.updateTemplate).mockResolvedValue(ok(template()))
-    vi.mocked(api.templates.saveVisual).mockResolvedValue(
-      ok({
-        id: "tpl-1",
-        name: "Welcome",
-        kind: "campaign" as const,
-        subject: "Hi there",
-        bodyHtml: "<p>Hi</p>",
-        bodyText: "Hi",
-        bodyDoc: visualDoc,
-        theme: null,
-        warnings: [],
-        updatedAt: "2026-05-20T12:40:00Z",
-      }),
-    )
+    vi.mocked(api.getTemplate).mockResolvedValue(ok(template({ kind: "transactional", body_doc: null })))
     renderWithClient(<TemplateDetail />)
-
-    const saveBtn = await screen.findByRole("button", { name: /save changes/i })
-    fireEvent.click(saveBtn)
-
-    await waitFor(() =>
-      expect(api.templates.saveVisual).toHaveBeenCalledWith(
-        "acme",
-        "tpl-1",
-        expect.objectContaining({
-          name: "Welcome",
-          kind: "campaign",
-          ifUnmodifiedSince: "2026-05-20T12:34:56Z",
-          bodyDoc: visualDoc,
-          theme: null,
-        }),
-      ),
-    )
-  })
-
-  it("surfaces a stale_row 409 as an ApiError the route can handle", async () => {
-    setupOwner()
-    vi.mocked(api.getTemplate).mockResolvedValue(
-      ok(
-        template({
-          body_doc: visualDoc,
-          updated_at: "2026-05-20T12:34:56Z",
-        }),
-      ),
-    )
-    vi.mocked(api.updateTemplate).mockResolvedValue(ok(template()))
-    const { ApiError } = await import("@/lib/errors")
-    vi.mocked(api.templates.saveVisual).mockRejectedValueOnce(
-      new ApiError(
-        409,
-        "stale_row",
-        "Changed in another tab/session",
-        "/t/acme/api/templates/tpl-1/visual",
-        { currentUpdatedAt: "2026-05-20T12:38:00Z" },
-      ),
-    )
-    renderWithClient(<TemplateDetail />)
-
-    const saveBtn = await screen.findByRole("button", { name: /save changes/i })
-    fireEvent.click(saveBtn)
-
-    // The route catches the 409 and offers a recovery UX via sonner. We
-    // assert the API was called with the stale token, confirming the route
-    // reaches the 409 branch rather than crashing.
-    await waitFor(() =>
-      expect(api.templates.saveVisual).toHaveBeenCalledWith(
-        "acme",
-        "tpl-1",
-        expect.objectContaining({
-          ifUnmodifiedSince: "2026-05-20T12:34:56Z",
-        }),
-      ),
-    )
-  })
-})
-
-// T094 — convert legacy raw-HTML → visual, opt out of visual mode.
-describe("TemplateDetail — convert / opt-out (T094)", () => {
-  it("shows the Convert-to-visual button on a legacy raw-HTML template and converts on click", async () => {
-    setupOwner()
-    vi.mocked(api.getTemplate).mockResolvedValue(
-      ok(
-        template({
-          body_doc: null,
-          body_html: "<p>legacy html body</p>",
-        }),
-      ),
-    )
-    vi.mocked(api.templates.convertToVisual).mockResolvedValue(
-      ok({
-        bodyDoc: visualDoc,
-        warnings: [],
-      }),
-    )
-
-    renderWithClient(<TemplateDetail />)
-
-    // Code editor is visible, visual editor is not.
-    expect(await screen.findByTestId("convert-to-visual")).toBeTruthy()
-    expect(screen.queryByTestId("visual-email-editor")).toBeNull()
-
-    const convertBtn = await screen.findByTestId("convert-to-visual")
-    fireEvent.click(convertBtn)
-
-    await waitFor(() =>
-      expect(api.templates.convertToVisual).toHaveBeenCalledWith(
-        "acme",
-        "tpl-1",
-      ),
-    )
-    const editor = await screen.findByTestId("visual-email-editor")
-    expect(editor.getAttribute("data-doc-blocks")).toBe("1")
-  })
-
-  it("hides the Convert-to-visual button on transactional templates", async () => {
-    setupOwner()
-    vi.mocked(api.getTemplate).mockResolvedValue(
-      ok(template({ kind: "transactional", body_doc: null })),
-    )
-    renderWithClient(<TemplateDetail />)
-    // Wait for the route to settle (the "Save changes" button is rendered
-    // once the template loads). Then assert the convert button is absent.
     await screen.findByRole("button", { name: /save changes/i })
     expect(screen.queryByTestId("convert-to-visual")).toBeNull()
   })
 
-  it("opens the opt-out confirmation modal from the editor toolbar and clears body_doc on confirm", async () => {
+  it("saves only name and subject from the detail page in visual mode", async () => {
     setupOwner()
-    vi.mocked(api.getTemplate).mockResolvedValue(
-      ok(template({ body_doc: visualDoc, body_html: "<p>kept</p>" })),
-    )
-    vi.mocked(api.templates.optOutVisual).mockResolvedValue(
-      ok(template({ body_doc: null, body_html: "<p>kept</p>" })),
-    )
-
-    vi.doMock("@/components/visual-editor/VisualEmailEditor", () => ({
-      VisualEmailEditor: ({
-        onOptOutVisual,
-      }: {
-        onOptOutVisual?: () => void
-      }) => (
-        <div data-testid="visual-email-editor">
-          {onOptOutVisual && (
-            <button
-              type="button"
-              data-testid="ve-opt-out-visual"
-              onClick={onOptOutVisual}
-            >
-              Edit as HTML only
-            </button>
-          )}
-        </div>
-      ),
-    }))
-    vi.resetModules()
-    const { TemplateDetail: ReloadedDetail } = await import("./$id")
-
-    renderWithClient(<ReloadedDetail />)
-
-    const optOutBtn = await screen.findByTestId("ve-opt-out-visual")
-    fireEvent.click(optOutBtn)
-
-    const confirm = await screen.findByTestId("opt-out-visual-confirm")
-    fireEvent.click(confirm)
-
+    vi.mocked(api.getTemplate).mockResolvedValue(ok(template({ body_doc: visualDoc, body_html: "<p>kept</p>" })))
+    vi.mocked(api.updateTemplate).mockResolvedValue(ok(template()))
+    renderWithClient(<TemplateDetail />)
+    const nameInput = await screen.findByLabelText(/name/i)
+    fireEvent.change(nameInput, { target: { value: "Welcome v2" } })
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
     await waitFor(() =>
-      expect(api.templates.optOutVisual).toHaveBeenCalledWith(
+      expect(api.updateTemplate).toHaveBeenCalledWith(
         "acme",
         "tpl-1",
+        expect.objectContaining({ name: "Welcome v2", body_html: "<p>kept</p>" }),
       ),
     )
+    expect(api.templates.saveVisual).not.toHaveBeenCalled()
+  })
+
+  it("opts out of the visual editor from the detail page", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockResolvedValue(ok(template({ body_doc: visualDoc, body_html: "<p>kept</p>" })))
+    vi.mocked(api.templates.optOutVisual).mockResolvedValue(ok(template({ body_doc: null, body_html: "<p>kept</p>" })))
+    renderWithClient(<TemplateDetail />)
+    fireEvent.click(await screen.findByTestId("ve-opt-out-visual"))
+    fireEvent.click(await screen.findByTestId("opt-out-visual-confirm"))
+    await waitFor(() => expect(api.templates.optOutVisual).toHaveBeenCalledWith("acme", "tpl-1"))
   })
 })
 
@@ -330,7 +163,7 @@ describe("TemplateDetail — transactional templates (T084)", () => {
     renderWithClient(<TemplateDetail />)
 
     expect(await screen.findByText(/html body/i)).toBeTruthy()
-    expect(screen.queryByTestId("visual-email-editor")).toBeNull()
+    expect(screen.queryByTestId("open-visual-editor")).toBeNull()
   })
 
   it("opens a transactional template in code mode even when body_doc is non-null", async () => {
@@ -342,6 +175,6 @@ describe("TemplateDetail — transactional templates (T084)", () => {
     )
     renderWithClient(<TemplateDetail />)
     expect(await screen.findByText(/html body/i)).toBeTruthy()
-    expect(screen.queryByTestId("visual-email-editor")).toBeNull()
+    expect(screen.queryByTestId("open-visual-editor")).toBeNull()
   })
 })
