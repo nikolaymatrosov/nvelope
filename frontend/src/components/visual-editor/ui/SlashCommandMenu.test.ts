@@ -20,6 +20,6 @@ describe("slashItems", () => {
   })
 
   it("matches the catalog key regardless of the translated label", () => {
-    expect(slashItems("divider").map((i) => i.key)).toContain("divider")
+    expect(slashItems("heading-2").map((i) => i.key)).toEqual(["heading-2"])
   })
 })

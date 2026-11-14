@@ -41,7 +41,7 @@ function canon(v: unknown, parentKey?: string): unknown {
     const x = (v as Record<string, unknown>)[k]
     if (parentKey === "attrs" && x == null) continue
     const c = canon(x, k)
-    if (k === "attrs" && Object.keys(c as object).length === 0) continue
+    if (k === "attrs" && (c === null || Object.keys(c as object).length === 0)) continue
     out[k] = c
   }
   return out

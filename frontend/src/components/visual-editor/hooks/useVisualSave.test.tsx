@@ -152,6 +152,11 @@ describe("keyOf", () => {
     expect(keyOf(snap(a))).toBe(keyOf(snap(tiptap)))
   })
 
+  it("treats attrs: null like missing attrs", () => {
+    const a = { ...tiptap, content: [{ type: "paragraph", attrs: null, content: tiptap.content[0].content }] }
+    expect(keyOf(snap(a))).toBe(keyOf(snap(tiptap)))
+  })
+
   it("ignores one trailing empty paragraph", () => {
     const a = { ...tiptap, content: [...tiptap.content, { type: "paragraph" }] }
     expect(keyOf(snap(a))).toBe(keyOf(snap(tiptap)))
