@@ -1,40 +1,55 @@
-// BlockParamsPanel — the right pane of the three-pane editor (feature 017,
-// T026). Shows the editable parameters for the currently-selected block, or a
-// neutral empty state when nothing is selected (FR-012). Each change applies to
-// the selected block only, live, via the shared selection model (FR-014); a
-// whole-block "reset to default" clears the style back to theme inheritance
-// (FR-019).
+// BlockParamsPanel — the settings half of the editor's right panel. Shows
+// Content / Design tabs for the selected block (a tab with no fields is
+// hidden). When nothing is selected, the root «Email» is current and the
+// Design tab shows the caller's `root` content (the email theme controls).
+// Every change applies live to the selected block through the shared
+// selection model; "reset all" clears the block's style back to the theme.
 
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { isEmptyBlockStyle } from "../extensions/styleAttr"
 import { ButtonParams } from "./params/ButtonParams"
 import { ColumnsParams } from "./params/ColumnsParams"
 import { DividerParams } from "./params/DividerParams"
 import { ImageParams } from "./params/ImageParams"
+import { RawHtmlParams } from "./params/RawHtmlParams"
 import { TextParams } from "./params/TextParams"
-import type { ParamFormProps } from "./params/StyleControls"
+import type { ParamFormProps, ParamsTab } from "./params/StyleControls"
 import type { BlockSelection } from "../hooks/useBlockSelection"
+import type { Editor } from "@tiptap/core"
+import type { Node as PMNode } from "@tiptap/pm/model"
+import type { ReactNode } from "react"
 import type { BlockStyle } from "@/lib/api-types"
-import type { TFunction } from "i18next"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type Props = {
   selection: BlockSelection
+  editor?: Editor | null
+  // Design-tab content for the root «Email» (nothing selected).
+  root?: ReactNode
   disabled?: boolean
 }
 
 const TEXT_TYPES = new Set(["paragraph", "heading", "blockquote", "bulletList", "orderedList"])
-const STYLEABLE_TYPES = new Set([
-  ...TEXT_TYPES,
-  "button",
-  "image",
-  "divider",
-  "columns",
-  "column",
-])
+const STYLEABLE_TYPES = new Set([...TEXT_TYPES, "button", "image", "divider", "columns", "column"])
+const CONTENT_TYPES = new Set(["button", "image", "heading", "rawHtml"])
 
-export function BlockParamsPanel({ selection, disabled = false }: Props) {
+// tabsFor lists the settings tabs a selection has; null = root «Email».
+export function tabsFor(blockType: string | null): Array<ParamsTab> {
+  if (blockType === null) return ["design"]
+  const tabs: Array<ParamsTab> = []
+  if (CONTENT_TYPES.has(blockType)) tabs.push("content")
+  if (STYLEABLE_TYPES.has(blockType)) tabs.push("design")
+  return tabs
+}
+
+export function BlockParamsPanel({ selection, editor = null, root, disabled = false }: Props) {
   const { t } = useTranslation("visualEditor")
+  const [chosen, setChosen] = useState<ParamsTab>("content")
   const node = selection.selectedNode
+  const tabs = tabsFor(node ? node.type.name : null)
+  // Keep the operator's last tab when the new selection has it.
+  const active = tabs.includes(chosen) ? chosen : tabs[0]
 
   return (
     <div className="ve-panel ve-panel--params" data-testid="ve-params-panel">
@@ -52,70 +67,84 @@ export function BlockParamsPanel({ selection, disabled = false }: Props) {
           </button>
         )}
       </div>
-      <PanelBody selection={selection} disabled={disabled} t={t} />
+      {tabs.length === 0 ? (
+        <p className="ve-panel__empty" data-testid="ve-params-none">
+          {t("params.empty")}
+        </p>
+      ) : (
+        <Tabs value={active} onValueChange={(v) => setChosen(v as ParamsTab)} className="ve-panel__tabs">
+          <TabsList>
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab} value={tab} data-testid={`ve-params-tab-${tab}`}>
+                {t(`params.tabs.${tab}`)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent
+            value={active}
+            className="ve-panel__body"
+            data-testid="ve-params-body"
+            data-block-type={node ? node.type.name : "root"}
+          >
+            {node == null ? (
+              (root ?? (
+                <p className="ve-panel__empty" data-testid="ve-params-empty">
+                  {t("params.empty")}
+                </p>
+              ))
+            ) : (
+              <BlockForm
+                // Remount per block so switches/drafts don't leak between blocks.
+                key={selection.selectedPos ?? 0}
+                node={node}
+                pos={selection.selectedPos ?? 0}
+                tab={active}
+                selection={selection}
+                editor={editor}
+                disabled={disabled}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   )
 }
 
-function PanelBody({
+function BlockForm({
+  node,
+  pos,
+  tab,
   selection,
+  editor,
   disabled,
-  t,
 }: {
+  node: PMNode
+  pos: number
+  tab: ParamsTab
   selection: BlockSelection
+  editor: Editor | null
   disabled: boolean
-  t: TFunction<"visualEditor">
 }) {
-  const node = selection.selectedNode
-  if (node == null) {
-    return (
-      <p className="ve-panel__empty" data-testid="ve-params-empty">
-        {t("params.empty")}
-      </p>
-    )
-  }
-
-  const blockType = node.type.name
-  if (!STYLEABLE_TYPES.has(blockType)) {
-    return (
-      <p className="ve-panel__empty" data-testid="ve-params-none">
-        {blockType === "rawHtml" ? t("rawHtmlModal.title") : t("params.empty")}
-      </p>
-    )
-  }
-
   const style = (node.attrs.style as BlockStyle | null) ?? {}
-
-  const onStyleChange = (patch: Partial<BlockStyle>) => {
-    const next = cleanStyle({ ...style, ...patch })
-    selection.updateSelectedAttrs({ style: next })
-  }
-  const onAttrsChange = (patch: Record<string, unknown>) => {
-    selection.updateSelectedAttrs(patch)
-  }
-
   const props: ParamFormProps = {
-    blockType,
+    blockType: node.type.name,
     attrs: node.attrs,
     style,
-    onStyleChange,
-    onAttrsChange,
+    onStyleChange: (patch) => selection.updateSelectedAttrs({ style: cleanStyle({ ...style, ...patch }) }),
+    onAttrsChange: (patch) => selection.updateSelectedAttrs(patch),
     disabled,
+    tab,
+    editor,
+    pos,
   }
-
-  return (
-    <div className="ve-panel__body" data-testid="ve-params-body" data-block-type={blockType}>
-      <Form {...props} />
-    </div>
-  )
-}
-
-function Form(props: ParamFormProps) {
-  if (props.blockType === "button") return <ButtonParams {...props} />
-  if (props.blockType === "image") return <ImageParams {...props} />
-  if (props.blockType === "divider") return <DividerParams {...props} />
-  if (props.blockType === "columns" || props.blockType === "column") return <ColumnsParams {...props} />
-  if (TEXT_TYPES.has(props.blockType)) return <TextParams {...props} />
+  const type = props.blockType
+  if (type === "button") return <ButtonParams {...props} />
+  if (type === "image") return <ImageParams {...props} />
+  if (type === "divider") return <DividerParams {...props} />
+  if (type === "columns" || type === "column") return <ColumnsParams {...props} />
+  if (type === "rawHtml") return <RawHtmlParams {...props} />
+  if (TEXT_TYPES.has(type)) return <TextParams {...props} />
   return null
 }
 

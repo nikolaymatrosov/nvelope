@@ -23,11 +23,12 @@ export function TextParams({
   onStyleChange,
   onAttrsChange,
   disabled,
+  tab,
 }: ParamFormProps) {
   const { t } = useTranslation("visualEditor")
   return (
     <div className="ve-params-form" data-testid="ve-params-text">
-      {blockType === "heading" && (
+      {tab !== "design" && blockType === "heading" && (
         <label className="ve-style-controls__row">
           <span className="ve-style-controls__label">{t("params.fields.level")}</span>
           <select
@@ -46,7 +47,9 @@ export function TextParams({
           </select>
         </label>
       )}
-      <StyleControls value={style} fields={TEXT_FIELDS} onChange={onStyleChange} disabled={disabled} />
+      {tab !== "content" && (
+        <StyleControls value={style} fields={TEXT_FIELDS} onChange={onStyleChange} disabled={disabled} />
+      )}
     </div>
   )
 }

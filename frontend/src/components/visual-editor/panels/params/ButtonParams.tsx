@@ -16,10 +16,12 @@ const BUTTON_FIELDS: ReadonlyArray<StyleField> = [
   "border",
 ]
 
-export function ButtonParams({ attrs, style, onStyleChange, onAttrsChange, disabled }: ParamFormProps) {
+export function ButtonParams({ attrs, style, onStyleChange, onAttrsChange, disabled, tab }: ParamFormProps) {
   const { t } = useTranslation("visualEditor")
   return (
     <div className="ve-params-form" data-testid="ve-params-button">
+      {tab !== "design" && (
+        <>
       <TextInput
         label={t("params.fields.label")}
         testId="ve-param-label"
@@ -34,7 +36,11 @@ export function ButtonParams({ attrs, style, onStyleChange, onAttrsChange, disab
         onChange={(v) => onAttrsChange({ href: v })}
         disabled={disabled}
       />
-      <StyleControls value={style} fields={BUTTON_FIELDS} onChange={onStyleChange} disabled={disabled} />
+        </>
+      )}
+      {tab !== "content" && (
+        <StyleControls value={style} fields={BUTTON_FIELDS} onChange={onStyleChange} disabled={disabled} />
+      )}
     </div>
   )
 }
