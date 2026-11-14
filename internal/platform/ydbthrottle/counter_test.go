@@ -2,6 +2,8 @@ package ydbthrottle
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -127,3 +129,32 @@ func TestKeyedSeparatesKeys(t *testing.T) {
 var _ interface {
 	Allow(context.Context, string) (bool, error)
 } = (*Keyed)(nil)
+
+// Concurrent first hits all see "no row" for a fresh window; serializable
+// isolation plus the SDK's DoTx retry must still admit exactly Max.
+func TestAllowIsConsistentUnderConcurrency(t *testing.T) {
+	t.Parallel()
+	clock := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	c := newTestCounter(t, &clock)
+	w := Window{Key: testKey("race"), Max: 5, Size: time.Minute}
+
+	const workers = 20
+	var admitted, failed atomic.Int32
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			ok, _, err := c.Allow(context.Background(), w)
+			switch {
+			case err != nil:
+				failed.Add(1)
+				t.Errorf("Allow: %v", err)
+			case ok:
+				admitted.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+
+	require.Zero(t, failed.Load())
+	require.EqualValues(t, w.Max, admitted.Load())
+}
