@@ -207,4 +207,21 @@ describe("MediaLibrary", () => {
       expect(api.media.remove).toHaveBeenCalledWith("acme", "a1", { unpublish: true }),
     )
   })
+
+  it("resets the takedown checkbox when the delete dialog is cancelled", async () => {
+    vi.mocked(api.media.list).mockResolvedValue(ok({ items: [asset({ id: "a1", published: true })] }))
+    renderWithClient(<MediaLibrary />)
+    expect(await screen.findByTestId("media-grid")).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId("media-delete-a1"))
+    let dialog = await screen.findByRole("alertdialog")
+    fireEvent.click(within(dialog).getByRole("checkbox"))
+    expect(within(dialog).getByRole("checkbox").getAttribute("data-state")).toBe("checked")
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+
+    fireEvent.click(screen.getByTestId("media-delete-a1"))
+    dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).getByRole("checkbox").getAttribute("data-state")).toBe("unchecked")
+  })
 })

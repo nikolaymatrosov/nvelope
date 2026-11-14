@@ -242,11 +242,13 @@ function MediaCard({
     onSuccess: () => {
       toast.success(t("toast.deleted"))
       setConfirmOpen(false)
+      setUnpublish(false)
       onDeleted()
     },
     onError: (e) => {
       toast.error(errorMessage(e))
       setConfirmOpen(false)
+      setUnpublish(false)
     },
   })
 
@@ -317,7 +319,10 @@ function MediaCard({
       </div>
       <ConfirmDialog
         open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open)
+          if (!open) setUnpublish(false)
+        }}
         title={t("deleteDialog.title")}
         description={t("deleteDialog.description")}
         confirmLabel={t("deleteDialog.confirm")}
