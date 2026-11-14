@@ -27,6 +27,7 @@ func persistUser(t *testing.T, users *adapters.Users) string {
 // Postgres and YDB adapters are held to the same behaviour.
 type backend struct {
 	name          string
+	users         func(t *testing.T) domain.UserRepository
 	sessions      func(t *testing.T) domain.SessionRepository
 	verifications func(t *testing.T) domain.EmailVerificationRepository
 	// newUserID returns a user id valid for the backend: a real platform_users
@@ -38,6 +39,9 @@ type backend struct {
 var backends = []backend{
 	{
 		name: "pg",
+		users: func(t *testing.T) domain.UserRepository {
+			return adapters.NewUsers(dbtest.AppPool(t))
+		},
 		sessions: func(t *testing.T) domain.SessionRepository {
 			return adapters.NewSessions(dbtest.AppPool(t))
 		},
@@ -48,6 +52,9 @@ var backends = []backend{
 	},
 	{
 		name: "ydb",
+		users: func(t *testing.T) domain.UserRepository {
+			return adapters.NewYDBUsers(dbtest.YDBMigrated(t))
+		},
 		sessions: func(t *testing.T) domain.SessionRepository {
 			return adapters.NewYDBSessions(dbtest.YDBMigrated(t))
 		},
