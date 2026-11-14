@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -196,6 +195,9 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 		},
 	}
 
+	media := buildMedia(pool, cfg, logger, ov)
+	publisher := NewMediaPublisher(media.Commands.PublishAssets)
+
 	tenant := tenantapp.Application{
 		Commands: tenantapp.Commands{
 			CreateWorkspace: decorator.ApplyResultCommandDecorators(
@@ -244,10 +246,9 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 	audience := buildAudience(pool, cfg, logger)
 	iam := buildIAM(pool, cfg, logger, audit)
 	sending := buildSending(pool, cfg, logger, ov)
-	campaign, tracking := buildCampaign(pool, cfg, logger, ov)
+	campaign, tracking := buildCampaign(pool, cfg, logger, ov, publisher)
 	deliverability := buildDeliverability(pool, cfg, logger)
 	billing := buildBilling(pool, cfg, logger, ov)
-	media := buildMedia(pool, cfg, logger, ov)
 
 	return Application{
 		Auth: auth, Tenant: tenant, Audience: audience, IAM: iam,
@@ -419,24 +420,21 @@ func (p fieldsProvider) AllSlugs(ctx context.Context, tenantID string) (map[stri
 	return out, nil
 }
 
-// tenantMediaRefValidator answers the FR-021 media-ref check by prefix
-// match against the platform's media base URL. The save command builds one
-// per request from the tenant id so each tenant's images must live under
-// /tenants/<their tenant id>/.
-type tenantMediaRefValidator struct{ prefix string }
+// libraryMediaRefs answers the FR-021 media-ref check: an image must
+// reference a media-library URL under this deployment's BASE_URL. The tenant
+// itself is checked by the BFF (slug in the URL) and, finally, by RLS when
+// the asset is published at send time — Go's HTTP save path does not decode
+// VisualDoc nodes, so a slug check here would only reach the converter.
+type libraryMediaRefs struct{ urls mediadomain.LibraryURLs }
 
-func (v tenantMediaRefValidator) IsTenantMediaRef(ref string) bool {
-	if v.prefix == "" || ref == "" {
-		return false
-	}
-	return strings.HasPrefix(ref, v.prefix)
-}
+func (v libraryMediaRefs) IsTenantMediaRef(ref string) bool { return v.urls.Is(ref) }
 
 // buildCampaign wires the campaign context's command and query handlers — the
 // surface the API service uses — with logging decorators applied. It also
 // returns the tracking repository, used directly by the public tracking
 // endpoints. The send-pipeline workers are wired separately in cmd/worker.
-func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, ov overrides) (
+func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, ov overrides,
+	media campaigncommand.MediaPublisher) (
 	campaignapp.Application, campaigndomain.TrackingRepository) {
 
 	templates := campaignadapters.NewTemplates(pool)
@@ -450,7 +448,7 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 	// against the merged subscriber-field slug set before sanitizing + persisting.
 	fields := fieldsProvider{repo: audienceadapters.NewFields(pool)}
 	rawPolicy := NewRawHTMLPolicy(tenantadapters.NewSettings(pool))
-	mediaRefs := tenantMediaRefValidator{prefix: cfg.ObjectStoragePublicBaseURL}
+	mediaRefs := libraryMediaRefs{urls: mediadomain.NewLibraryURLs(cfg.BaseURL)}
 
 	riverClient, err := jobs.NewInsertOnlyClient(pool)
 	if err != nil {
@@ -508,7 +506,7 @@ func buildCampaign(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger, o
 			UpdateCampaign: decorator.ApplyResultCommandDecorators(
 				campaigncommand.NewUpdateCampaignHandler(campaigns, rawPolicy), "UpdateCampaign", logger),
 			StartCampaign: decorator.ApplyCommandDecorators(
-				campaigncommand.NewStartCampaignHandler(campaigns, lookup, enqueuer), "StartCampaign", logger),
+				campaigncommand.NewStartCampaignHandler(campaigns, lookup, enqueuer, media), "StartCampaign", logger),
 			PauseCampaign: decorator.ApplyCommandDecorators(
 				campaigncommand.NewPauseCampaignHandler(campaigns), "PauseCampaign", logger),
 			ResumeCampaign: decorator.ApplyCommandDecorators(

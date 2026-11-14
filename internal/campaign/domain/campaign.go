@@ -374,6 +374,21 @@ func (c *Campaign) ApplyVisualSave(
 	return nil
 }
 
+// PublishBody replaces a draft's bodies with their publish-on-send form —
+// media-library URLs rewritten to public copies. It runs right before Start,
+// in the same transaction, so the body that goes out is exactly the one
+// whose media was published.
+func (c *Campaign) PublishBody(bodyHTML, bodyText string) error {
+	if c.status != CampaignDraft {
+		return ErrCampaignNotDraft
+	}
+	if err := checkBodySize(bodyHTML, bodyText); err != nil {
+		return err
+	}
+	c.bodyHTML, c.bodyText = bodyHTML, bodyText
+	return nil
+}
+
 // Start transitions a draft campaign to running. It requires the campaign's
 // content to be complete and a selected sending domain; the caller is
 // responsible for confirming the domain is verified and that targets exist.

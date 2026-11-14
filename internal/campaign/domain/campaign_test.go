@@ -172,3 +172,15 @@ func TestMessageBodiesAreCappedAtOneMiB(t *testing.T) {
 	_, err = domain.NewCampaign("tenant-1", "Fits", "S", strings.Repeat("a", domain.MaxBodyBytes), "", "", "", "", "", 0)
 	require.NoError(t, err, "exactly 1 MiB is allowed")
 }
+
+func TestCampaignPublishBodyOnlyOnDraft(t *testing.T) {
+	c, err := domain.NewCampaign("tenant-1", "C", "Subj", "<p>lib</p>", "lib", "Acme", "news",
+		"dom-1", "", 100)
+	require.NoError(t, err)
+	require.NoError(t, c.PublishBody("<p>pub</p>", "pub"))
+	require.Equal(t, "<p>pub</p>", c.BodyHTML())
+	require.Equal(t, "pub", c.BodyText())
+
+	require.NoError(t, c.Start(time.Now()))
+	require.ErrorIs(t, c.PublishBody("<p>x</p>", "x"), domain.ErrCampaignNotDraft)
+}
