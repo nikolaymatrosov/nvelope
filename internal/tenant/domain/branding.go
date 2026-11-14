@@ -79,10 +79,9 @@ func (b *TenantBranding) SetLogoURL(url string) error {
 		b.logoURL = ""
 		return nil
 	}
-	lower := strings.ToLower(url)
-	if !strings.HasPrefix(lower, "https://") && !strings.HasPrefix(lower, "http://") {
+	if !strings.HasPrefix(strings.ToLower(url), "https://") {
 		return apperr.NewIncorrectInput("invalid_logo_url",
-			"the logo URL must start with http(s)://")
+			"the logo URL must start with https://")
 	}
 	b.logoURL = url
 	return nil

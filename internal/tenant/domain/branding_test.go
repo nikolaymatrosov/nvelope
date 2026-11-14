@@ -3,6 +3,7 @@ package domain_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -67,4 +68,12 @@ func TestBrandingCustomCSSRejectsOversized(t *testing.T) {
 	b := domain.NewTenantBranding("t-1")
 	huge := strings.Repeat("a", 65*1024)
 	require.ErrorIs(t, b.SetCustomCSS(huge), domain.ErrUnsafeCSS)
+}
+
+func TestSetLogoURLRequiresHTTPS(t *testing.T) {
+	t.Parallel()
+	b := domain.HydrateTenantBranding("tenant-1", "", "", "", time.Time{})
+	require.Error(t, b.SetLogoURL("http://acme.example/logo.png"), "an http logo is mixed content on https pages")
+	require.NoError(t, b.SetLogoURL("https://acme.example/logo.png"))
+	require.Equal(t, "https://acme.example/logo.png", b.LogoURL())
 }
