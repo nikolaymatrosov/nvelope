@@ -186,7 +186,10 @@ Each container is built from an existing image. There are no new binaries.
 | `SECURITY DEFINER` lookup of the tenant that owns an id (`tracking_tenant_for_link`, `..._for_campaign`) | a `GLOBAL UNIQUE SYNC` index on `(id)` alone, read with `VIEW`. The index entry carries the primary key, so `tenant_id` comes with it (Plan B7). It leaks what the function leaked: the tenant of a caller-supplied id. |
 | bound parameters (`$1`, `@name`) | `$name` parameters, each declared explicitly with `DECLARE $name AS <Type>;`. String literals that target a `Utf8` column take the `u` suffix (`"pending"u`); a bare `"..."` literal is `String`. Identifiers avoid YQL keywords (e.g. `throttle_key`, not `key`). |
 | segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | its own YQL port, `segment_yql.go` (Plan B5). The attribute key is bound, never part of the path: `JSON_VALUE(s.attributes, "$.keyvalue() ? (@.name == $k).value" PASSING $pN AS k)` for `->>`, the same path in `JSON_EXISTS` for `?`, and `CAST(JSON_VALUE(...) AS Double)` for `::numeric`. A list-membership condition is `s.id IN (SELECT subscriber_id FROM subscriber_lists VIEW ... WHERE ...)`, because YQL has no correlated `EXISTS`. |
-| `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE`. Plan B5 verified it on `Utf8` columns, with a bound `%...%` pattern and with `"%"u || $v || "%"u`, against Cyrillic data (`ё` included). No lowercase column is needed. |
+| `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE`. Plan B5 verified it on `Utf8` columns, with a bound `%...%` pattern and with `"%"u || $v || "%"u`, against Cyrillic data (`ё` included). No lowercase column is needed. Plan B8 ported the `suppression_pg.go` site and tested it on both backends with an ASCII and a Cyrillic (`ЁЛК` against `ёлка@пример.рф`) filter. |
+| `SECURITY DEFINER` lookup of the tenant that owns a provider message id (`feedback_tenant_for_message`) | two reads, `campaign_recipients VIEW idx_campaign_recipients_provider` and then `transactional_messages VIEW idx_transactional_messages_provider`, each with `LIMIT 1`. The index entry carries `tenant_id` (Plan B8; the indexes are Plan B7's). |
+| `INSERT ... ON CONFLICT DO NOTHING` that must report whether it inserted (`StageInbound`, `RecordEvent`) | `SELECT` through the unique index, then `INSERT` when absent, in one `DoTx`. A concurrent identical write aborts one transaction and the SDK retries it, so exactly one writes (Plan B8; `TestEventsStageInboundIsRaceFree`, `TestEventsRecordEventIsRaceFree`). |
+| a per-campaign aggregate that is a correlated `(SELECT count(...) ... WHERE x.campaign_id = c.id)` subquery (`campaign_analytics` refresh) | named subqueries `$name = SELECT campaign_id, COUNT(...) ... GROUP BY campaign_id;` and `LEFT JOIN`s from `campaigns`, written by `UPSERT INTO ... SELECT`. `count(DISTINCT x) FILTER (...)` becomes `COUNT(DISTINCT IF(cond, x))`. The select list must alias each column to its table column name, and a `COALESCE(count, 0ul)` is cast and wrapped: `Unwrap(CAST(COALESCE(n, 0ul) AS Int64))` (Plan B8). |
 | `SECURITY DEFINER` functions (6) | ordinary queries. With no RLS, the privilege bypass they existed for is unnecessary. Billing-only functions are dropped. |
 
 ### Throttling
@@ -864,6 +867,10 @@ Carried to C3 and C4 (final review of Plan C1):
   path: a cron sweep that re-enqueues `feedback.process` for staged events left
   unprocessed past a threshold, like the domain sweep. This needs a
   deliverability port method.
+  **Settled in Plan B8**: B8 adds the port method
+  `EventRepository.PendingInbound` on both backends and the use case
+  `SweepPendingFeedbackHandler`; C4 only wires the cron route (see "Plan B8
+  planning spike").
 - **Instance limits.** Size the worker container's instance limit against the
   campaign fan-out, or give `jobs-long` its own container built from the same
   image.
@@ -1136,6 +1143,134 @@ Decisions for Plan B7:
     chunks of 1000 rows, each its own transaction: a campaign.start job that
     dies halfway re-runs and inserts only the rest.
 
+### Plan B8 planning spike
+
+Run on 2026-11-15 against `ydbplatform/local-ydb:26.3.1.23` while planning the
+deliverability port, on the real `000009_deliverability` and the `000008`
+campaign tables. A dry run of the whole plan then passed stage by stage, with
+`go build`, `go vet`, `golangci-lint run`, `make lint-arch` and `go test ./...`
+(49 `ok` packages) clean.
+
+- **Refresh as one `UPSERT ... SELECT`.** Tested on 3 campaigns (one a draft),
+  4 recipients (3 of one campaign, one of them `failed`) and 6 delivery events
+  (one of another tenant): PASS, and a second run returns the same rows.
+  - Shape: `$sent = SELECT campaign_id, COUNT(*) AS n FROM campaign_recipients
+    WHERE tenant_id = $t AND status = "sent"u GROUP BY campaign_id;` and
+    `$ev = SELECT campaign_id, COUNT(DISTINCT IF(event_kind = "delivery"u,
+    recipient_email)) AS delivered, ... GROUP BY campaign_id;`, then `UPSERT
+    INTO campaign_analytics (...) SELECT c.tenant_id AS tenant_id, c.id AS
+    campaign_id, Unwrap(CAST(COALESCE(s.n, 0ul) AS Int64)) AS sent_count, ...
+    FROM campaigns AS c LEFT JOIN $sent AS s ON s.campaign_id = c.id LEFT JOIN
+    $ev AS e ON e.campaign_id = c.id WHERE c.tenant_id = $t AND c.status !=
+    "draft"u`.
+  - Result: the campaign with 2 sent recipients and events `delivery` x3 (two
+    distinct addresses), `open`, `bounce` got sent 2, delivered 2, opened 1,
+    bounced 1; the other tenant's `click` was not counted; the second campaign
+    got sent 1 and zeros; the draft got no row.
+  - What failed first: without `AS tenant_id, AS campaign_id` the statement is
+    `BAD_REQUEST` ("Column names in SELECT don't match column specification");
+    `CAST(COALESCE(n, 0) AS Int64)` is `Optional<Int64>` and fails with
+    "Can't set NULL or optional value to not null column", which `0ul` and
+    `Unwrap(...)` fix.
+- **Totals and the recent list.** `SELECT COALESCE(SUM(sent_count), 0), ...
+  FROM campaign_analytics WHERE tenant_id = $t` returns `0` for a tenant with
+  no rows. `SELECT ... FROM campaign_analytics AS ca JOIN campaigns AS c ON
+  c.tenant_id = ca.tenant_id AND c.id = ca.campaign_id WHERE ca.tenant_id = $t
+  ORDER BY COALESCE(c.started_at, c.created_at) DESC LIMIT 10`: PASS, newest
+  first.
+- **Scanning.** An `Int64` column does not scan into `*int` (`cast failed
+  'Int64(2)' to '*int' destination`); scan into `int64` and convert.
+- **Pending sweep read.** `SELECT id FROM inbound_feedback_events VIEW
+  idx_inbound_status WHERE status = "pending"u AND received_at < $before ORDER
+  BY received_at LIMIT $limit` over `GLOBAL SYNC (status, received_at)`: PASS,
+  only the rows older than the cutoff, oldest first.
+- **`Interval`** takes a string literal, not an expression
+  (`Interval("PT"u || ...)` fails with "Expected literal string as argument").
+  Nothing in the port needs it.
+
+The dry run added: `StageInbound` and `RecordEvent` each pass a six-goroutine
+race on both backends (three repeated runs); with the existence read removed,
+the idempotence and race tests fail on YDB; a Cyrillic `ILIKE` filter on the
+suppression list passes on Postgres and YDB.
+
+Decisions for Plan B8:
+
+- **Scope.** `000009_deliverability` creates `inbound_feedback_events`,
+  `delivery_events`, `suppression_list`, `bounce_settings` and
+  `campaign_analytics`. `audit_log` is iam's (000005); `YDBAuditLog` writes to
+  it, as the Postgres `AuditLog` does. `transactional_messages` is B7's.
+- **No CHECK constraints, no defaults, no foreign keys**, as B7.
+- **Keys.**
+  - `inbound_feedback_events`: `(id)`, the one table here without a tenant,
+    because a notification is staged before its tenant is known. `GLOBAL UNIQUE
+    SYNC (dedupe_key)` is the idempotency key. `raw_payload` is a plain `Utf8`
+    column (JSON stored and read back whole).
+  - `delivery_events`: `(tenant_id, id)`, plus `GLOBAL UNIQUE SYNC (tenant_id,
+    inbound_event_id)` for `RecordEvent`. The Postgres indexes
+    `(campaign_id, event_kind)` and `(tenant_id, recipient_email)` are not
+    created: the refresh groups the tenant's events by one key-range scan, and
+    nothing reads by recipient.
+  - `suppression_list`: `(tenant_id, id)`, because `List` pages in id order,
+    plus `GLOBAL UNIQUE SYNC (tenant_id, email)`, which `Upsert`, `Remove` and
+    the pre-send check read.
+  - `bounce_settings`: `(tenant_id)`. `campaign_analytics`: `(tenant_id,
+    campaign_id)`; Postgres keyed it by `campaign_id` alone.
+- **Retry-safe by construction (V6).** The YDB `List`, `GetDashboard` and
+  `PendingInbound` build their rows in a local and assign them at the end, which
+  covers the `analytics_pg.go` `dash.Recent` and `suppression_pg.go` `List`
+  sites for the YDB runtime. The Postgres adapters do not change (River does not
+  retry a pgx transaction).
+- **Dangling ids.** `delivery_events.campaign_recipient_id` and `campaign_id`
+  are written and never read back, so a recipient deleted with its subscriber
+  (B7), leaves a dangling id that nothing follows. The refresh groups the events
+  by `campaign_id` and joins them to `campaigns`, so an event of an unknown
+  campaign counts nowhere. No campaign delete exists, so no `campaign_analytics`
+  cascade is needed. A campaign's `sent_count` is the count of its `sent`
+  recipients, so it falls when a subscriber's deletion removes recipients (B7);
+  on Postgres the recipients cascade the same way.
+- **Feedback recovery (the C1 carry-over).** B8 owns the port, so it adds
+  `EventRepository.PendingInbound(ctx, receivedBefore, limit)` on both backends
+  (Postgres: the existing `status` and `received_at` indexes) and
+  `command.SweepPendingFeedbackHandler`, which enqueues `feedback.process` for
+  up to 500 notifications pending past `OlderThan`. A job that is only slow runs
+  twice, which `ProcessFeedback` tolerates. C4 wires the cron route. This is
+  small, and leaving the port to C4 would put a port change into the assembly
+  plan.
+- **`ProcessFeedback` is unchanged**, and `cmd/consumer` stays a SaaS binary.
+  The `/feedback` route already stages through `IngestNotificationHandler`,
+  which takes the `EventRepository` port.
+- **Tests.** The suppression, settings, checker, audit, events, feedback-worker
+  and analytics tests become pg+ydb contract suites through an `eachBackend`
+  harness (`backend_test.go`), as in campaign. `stageInbound` retires the
+  notifications a test leaves pending, so the shared database does not pile
+  them up for the `PendingInbound` test.
+- **Found, not fixed (both backends).** `SuppressionApplier.Apply` passes
+  `e.ID()` as the entry's source event id, but `RecordEvent` never sets the id
+  on the event it was given, so `suppression_list.source_event_id` is always
+  NULL. Fixing it means having `RecordEvent` return the new id, a port change
+  outside this plan.
+- **For B9 and C4.**
+  - **B9.** Nothing: no deliverability table references media, and media owns
+    no table deliverability reads. The next migration number is `000010`.
+  - **C4.**
+    - Wire `NewYDBEvents`, `NewYDBSuppressions`, `NewYDBSettings`,
+      `NewYDBAnalytics`, `NewYDBSuppressionChecker` and `NewYDBAuditLog`, each
+      over the `*ydb.Driver`. `NewYDBSuppressionChecker` is what the campaign
+      start and batch workers take as their `SuppressionChecker`;
+      `NewSuppressionApplier` takes the two YDB repositories unchanged;
+      `NewProcessFeedbackHandler` and `NewIngestNotificationHandler` take
+      `NewYDBEvents`.
+    - Add `POST /cron/feedback-sweep` to `WorkerRoutes`: it runs
+      `command.NewSweepPendingFeedbackHandler(events, enqueuer).Handle(ctx,
+      SweepPendingFeedback{OlderThan: ...})`, where `enqueuer` is the `*ymq.Enqueuer`
+      (it implements `EnqueueFeedbackProcess`). Pick `OlderThan` above the
+      feedback job's visibility timeout plus its retry window, for example 15
+      minutes, and fire the timer about as often. It needs no tenant: the
+      staging table has none. Add the matching timer trigger to the Terraform
+      module (C3), and extend the DLQ alert note: a pending notification older
+      than the threshold is the symptom.
+    - `cmd/consumer` is not used in serverless mode.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -1219,6 +1354,15 @@ These are known limits, marked in code with `ponytail:` comments.
   the index is global and every unsent, failed and skipped recipient of every
   campaign and tenant shares the NULL key; the primary key suffix of the index
   entry lets YDB split it.
+- `YDBAnalytics.Refresh` reads every `sent` recipient and every delivery event
+  of the tenant on each run, and `delivery_events` has no secondary index. Fine
+  for one organisation's history. The upgrade path is counters kept on the
+  campaign row, or a refresh that reads only events newer than the last one.
+- `SweepPendingFeedbackHandler` re-enqueues at most 500 notifications per
+  sweep; the next tick takes the rest. `inbound_feedback_events` rows are never
+  deleted (as on Postgres), and `idx_inbound_status` holds every row, so the
+  `pending` range is the short head of an index that grows with history. The
+  upgrade path is a retention job for processed rows.
 
 ## Implementation phasing
 
@@ -1232,7 +1376,9 @@ The plan is split into three plans. Each one merges to `main` on its own.
   reset from V6, and `ydbthrottle`) and one plan per remaining context, in
   this order: auth, tenant, iam, audience, campaign, deliverability, media.
   Campaign (B7) also creates the two provider-message-id indexes that
-  deliverability (B8) reads; see "Plan B7 planning spike".
+  deliverability (B8) reads; see "Plan B7 planning spike". Deliverability (B8)
+  also adds the one port method the feedback recovery sweep needs; see "Plan B8
+  planning spike".
   Audience takes two plans: B5 (the core: lists, subscribers, memberships,
   fields) and B6 (import/export jobs, subscription pages, pending
   subscriptions); see "Plan B5 planning spike".
