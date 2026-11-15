@@ -175,14 +175,14 @@ Each container is built from an existing image. There are no new binaries.
 | `SELECT ... FOR UPDATE` (7) | removed. A serializable conflict aborts the tx and the SDK retries it. |
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
-| `jsonb` | `JsonDocument` where YQL queries into the document (audience attributes, segments). JSON that is only stored and read back whole (e.g. `sending_domains.dkim_records`) is a plain `Utf8` column. |
-| `text[]` read back whole (`roles.permissions`, `api_keys.permissions`) | a JSON array in a plain `Utf8` column (Plan B4) |
-| `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`), the column itself carries the unique index. Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
-| foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). |
+| `jsonb` | `JsonDocument` where YQL queries into the document (audience `subscribers.attributes`, Plan B5: bound with `JSONDocumentFromBytes`, scanned into `string`). JSON that is only stored and read back whole (e.g. `sending_domains.dkim_records`) is a plain `Utf8` column. |
+| `text[]` read back whole (`roles.permissions`, `api_keys.permissions`, `lists.tags`) | a JSON array in a plain `Utf8` column (Plan B4). An empty slice is stored as `[]`, so it reads back as an empty slice, as Postgres reads back `'{}'`. |
+| `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`, audience `subscribers.email`), the column itself carries the unique index. A query that compares such a column with user input lower-cases the input in Go (the segment `email` condition, Plan B5). Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
+| foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
 | `ORDER BY` on a text column | YDB orders `Utf8` by bytes, pg by the database collation, so mixed-case and non-ASCII values order differently. Acceptable for display lists (iam `roles` by `name`). If a later plan needs collation-equal order, sort in Go or store a sort key. |
 | bound parameters (`$1`, `@name`) | `$name` parameters, each declared explicitly with `DECLARE $name AS <Type>;`. String literals that target a `Utf8` column take the `u` suffix (`"pending"u`); a bare `"..."` literal is `String`. Identifiers avoid YQL keywords (e.g. `throttle_key`, not `key`). |
-| segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | needs its own YQL port, using `JSON_VALUE` / `JSON_EXISTS` on `JsonDocument` or equivalent. Exact functions **to verify in Plan B**. |
-| `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE` (V1 passed only for an ASCII literal against an ASCII literal; Utf8 columns, parameters and Cyrillic are **to verify in Plan B**). Otherwise a stored lowercase column with `LIKE`. |
+| segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | its own YQL port, `segment_yql.go` (Plan B5). The attribute key is bound, never part of the path: `JSON_VALUE(s.attributes, "$.keyvalue() ? (@.name == $k).value" PASSING $pN AS k)` for `->>`, the same path in `JSON_EXISTS` for `?`, and `CAST(JSON_VALUE(...) AS Double)` for `::numeric`. A list-membership condition is `s.id IN (SELECT subscriber_id FROM subscriber_lists VIEW ... WHERE ...)`, because YQL has no correlated `EXISTS`. |
+| `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE`. Plan B5 verified it on `Utf8` columns, with a bound `%...%` pattern and with `"%"u || $v || "%"u`, against Cyrillic data (`ё` included). No lowercase column is needed. |
 | `SECURITY DEFINER` functions (6) | ordinary queries. With no RLS, the privilege bypass they existed for is unnecessary. Billing-only functions are dropped. |
 
 ### Throttling
@@ -665,6 +665,98 @@ Decisions for Plan B4:
   has deleted an expired TOTP-pending session, a request answers
   `ErrUnauthenticated` instead of `ErrTOTPRequired`.
 
+### Plan B5 planning spike
+
+Run against `ydbplatform/local-ydb:26.3.1.23` while planning the audience
+core port, on throwaway tables shaped like the planned `000006_audience`
+`subscribers` and `subscriber_lists`. One run; one case was then re-run with a
+fix (below). A dry run of the whole plan then passed on the real migration.
+
+- `JsonDocument` column: bound with `JSONDocument(string)`, scanned into
+  `string` and into `[]byte`. It reads back as normalized JSON (keys sorted).
+  `Int32` scans into `int32`: PASS.
+- `JSON_VALUE(attributes, "$.keyvalue() ? (@.name == $k).value" PASSING $key AS k)`
+  with the key bound as `Utf8`: a string reads back as itself, `42` as `"42"`,
+  `42.5` as `"42.5"`, `true` as `"true"`. An object, an array, JSON `null` and
+  a missing key read back as NULL. Keys `a.b` and `it's` are matched
+  literally: PASS. The same path in `JSON_EXISTS` is true for any present
+  key, including one whose value is `null` (as Postgres `?` is): PASS.
+- Numeric comparison. `JSON_VALUE(... RETURNING Double)` reads the JSON
+  string `"42"` as NULL, unlike Postgres `('42')::numeric`: FAIL. Re-run with
+  `CAST(JSON_VALUE(...) AS Double) > CAST($val AS Double)`: numbers and
+  numeric strings compare, and a non-numeric value or operand is NULL and
+  matches nothing, with no error (Postgres fails the whole query): PASS.
+- `ILIKE` on `Utf8` columns with a bound pattern: `%алиса%`, `%АЛИСА%`,
+  `%ёжик%` (against `ЁЖИК`), `%ALICE@%` and `%%`; and
+  `col ILIKE "%"u || $v || "%"u` with `$v = "ПЕТРОВ"`: PASS. This resolves the
+  V1 follow-up. `Unicode::ToLower` is also available.
+- `s.id IN (SELECT subscriber_id FROM subscriber_lists WHERE ...)` inside an
+  `OR`, in a `COUNT(*)` and in an `ORDER BY s.created_at DESC LIMIT ... OFFSET ...`
+  page: PASS. The literal `(true)` is a valid predicate: PASS.
+- `FROM subscriber_lists VIEW idx_list AS sl JOIN subscribers AS s ON ...`
+  with `ORDER BY s.created_at DESC` (a right-side column) and with
+  `COUNT(*)`: PASS.
+- `DELETE FROM subscriber_lists ON SELECT ... VIEW idx_list WHERE ...`
+  inside `DoTx`, then a read through the index in the same transaction finds
+  no row: PASS.
+
+The dry run added:
+
+- Eight concurrent `YDBSubscribers.UpsertByEmail` calls for one new email
+  (SELECT through the unique email index, then `INSERT` or `UPDATE`, in one
+  `DoTx`): exactly one created the row and none failed, in ten repeated runs.
+  The losers were aborted and retried by the SDK; no `PRECONDITION_FAILED`
+  surfaced.
+- On Postgres, `Subscribers.InList` with a malformed list id fails with
+  "commit unexpectedly resulted in rollback": it swallows the invalid-input
+  error, but the transaction is already aborted. No caller passes a malformed
+  id, so the contract suite uses an unknown valid UUID instead.
+
+Decisions for Plan B5:
+
+- Audience is split in two plans. B5 ports the core: `lists`, `subscribers`
+  (with the segment translator), `subscriber_lists` and `subscriber_fields`.
+  B6 ports `import_export_jobs`, `subscription_pages` and
+  `pending_subscriptions`. B6 needs B5's lists, subscribers and memberships
+  for its contract tests; B5 needs nothing from B6.
+- `subscribers.email` has no `email_key` column: `domain.NewSubscriber`
+  lower-cases it, so the unique `(tenant_id, email)` index reproduces
+  `citext`. The segment translator lower-cases an `email` operand in Go,
+  because Postgres compares the citext column case-insensitively.
+- `subscribers.preference_token_hash` is not ported. No code reads or writes
+  it.
+- `subscriber_lists` is keyed `(tenant_id, subscriber_id, list_id)`, so a
+  subscriber's memberships and the subscriber-delete cascade are key-prefix
+  operations. A `GLOBAL SYNC` index on `(tenant_id, list_id)` serves
+  `InList`, list-membership segment conditions and the list-delete cascade.
+- Foreign keys:
+  - `YDBMemberships.Attach` reads the subscriber and the list in its `DoTx`
+    and returns `ErrSubscriberNotFound` or `ErrListNotFound`. A concurrent
+    delete of either aborts one of the two transactions.
+  - `YDBSubscribers.Delete` deletes the subscriber's `subscriber_lists` rows
+    in the same `DoTx`.
+  - `YDBLists.Delete` deletes the list's `subscriber_lists` rows (through the
+    list index) and its iam `user_list_roles` rows (a scan of the tenant's
+    rows) in the same `DoTx`. This closes the B4 handover note.
+  - Not handled in B5, for the campaign plan: Postgres also cascades a
+    subscriber delete into `campaign_recipients` and a list delete into
+    `campaign_lists`. Those tables are not on YDB yet. The campaign plan must
+    either extend `YDBSubscribers.Delete` and `YDBLists.Delete`, or make its
+    readers tolerate a dangling id.
+  - Still open, an iam follow-up: `YDBRoles.AssignListRole` does not read
+    the list it assigns a role on. With `lists` now on YDB it should, as
+    `YDBMemberships.Attach` does; otherwise an assignment to an unknown or
+    concurrently deleted list leaves a `user_list_roles` row that keeps its
+    role in use.
+- `UpsertByEmail` keeps the existing subscriber's state, as Postgres
+  `ON CONFLICT DO UPDATE SET name, attributes` does, so an import never
+  re-enables a blocklisted address. A contract test now pins this.
+- `subscriber_fields.position` is `Int64` (Postgres `integer`), so the Go
+  `int` binds without a narrowing conversion.
+- V6 audience rows: `lists_pg.go:165` and `subscribers_pg.go:205/247/285`
+  become a closure-local slice in `YDBLists.All` and `YDBSubscribers.page`.
+  `memberships_pg.go:119` (`ForSubscriber`) is one statement outside `DoTx`.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -698,6 +790,17 @@ These are known limits, marked in code with `ponytail:` comments.
   index. Concurrent assignments in the tenant abort the delete, and the SDK
   retries it. That is fine for one organisation's users. The upgrade path is
   `GLOBAL SYNC` indexes on `(tenant_id, role_id)`.
+- A segment becomes one YQL query whose text grows with the condition tree
+  (about 150 bytes and one `DECLARE` per condition). Past the 10 KB query-text
+  limit (V5), YDB rejects it with `BAD_REQUEST`. That is several dozen
+  conditions; Postgres has no such limit. The upgrade path is passing the
+  operands as one `List<Utf8>` parameter.
+- `YDBLists.Delete` removes every membership of the list in one transaction.
+  V5 found no documented transaction-size limit. The upgrade path is deleting
+  in pages before the list row.
+- Every page and count of `Search`, `InList` and `RunSegment` evaluates its
+  predicate over the tenant's subscribers (`InList` through the list index),
+  which the `count(*) + OFFSET` ceiling covers.
 
 ## Implementation phasing
 
@@ -710,6 +813,9 @@ The plan is split into three plans. Each one merges to `main` on its own.
   contract-test harness and the sending context as its pilot, the snooze
   reset from V6, and `ydbthrottle`) and one plan per remaining context, in
   this order: auth, tenant, iam, audience, campaign, deliverability, media.
+  Audience takes two plans: B5 (the core: lists, subscribers, memberships,
+  fields) and B6 (import/export jobs, subscription pages, pending
+  subscriptions); see "Plan B5 planning spike".
   Auth comes before tenant because `Tenants.ListMembers` joins
   `platform_users`, which auth owns, and auth depends on no tenant table.
   The tenant plan (B3) also ports `internal/service/onboarding.go` `AcceptForNewUser` (it writes `platform_users`, `platform_sessions`, `invitations` and `platform_user_tenants` in one transaction) and shares the auth email-key derivation.

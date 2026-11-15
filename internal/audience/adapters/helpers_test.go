@@ -5,14 +5,79 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nikolaymatrosov/nvelope/internal/audience/adapters"
+	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 )
 
 // timeZeroAdapters is a fixed timestamp for hydrating entities in tests.
 func timeZeroAdapters() time.Time { return time.Unix(0, 0).UTC() }
+
+// backend is one storage implementation of the audience repositories under
+// contract test. Every contract test body runs once per backend, so the
+// Postgres and YDB adapters are held to the same behaviour.
+type backend struct {
+	name        string
+	lists       func(t *testing.T) domain.ListRepository
+	subscribers func(t *testing.T) domain.SubscriberRepository
+	memberships func(t *testing.T) domain.MembershipRepository
+	fields      func(t *testing.T) domain.FieldRepository
+	// newTenant returns the id of a tenant row, which the tenant context
+	// owns. On Postgres the audience tables carry a foreign key to it, so the
+	// pg backend inserts a real row. YDB has no foreign keys and no audience
+	// query reads the tenants table, so a bare UUID stands in.
+	newTenant func(t *testing.T) string
+}
+
+var backends = []backend{
+	{
+		name: "pg",
+		lists: func(t *testing.T) domain.ListRepository {
+			return adapters.NewLists(dbtest.AppPool(t))
+		},
+		subscribers: func(t *testing.T) domain.SubscriberRepository {
+			return adapters.NewSubscribers(dbtest.AppPool(t))
+		},
+		memberships: func(t *testing.T) domain.MembershipRepository {
+			return adapters.NewMemberships(dbtest.AppPool(t))
+		},
+		fields: func(t *testing.T) domain.FieldRepository {
+			return adapters.NewFields(dbtest.AppPool(t))
+		},
+		newTenant: func(t *testing.T) string { return seedTenant(t, dbtest.AppPool(t)) },
+	},
+	{
+		name: "ydb",
+		lists: func(t *testing.T) domain.ListRepository {
+			return adapters.NewYDBLists(dbtest.YDBMigrated(t))
+		},
+		subscribers: func(t *testing.T) domain.SubscriberRepository {
+			return adapters.NewYDBSubscribers(dbtest.YDBMigrated(t))
+		},
+		memberships: func(t *testing.T) domain.MembershipRepository {
+			return adapters.NewYDBMemberships(dbtest.YDBMigrated(t))
+		},
+		fields: func(t *testing.T) domain.FieldRepository {
+			return adapters.NewYDBFields(dbtest.YDBMigrated(t))
+		},
+		newTenant: func(*testing.T) string { return uuid.NewString() },
+	},
+}
+
+// eachBackend runs body once per backend, as parallel subtests named after it.
+func eachBackend(t *testing.T, body func(t *testing.T, b backend)) {
+	t.Helper()
+	for _, b := range backends {
+		t.Run(b.name, func(t *testing.T) {
+			t.Parallel()
+			body(t, b)
+		})
+	}
+}
 
 // seedTenant inserts a tenant row directly and returns its id. The audience
 // adapters need a real tenant to satisfy the tenant_id foreign key and the RLS
