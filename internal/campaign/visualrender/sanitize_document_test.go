@@ -122,6 +122,14 @@ func TestSanitizeDocument_LiteralSentinelCarriesNothing(t *testing.T) {
 	require.Equal(t, `<p>nvelope-merge-tag-0-x nvelope-merge-tag-99-x</p>`, out)
 }
 
+func TestSanitizeDocument_LiteralSentinelDoesNotMoveATag(t *testing.T) {
+	t.Parallel()
+	// A literal sentinel must not pick up a real tag from elsewhere in the
+	// document: that would relocate {{{rows}}} into the href.
+	out, _ := SanitizeDocument(`<a href="nvelope-merge-tag-0-x">x</a><p>{{{rows}}}</p>`)
+	require.Equal(t, `<a href="nvelope-merge-tag-0-x" rel="nofollow">x</a><p>{{{rows}}}</p>`, out)
+}
+
 func TestSanitizeDocument_CommentContentPreservedVerbatim(t *testing.T) {
 	t.Parallel()
 	out, warnings := SanitizeDocument(`<p>x</p><!--[if mso]><script>x</script><![endif]-->`)
