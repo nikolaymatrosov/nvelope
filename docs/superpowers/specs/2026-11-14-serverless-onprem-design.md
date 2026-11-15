@@ -1142,13 +1142,13 @@ Decisions for Plan B7:
 - **A V6 fix on Postgres.** `Recipients.BulkInsert`'s `inserted` counter is
   reset at the start of its closure (the V6 table lists it). No other Postgres
   adapter changes.
-- **Found, not fixed (both backends).** `StartWorker.Work` sets a campaign's
-  `recipient_count` and fans out batches from `sent + failed + pending`, which
-  leaves out `skipped` recipients, while the `Pending` window spans every row.
-  A campaign resumed after some recipients were skipped can fan out too few
-  batches, leave its last recipients unselected, and never finish. The fix is in
-  the start worker (count every row, for example by having `Counts` return
-  skipped too), which this plan does not change.
+- **Found by the B7 review, fixed after B9 (both backends).** `StartWorker.Work`
+  set a campaign's `recipient_count` and fanned out batches from
+  `sent + failed + pending`, which left out `skipped` recipients, while the
+  `Pending` window spans every row. A campaign resumed after some recipients were
+  skipped could fan out too few batches, leave its last recipients unselected,
+  and never finish. `RecipientRepository.Counts` now also returns `skipped`, and
+  the start worker counts every row (`TestStartWorkerResumeCoversSkippedRecipients`).
 - **For B8, B9 and C4.**
   - **B8.** Attribution resolves a provider message id with no tenant bound:
     read `campaign_recipients VIEW idx_campaign_recipients_provider` and
@@ -1255,11 +1255,12 @@ Decisions for Plan B8:
   campaign counts nowhere. No campaign delete exists, so no `campaign_analytics`
   cascade is needed. A campaign's `sent_count` is the count of its `sent`
   recipients, so it falls when a subscriber's deletion removes recipients (B7).
-  Postgres does not behave the same way: deleting a subscriber cascades to
-  `campaign_recipients`, whose `delivery_events.campaign_recipient_id ON DELETE
-  SET NULL` then violates `CHECK ((campaign_recipient_id IS NOT NULL) <>
-  (transactional_message_id IS NOT NULL))`, so deleting a subscriber that has
-  any campaign delivery event fails (see "Found, not fixed").
+  On Postgres the same delete cascades to `campaign_recipients`, and
+  `delivery_events.campaign_recipient_id ON DELETE SET NULL` clears the id. That
+  used to violate `CHECK ((campaign_recipient_id IS NOT NULL) <>
+  (transactional_message_id IS NOT NULL))`, so the delete failed. Migration
+  `000025_delivery_event_source_check` relaxes the check to "at most one
+  source", so an event outlives its deleted source on both backends.
 - **Feedback recovery (the C1 carry-over).** B8 owns the port, so it adds
   `EventRepository.PendingInbound(ctx, receivedBefore, limit)` on both backends
   (Postgres: the existing `status` and `received_at` indexes) and
@@ -1278,15 +1279,18 @@ Decisions for Plan B8:
   harness (`backend_test.go`), as in campaign. `stageInbound` retires the
   notifications a test leaves pending, so the shared database does not pile
   them up for the `PendingInbound` test.
-- **Found, not fixed.**
-  - Both backends: `SuppressionApplier.Apply` passes `e.ID()` as the entry's
-    source event id, but `RecordEvent` never sets the id on the event it was
-    given, so `suppression_list.source_event_id` is always NULL. Fixing it means
-    having `RecordEvent` return the new id, a port change outside this plan.
-  - Postgres only (an existing SaaS bug, reproduced on `postgres:17`): deleting
-    a subscriber that has any campaign delivery event fails on the CHECK above.
-    It diverges from YDB, which deletes the subscriber and leaves the event with
-    a dangling `campaign_recipient_id`.
+- **Found by the B8 review, fixed after B9.**
+  - Both backends: `SuppressionApplier.Apply` passed `e.ID()` as the entry's
+    source event id, but nothing set it, so `suppression_list.source_event_id`
+    was always NULL. `RecordEvent` now returns the row id (`(id string, err
+    error)`; the unused `recorded` flag is gone). On a retry that is the row an
+    earlier attempt wrote. `ProcessFeedback` hands `event.Recorded(id)` to the
+    applier. Postgres reads the existing id with a second statement after
+    `ON CONFLICT DO NOTHING RETURNING id` returns no row.
+  - Postgres only (an existing SaaS bug): deleting a subscriber that had any
+    campaign delivery event failed on the CHECK above. Fixed by migration
+    `000025` (see "Dangling ids"), pinned by
+    `TestSubscribersDeleteKeepsDeliveryEvents`.
 - **For B9 and C4.**
   - **B9.** Nothing: no deliverability table references media, and media owns
     no table deliverability reads. The next migration number is `000010`.
