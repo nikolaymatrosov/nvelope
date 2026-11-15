@@ -228,9 +228,13 @@ SaaS keeps the Redis implementations.
     `audience.import`, `audience.export`, `campaign.start`, `campaign.batch`.
   - `jobs` (short visibility timeout): everything else that is wired in
     serverless mode.
-- Each queue has a DLQ through a redrive policy with `maxReceiveCount=5`.
+- Each queue has a DLQ through a redrive policy with `maxReceiveCount=5`. C3
+  revisits the value (see "Carried to C3 and C4").
 - Client: `aws-sdk-go-v2/service/sqs` against the YMQ endpoint, using static
-  access keys from Lockbox.
+  access keys from Lockbox. It is pinned to v1.42.27, the release built on the
+  `aws-sdk-go-v2` core already in `go.mod` (v1.41.7); `@latest` would upgrade
+  the core shared with the S3 and Postbox clients. It speaks the AWS JSON
+  protocol, which YMQ accepts (see "Plan C1 planning spike").
 - **`UniqueOpts{ByArgs: true}` is not reproduced** (6 sites in `jobs.go`).
   Standard YMQ queues are used. V3 was resolved during planning:
 
@@ -239,30 +243,44 @@ SaaS keeps the Redis implementations.
   | `billing.sweep`, `billing.charge`, `usage.rollup` | not wired (billing is out of scope) |
   | `auth.verification_cleanup` | not wired (table TTL replaces it) |
   | `analytics.refresh` | duplicates are harmless: an idempotent recompute, and the cron interval is far longer than one refresh |
-  | `domain.verify` via `EnqueueVerifyUnique` | **needs a debounce** (below) |
+  | `domain.verify` via `EnqueueVerifyUnique` | **the sweep re-arms only lost chains** (below) |
 
-  `domain.verify` needs the debounce because the sweep relies on uniqueness to
-  avoid stacking chains (`cmd/scheduler` `sweepPendingDomains`). Without it,
-  every sweep would start one more self-snoozing chain per pending domain.
+  The sweep relies on uniqueness to avoid stacking chains (`cmd/scheduler`
+  `sweepPendingDomains`). Without it, every sweep would start one more
+  self-snoozing chain per pending domain.
 
-  The fix lands in Plan C, test-first: `VerifyWorker.Work` returns `nil`
-  without polling when
-  `now - LastCheckedAt <= interval/2`. Of any two chains, one always exits at
-  its next run, so exactly one survives. SaaS behavior is unchanged, because
-  River's uniqueness already prevents the duplicate.
+  Plan C1 fixes this in the serverless sweep, not in the worker. The
+  `/cron/domain-verify-sweep` handler re-arms a pending domain only when its
+  last poll (or its creation, if it was never polled) is older than two poll
+  intervals. A chain that is on schedule polls every interval, so the sweep
+  never doubles it. If job delivery stalls for more than two intervals, the
+  sweep does start one (see Ceilings). `VerifyWorker` and SaaS are unchanged.
+
+  The worker-side debounce planned earlier (`VerifyWorker.Work` returns `nil`
+  when `now - LastCheckedAt <= interval/2`) was dropped in Plan C1 planning.
+  `RecheckDomain` (the user's "check now") enqueues a plain `EnqueueVerify`, so
+  under the debounce a recheck within 7.5 minutes of the last poll (default
+  interval 15 min) would not poll at all, in SaaS too. The duplicate chain a
+  recheck starts is pre-existing behavior in both runtimes (see Ceilings).
 
 ### `POST /jobs` (Message Queue trigger, batch size 1)
 
 The handler decodes the trigger payload and dispatches by `kind` through a
-`map[string]func(ctx, json.RawMessage) error` registry. The context deadline is
-the container timeout minus a safety margin.
+`map[string]func(ctx, json.RawMessage) error` registry. The context has one of
+two deadlines:
+
+- Short-queue kinds get a short timeout. It stays below the short queue's
+  visibility timeout.
+- Long kinds (import, export, campaign start and batch) get the container
+  timeout minus a safety margin. It stays below the long queue's visibility
+  timeout.
 
 | Outcome | Action | HTTP |
 |---------|--------|------|
 | `nil` | — (the trigger deletes the message) | 200 |
 | `*rivertype.JobSnoozeError{Duration: d}` (from `river.JobSnooze`) | send a copy with `DelaySeconds = min(d, 900s)` and `not_before = now + d` | 200 |
 | `not_before` in the future | re-send with the remaining delay, capped at 900 s | 200 |
-| any other error, unknown `kind`, undecodable body | log with kind and args | 500 → redelivered after the visibility timeout, then DLQ |
+| any other error, unknown `kind`, undecodable body | log the error (it names the kind) and the YMQ message id. The args are not logged: `optin.send` and `auth.verification_send` carry raw tokens. | 500 → redelivered after the visibility timeout, then DLQ |
 
 ### `POST /cron/:name` (timer triggers)
 
@@ -273,7 +291,12 @@ Each route enqueues the same jobs `cmd/scheduler` enqueues today:
 
 `cmd/scheduler` selects pending domains and active tenants with raw SQL on the
 pool (`sweepPendingDomains`, `enqueueAnalyticsRefresh`). The cron handlers need
-the same reads as small YDB queries; they land in Plan C.
+no new queries: they find the single tenant with `TenantRepository.GetBySlug`
+(`NVELOPE_TENANT_SLUG`) and its domains with `SendingDomainRepository.All`.
+Before the first-run setup has created the tenant, both sweeps do nothing. A
+failed sweep is logged and still answered 200, as `cmd/scheduler` logs and
+carries on: the next tick is the retry. A trigger-level retry could re-arm a
+domain twice before its first poll.
 
 The campaign workers already accept `nil` for the billing ports `quota` and
 `usage` ("a deployment without billing"), so serverless wiring passes `nil`.
@@ -286,8 +309,12 @@ out of scope, and TTL replaces the cleanup.
 - Decodes each message in the trigger batch and calls the existing
   `deliverability/app/command.IngestNotificationHandler` (staging row +
   `feedback.process` enqueue). This is the same handler `cmd/consumer` calls.
-- Any failure returns 500. The trigger retries per its retry settings, then the
-  message goes to the trigger's DLQ.
+- A malformed notification (`deliverability/domain.ErrValidationFailed`) is
+  logged and skipped, as `cmd/consumer` skips it: it can never succeed. Any
+  other failure returns 500. The trigger retries the batch per its retry
+  settings, then sends it to the trigger's DLQ. Staging dedupes by
+  notification, so a retried batch does not count the messages before the
+  failure twice.
 
 ## On-prem packaging
 
@@ -384,7 +411,7 @@ by release version.
 - **Job runtime tests use real SQS semantics from fakecloud.** YMQ speaks the
   SQS API, so the YMQ enqueuer and the `/jobs` dispatcher are tested against
   [fakecloud](https://github.com/faiscadev/fakecloud), a local AWS emulator.
-  It runs as a `dbtest.SQS(t)` testcontainer helper, following the
+  It runs as a `dbtest.SQSEndpoint(t)` testcontainer helper, following the
   `dbtest.YDB` pattern, with `NVELOPE_TEST_SQS_ENDPOINT` as the override.
   - **Verified on 2026-11-14 against `ghcr.io/faiscadev/fakecloud:0.50.0`**
     (multi-arch, native on arm64):
@@ -757,6 +784,100 @@ Decisions for Plan B5:
   become a closure-local slice in `YDBLists.All` and `YDBSubscribers.page`.
   `memberships_pg.go:119` (`ForSubscriber`) is one statement outside `DoTx`.
 
+### Plan C1 planning spike
+
+Run on 2026-11-15 while planning the job runtime. fakecloud runs as
+`ghcr.io/faiscadev/fakecloud:0.50.0`, the client is
+`aws-sdk-go-v2/service/sqs` v1.42.27. A dry run of the whole plan then passed:
+the `ymq` and worker-route tests, `golangci-lint`, `make lint-arch` and
+`go test ./...`.
+
+- **YMQ accepts the AWS JSON protocol.** The YMQ API reference documents only
+  the query protocol (form-encoded, XML responses), while every current
+  `service/sqs` release sends `application/x-amz-json-1.0`. Unauthenticated
+  probes of `https://message-queue.api.cloud.yandex.net/` answer a JSON request
+  (`X-Amz-Target: AmazonSQS.ListQueues`) in JSON
+  (`{"__type":"AccessDeniedException","message":"IAM authentication error."}`)
+  and a query request in XML (`<ErrorResponse>`). So the server parses the
+  JSON protocol. A real send is confirmed only by the C4 smoke test.
+- **The Go SDK against fakecloud:** `DelaySeconds: 901` fails with
+  `InvalidParameterValue` ("Must be between 0 and 900"). A message sent with
+  `DelaySeconds: 2` is not received at once and is received after 2 s. With
+  `VisibilityTimeout 1` and a redrive policy of `maxReceiveCount "2"`, an
+  unacknowledged message is received twice (`ApproximateReceiveCount` 1, then
+  2), and the third receive finds it in the DLQ. Queue URLs have the form
+  `http://<host>:<port>/123456789012/<name>`, and the queue ARN comes from
+  `GetQueueAttributes(QueueArn)`.
+- **Trigger request formats**, all from the yandex-cloud/docs sources. Every
+  trigger invokes a container with `POST` to the trigger's `container.path`.
+  - Message Queue: `{"messages":[{"event_metadata":{...},"details":{"queue_id":
+    "...","message":{"message_id":"...","body":"...","attributes":{...},
+    "message_attributes":{...}}}}]}`. On success the trigger deletes the
+    messages. On an error it returns them to the queue with the visibility
+    timeout. Only one trigger may read a queue, and only a standard queue.
+  - Timer: `{"messages":[{"event_metadata":{"event_type":
+    "yandex.cloud.events.serverless.triggers.TimerMessage",...},"details":
+    {"trigger_id":"...","payload":"..."}}]}`. The cron fields are
+    `Minutes Hours Day-of-month Month Day-of-week Year`. The handlers ignore
+    the body; the path names the sweep.
+  - Data Streams: `{"messages":[<message>, ...]}`, where each element is the
+    stream message's own JSON. Yandex's `yc-postbox-events` example reads
+    `message["eventType"]` and `message["mail"]` straight off each element,
+    so each element is one Postbox notification, the same bytes
+    `cmd/consumer` reads from the topic.
+
+Decisions for Plan C1:
+
+- The `domain.verify` duplicate-chain fix moves from the worker to the
+  serverless sweep (see "YMQ enqueuer").
+- The worker routes live in `internal/service` (`WorkerRoutes`), because
+  `make lint-arch` forbids `internal/api` from importing YDB or adapter code,
+  and `/admin/migrate` needs the YDB driver.
+- `ymq.AddWorker(d, w)` mirrors `jobs.AddWorker(workers, w)`, so the C4
+  serverless worker registers the same worker values River gets.
+- The test helper is `dbtest.SQSEndpoint(t) string`, named like
+  `dbtest.YDBDSN`. Tests build their client with the production
+  `ymq.NewClient`.
+
+Carried to C3 and C4 (final review of Plan C1):
+
+- **Visibility timeouts.** The short queue's `visibility_timeout_seconds` is at
+  least the short job timeout plus a margin, and the long queue's is at least
+  the long job timeout plus a margin. Each Message Queue trigger's own
+  `visibility_timeout` is left unset or set equal to its queue's.
+- **Retry budget.** `maxReceiveCount=5` with a fixed visibility timeout gives a
+  few minutes of retries; River gives 25 attempts with exponential backoff. C3
+  decides the short queue's `maxReceiveCount`. C3 also checks in the YC docs
+  whether a throttled invocation (container instance limit, HTTP 429) consumes
+  a receive count. If it does, a campaign fan-out can dead-letter jobs that
+  never ran.
+- **DLQ alerts.** Alert on the depth of both job DLQs and of the Data Streams
+  trigger's DLQ.
+- **Feedback recovery.** A dead-lettered `feedback.process` leaves a staged
+  inbound event that is never processed, so a bounce or complaint never
+  suppresses the address. C4 (or the deliverability Plan B) adds a recovery
+  path: a cron sweep that re-enqueues `feedback.process` for staged events left
+  unprocessed past a threshold, like the domain sweep. This needs a
+  deliverability port method.
+- **Instance limits.** Size the worker container's instance limit against the
+  campaign fan-out, or give `jobs-long` its own container built from the same
+  image.
+- **IAM.** Bind `serverless.containers.invoker` per container, not
+  folder-wide. The API Gateway's service account has no binding on `worker`;
+  only the triggers' service account and the deploy step invoke it. Anyone who
+  can invoke `worker` can start campaigns, send verification and opt-in
+  emails, inject bounces that suppress addresses, and run migrations.
+- **Config.**
+  - The domain-sweep timer fires no more often than `VerifyInterval`, as
+    `cmd/scheduler` does today.
+  - `WorkerRoutes.VerifyInterval` is the same `cfg.SendingDomainVerifyInterval`
+    passed to `NewVerifyWorker`.
+  - `NVELOPE_TENANT_SLUG` is required config in serverless mode.
+- **Real-YMQ probe.** As soon as C3 can create a queue, run one SendMessage,
+  ReceiveMessage and DeleteMessage against real YMQ with the Go SDK, to confirm
+  the JSON protocol before C4. If it fails, the fallback is a query-protocol
+  `service/sqs` release built on the current core.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -801,6 +922,18 @@ These are known limits, marked in code with `ponytail:` comments.
 - Every page and count of `Search`, `InList` and `RunSegment` evaluates its
   predicate over the tenant's subscribers (`InList` through the list index),
   which the `count(*) + OFFSET` ceiling covers.
+- A user's "check now" on a pending domain (`RecheckDomain`) starts one more
+  verification chain beside the live one, in both runtimes. Each chain polls
+  every interval until the domain verifies or the window (72 h) closes. The
+  upgrade path is a worker-side debounce that exempts user-requested polls
+  (see "YMQ enqueuer").
+- When job delivery stalls for more than two poll intervals (a trigger backlog
+  or outage), every sweep tick re-arms each pending domain. Those chains all
+  survive until the domain verifies or the 72 h window closes. The upgrade path
+  is the same worker-side debounce that exempts user-requested polls.
+- The `/jobs` dispatcher assumes the trigger's batch size 1. With a larger
+  batch, one failed job redelivers the whole batch, including jobs that
+  already succeeded.
 
 ## Implementation phasing
 
@@ -823,7 +956,17 @@ The plan is split into three plans. Each one merges to `main` on its own.
   same task that adds its YDB adapter. The harness shape is fixed by the first
   context (sending, the smallest). Building it earlier, with only one
   implementation, would be a speculative abstraction.
-- **Plan C: Serverless runtime and packaging.** YMQ enqueuer; `/jobs`, `/cron`,
-  `/feedback` and `/admin/migrate`; the serverless composition root;
-  single-tenant bootstrap; `/api/platform/config` and the frontend flags; the
-  Terraform module; image publishing; README quickstart; the smoke test.
+- **Plan C: Serverless runtime and packaging.** Split into four plans. C1, C2
+  and C3 run in parallel with Plan B: they build on the ports, Plan A and the
+  B1 runner, not on the remaining YDB adapters.
+  - **C1, job runtime:** the YMQ enqueuer and `dbtest.SQSEndpoint`; the `/jobs`
+    dispatcher with its fakecloud pump tests; the worker routes `/cron/*`,
+    `/feedback` and `/admin/migrate`. Library code and handlers only; nothing
+    starts them until C4.
+  - **C2, single-tenant bootstrap:** setup-token signup, `/api/platform/config`
+    and the frontend flags.
+  - **C3, packaging:** the Terraform module and image publishing. Only
+    `terraform validate` and `plan` can run before C4.
+  - **C4, assembly (after Plan B):** the serverless composition root, the
+    serverless modes of `cmd/worker` and `cmd/api`, the README quickstart and
+    the smoke test.
