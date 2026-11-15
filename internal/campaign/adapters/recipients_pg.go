@@ -32,6 +32,7 @@ func (r *Recipients) BulkInsert(ctx context.Context, tenantID, campaignID string
 
 	var inserted int
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		inserted = 0 // a retried run starts from zero (V6)
 		for _, rec := range rs {
 			tag, err := tx.Exec(ctx,
 				`INSERT INTO campaign_recipients (tenant_id, campaign_id, subscriber_id, email)

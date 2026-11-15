@@ -24,6 +24,7 @@ type backend struct {
 	name          string
 	templates     func(t *testing.T) domain.TemplateRepository
 	campaigns     func(t *testing.T) domain.CampaignRepository
+	recipients    func(t *testing.T) domain.RecipientRepository
 	transactional func(t *testing.T) domain.TransactionalMessageRepository
 	// The seeds below create rows owned by other contexts. On Postgres they
 	// are real rows, because the campaign tables carry foreign keys to them.
@@ -34,6 +35,7 @@ type backend struct {
 	newList          func(t *testing.T, tenantID string) string
 	newSubscriber    func(t *testing.T, tenantID, email string) string
 	// The probes read what no port exposes.
+	providerMessageID  func(t *testing.T, tenantID, recipientID string) string
 	transactionalCount func(t *testing.T, tenantID string) int
 }
 
@@ -45,6 +47,9 @@ var backends = []backend{
 		},
 		campaigns: func(t *testing.T) domain.CampaignRepository {
 			return adapters.NewCampaigns(dbtest.AppPool(t))
+		},
+		recipients: func(t *testing.T) domain.RecipientRepository {
+			return adapters.NewRecipients(dbtest.AppPool(t))
 		},
 		transactional: func(t *testing.T) domain.TransactionalMessageRepository {
 			return adapters.NewTransactionalMessages(dbtest.AppPool(t))
@@ -59,6 +64,9 @@ var backends = []backend{
 		newSubscriber: func(t *testing.T, tenantID, email string) string {
 			return seedSubscriber(t, dbtest.AppPool(t), tenantID, email)
 		},
+		providerMessageID: func(t *testing.T, tenantID, recipientID string) string {
+			return pgScalar(t, tenantID, "SELECT coalesce(provider_message_id, '') FROM campaign_recipients WHERE id = $1", recipientID)
+		},
 		transactionalCount: func(t *testing.T, tenantID string) int {
 			return pgCount(t, tenantID, "SELECT count(*) FROM transactional_messages", nil)
 		},
@@ -71,6 +79,9 @@ var backends = []backend{
 		campaigns: func(t *testing.T) domain.CampaignRepository {
 			return adapters.NewYDBCampaigns(dbtest.YDBMigrated(t))
 		},
+		recipients: func(t *testing.T) domain.RecipientRepository {
+			return adapters.NewYDBRecipients(dbtest.YDBMigrated(t))
+		},
 		transactional: func(t *testing.T) domain.TransactionalMessageRepository {
 			return adapters.NewYDBTransactionalMessages(dbtest.YDBMigrated(t))
 		},
@@ -78,6 +89,12 @@ var backends = []backend{
 		newSendingDomain: func(*testing.T, string) string { return uuid.NewString() },
 		newList:          func(*testing.T, string) string { return uuid.NewString() },
 		newSubscriber:    func(*testing.T, string, string) string { return uuid.NewString() },
+		providerMessageID: func(t *testing.T, tenantID, recipientID string) string {
+			return ydbScalar(t, `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+SELECT provider_message_id FROM campaign_recipients VIEW idx_campaign_recipients_id
+WHERE tenant_id = $tenant_id AND id = $id;`, tenantID, "$id", recipientID)
+		},
 		transactionalCount: func(t *testing.T, tenantID string) int {
 			return ydbCount(t, `DECLARE $tenant_id AS Utf8;
 SELECT COUNT(*) FROM transactional_messages WHERE tenant_id = $tenant_id;`, tenantID, "", "")
@@ -94,6 +111,17 @@ func eachBackend(t *testing.T, body func(t *testing.T, b backend)) {
 			body(t, b)
 		})
 	}
+}
+
+// pgScalar reads one text value inside the tenant-bound transaction.
+func pgScalar(t *testing.T, tenantID, sql, arg string) string {
+	t.Helper()
+	var out string
+	require.NoError(t, tenantdb.WithTenant(context.Background(), dbtest.AppPool(t), tenantID,
+		func(ctx context.Context, tx pgx.Tx) error {
+			return tx.QueryRow(ctx, sql, arg).Scan(&out)
+		}))
+	return out
 }
 
 // pgCount reads one count inside the tenant-bound transaction. A nil arg runs
@@ -118,6 +146,19 @@ func ydbParams(tenantID, name, value string) query.ExecuteOption {
 		b = b.Param(name).Text(value)
 	}
 	return query.WithParameters(b.Build())
+}
+
+// ydbScalar reads one nullable text value, "" for NULL.
+func ydbScalar(t *testing.T, q, tenantID, name, value string) string {
+	t.Helper()
+	row, err := dbtest.YDBMigrated(t).Query().QueryRow(context.Background(), q, ydbParams(tenantID, name, value))
+	require.NoError(t, err)
+	var out *string
+	require.NoError(t, row.Scan(&out))
+	if out == nil {
+		return ""
+	}
+	return *out
 }
 
 // ydbCount reads one COUNT(*).
@@ -195,18 +236,4 @@ func newTemplate(t *testing.T, tenantID, name string) *domain.Template {
 	tpl, err := domain.NewTemplate(tenantID, name, domain.KindCampaign, "Subject", "<p>b</p>", "")
 	require.NoError(t, err)
 	return tpl
-}
-
-// withRecipientProviderMessageID reads a campaign recipient's persisted
-// provider_message_id inside the tenant-bound transaction.
-func withRecipientProviderMessageID(t *testing.T, pool *pgxpool.Pool, tenantID, recipientID string,
-	dst *string) error {
-
-	t.Helper()
-	return tenantdb.WithTenant(context.Background(), pool, tenantID,
-		func(ctx context.Context, tx pgx.Tx) error {
-			return tx.QueryRow(ctx,
-				"SELECT coalesce(provider_message_id, '') FROM campaign_recipients WHERE id = $1",
-				recipientID).Scan(dst)
-		})
 }

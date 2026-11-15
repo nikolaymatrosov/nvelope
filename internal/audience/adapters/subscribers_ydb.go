@@ -189,7 +189,7 @@ WHERE tenant_id = $tenant_id AND id = $id;`,
 }
 
 // Delete removes the subscriber and, in the same transaction, its
-// memberships, as the Postgres cascade does. It returns
+// memberships and campaign recipients, as the Postgres cascade does. It returns
 // domain.ErrSubscriberNotFound when absent.
 func (r *YDBSubscribers) Delete(ctx context.Context, tenantID, id string) error {
 	return r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
@@ -209,6 +209,19 @@ DECLARE $id AS Utf8;
 DELETE FROM subscriber_lists
 WHERE tenant_id = $tenant_id AND subscriber_id = $id;`, ydbTenantAndID(tenantID, id)); err != nil {
 			return fmt.Errorf("deleting subscriber memberships: %w", err)
+		}
+		// campaign_recipients belongs to campaign. Postgres cascades into it
+		// through its foreign key to subscribers, so an erased subscriber
+		// keeps no address in a campaign and is not mailed by a running one.
+		// The click and view events keep their recipient id: nothing reads
+		// them.
+		if err := tx.Exec(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+DELETE FROM campaign_recipients ON
+SELECT tenant_id, campaign_id, id
+FROM campaign_recipients VIEW idx_campaign_recipients_subscriber
+WHERE tenant_id = $tenant_id AND subscriber_id = $id;`, ydbTenantAndID(tenantID, id)); err != nil {
+			return fmt.Errorf("deleting subscriber campaign recipients: %w", err)
 		}
 		return nil
 	})
