@@ -138,13 +138,15 @@ func (h ProcessFeedbackHandler) Handle(ctx context.Context, cmd ProcessFeedback)
 		return err
 	}
 
-	recorded, err := h.events.RecordEvent(ctx, event)
+	_, err = h.events.RecordEvent(ctx, event)
 	if err != nil {
 		return err
 	}
-	// Suppression runs only when the event was newly recorded, so a retried
-	// job never applies it twice.
-	if recorded && h.suppressor != nil {
+	// Suppression runs even when the event was already recorded: a retry after
+	// RecordEvent committed but Apply failed must still suppress. Upsert is a
+	// no-op for an already suppressed address, and IsProcessed stops finished
+	// rows from reaching this point.
+	if h.suppressor != nil {
 		if _, drives := event.SuppressionReason(); drives {
 			if err := h.suppressor.Apply(ctx, event); err != nil {
 				return err

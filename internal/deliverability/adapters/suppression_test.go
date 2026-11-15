@@ -73,7 +73,7 @@ func TestSuppressionsListFiltersAndPages(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, cyrillic, 1, "the email filter ignores case for non-ASCII too")
 
-		// Three pages of one, in id order, walked by the cursor.
+		// Four pages of one, in id order, walked by the cursor.
 		var seen []string
 		cursor := ""
 		for range 4 {

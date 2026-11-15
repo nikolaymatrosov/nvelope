@@ -31,6 +31,13 @@ type fakeEvents struct {
 	pendingBefore time.Time
 	byKey         map[string]string
 	nextID        int
+	// ProcessFeedback configuration; the zero values keep the ingestion tests'
+	// "nothing attributable" behaviour.
+	inbound  domain.InboundNotification
+	tenantID string
+	attr     *domain.Attribution
+	recorded bool
+	marked   []domain.InboundStatus
 }
 
 func newFakeEvents() *fakeEvents { return &fakeEvents{byKey: map[string]string{}} }
@@ -47,22 +54,26 @@ func (f *fakeEvents) StageInbound(_ context.Context, n domain.InboundNotificatio
 }
 
 func (f *fakeEvents) LoadInbound(context.Context, string) (domain.InboundNotification, error) {
-	return domain.InboundNotification{}, nil
+	return f.inbound, nil
 }
 
 func (f *fakeEvents) TenantForMessage(context.Context, string) (string, bool, error) {
-	return "", false, nil
+	return f.tenantID, f.tenantID != "", nil
 }
 
 func (f *fakeEvents) Attribute(context.Context, string, string) (domain.Attribution, bool, error) {
-	return domain.Attribution{}, false, nil
+	if f.attr == nil {
+		return domain.Attribution{}, false, nil
+	}
+	return *f.attr, true, nil
 }
 
 func (f *fakeEvents) RecordEvent(context.Context, *domain.DeliveryEvent) (bool, error) {
-	return false, nil
+	return f.recorded, nil
 }
 
-func (f *fakeEvents) MarkInbound(context.Context, string, domain.InboundStatus) error {
+func (f *fakeEvents) MarkInbound(_ context.Context, _ string, st domain.InboundStatus) error {
+	f.marked = append(f.marked, st)
 	return nil
 }
 
@@ -151,4 +162,32 @@ func TestSweepPendingFeedbackEnqueuesEveryPendingNotification(t *testing.T) {
 	require.Equal(t, []string{"evt-a", "evt-b"}, enqueuer.enqueued)
 	require.WithinDuration(t, start.Add(-10*time.Minute), events.pendingBefore, time.Minute,
 		"the cutoff is now minus OlderThan")
+}
+
+// fakeSuppressor counts Apply calls.
+type fakeSuppressor struct{ applied int }
+
+func (s *fakeSuppressor) Apply(context.Context, *domain.DeliveryEvent) error {
+	s.applied++
+	return nil
+}
+
+// A retry after RecordEvent committed but Apply failed sees the event as
+// already recorded; suppression must still be applied.
+func TestProcessFeedbackAppliesSuppressionForAnAlreadyRecordedEvent(t *testing.T) {
+	t.Parallel()
+	n := bounceNotification(t)
+	n.ID = "evt-1"
+	events := newFakeEvents()
+	events.inbound = n
+	events.tenantID = "tenant-1"
+	events.attr = &domain.Attribution{CampaignID: "camp-1", CampaignRecipientID: "rcpt-1"}
+	events.recorded = false // already recorded by the earlier attempt
+	sup := &fakeSuppressor{}
+	h := command.NewProcessFeedbackHandler(events, sup, nil)
+
+	require.NoError(t, h.Handle(context.Background(),
+		command.ProcessFeedback{InboundEventID: "evt-1"}))
+	require.Equal(t, 1, sup.applied)
+	require.Equal(t, []domain.InboundStatus{domain.InboundAttributed}, events.marked)
 }

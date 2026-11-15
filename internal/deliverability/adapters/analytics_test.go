@@ -141,8 +141,11 @@ func TestAnalyticsDashboardListsTheTenLatestCampaignsAndTotalsAll(t *testing.T) 
 		analytics := b.analytics(t)
 		ctx := context.Background()
 		tenantID := b.newTenant(t)
+		var seeded []string
 		for range 12 {
-			seedSend(t, b, tenantID, "pm-"+dbtest.RandString())
+			campaignID, _ := seedSend(t, b, tenantID, "pm-"+dbtest.RandString())
+			seeded = append(seeded, campaignID)
+			time.Sleep(2 * time.Millisecond) // distinct created_at per campaign
 		}
 		require.NoError(t, analytics.Refresh(ctx, tenantID))
 
@@ -150,5 +153,14 @@ func TestAnalyticsDashboardListsTheTenLatestCampaignsAndTotalsAll(t *testing.T) 
 		require.NoError(t, err)
 		require.Equal(t, 12, dash.Totals.Sent, "totals cover every campaign")
 		require.Len(t, dash.Recent, 10, "the recent list is capped")
+		var got []string
+		for _, r := range dash.Recent {
+			got = append(got, r.CampaignID)
+		}
+		want := make([]string, 0, 10)
+		for i := len(seeded) - 1; i >= 2; i-- {
+			want = append(want, seeded[i])
+		}
+		require.Equal(t, want, got, "the ten latest campaigns, newest first")
 	})
 }
