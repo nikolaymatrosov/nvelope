@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -10,6 +11,7 @@ import (
 	authdomain "github.com/nikolaymatrosov/nvelope/internal/auth/domain"
 	tenantcommand "github.com/nikolaymatrosov/nvelope/internal/tenant/app/command"
 	tenantquery "github.com/nikolaymatrosov/nvelope/internal/tenant/app/query"
+	tenantdomain "github.com/nikolaymatrosov/nvelope/internal/tenant/domain"
 )
 
 type credentialsRequest struct {
@@ -19,6 +21,12 @@ type credentialsRequest struct {
 }
 
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
+	// A single-tenant install has no open registration: the first account
+	// comes from first-run setup, everyone else from an invitation.
+	if s.cfg.SingleTenant() {
+		s.handleSetupSignup(w, r)
+		return
+	}
 	var req credentialsRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
@@ -37,6 +45,88 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	s.resolveAuthLocale(w, r, result.UserID, "")
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"verification": map[string]any{"required": true, "email": result.UserEmail},
+	})
+}
+
+// handleSetupSignup is first-run setup of a single-tenant install. With the
+// setup token, and only while the install's workspace does not exist yet, it
+// creates the owner's account (verified and signed in) and the workspace.
+func (s *Server) handleSetupSignup(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		credentialsRequest
+		SetupToken string `json:"setup_token"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
+		return
+	}
+	done, err := s.setupDone(r.Context())
+	if err != nil {
+		s.fail(w, r, "setup", err)
+		return
+	}
+	if done {
+		writeError(w, r, http.StatusForbidden, "setup_complete",
+			"this install is already set up; ask a workspace admin for an invitation")
+		return
+	}
+	// ponytail: two concurrent setups with the right token both pass the check
+	// above; the second CreateWorkspace then fails on the slug and leaves a
+	// verified account with no workspace. Only the token holder can race, so
+	// it is not guarded; the upgrade path is one transaction across auth and
+	// tenant, as onboarding does.
+	account, err := s.auth.Commands.SetUp.Handle(r.Context(), authcommand.SetUp{
+		Token: req.SetupToken, Email: req.Email, Password: req.Password, Name: req.Name,
+	})
+	if err != nil {
+		s.fail(w, r, "setup", err)
+		return
+	}
+	// The session is set before the workspace is created: if that step fails,
+	// the owner is still signed in and creates the workspace from the landing
+	// page (handleCreateTenant pins the slug).
+	s.setSessionCookie(w, account.SessionToken)
+	locale := s.resolveAuthLocale(w, r, account.UserID, "")
+	ws, err := s.tenant.Commands.CreateWorkspace.Handle(r.Context(), tenantcommand.CreateWorkspace{
+		OwnerID: account.UserID, Name: s.cfg.TenantSlug, Slug: s.cfg.TenantSlug,
+	})
+	if err != nil {
+		s.fail(w, r, "setup workspace", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"user":   userPayload(account.UserID, account.UserEmail, account.UserName, locale),
+		"tenant": tenantPayload(ws.TenantID, ws.Slug, ws.Name, ws.Status),
+	})
+}
+
+// setupDone reports whether first-run setup has created the single-tenant
+// install's workspace.
+func (s *Server) setupDone(ctx context.Context) (bool, error) {
+	_, err := s.tenant.Queries.LocateWorkspace.Handle(ctx,
+		tenantquery.LocateWorkspace{Slug: s.cfg.TenantSlug})
+	if errors.Is(err, tenantdomain.ErrTenantNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// handlePlatformConfig tells the SPA which runtime it talks to. It is public:
+// the signup page reads setup_required before anyone has signed in.
+func (s *Server) handlePlatformConfig(w http.ResponseWriter, r *http.Request) {
+	single := s.cfg.SingleTenant()
+	setupRequired := false
+	if single {
+		done, err := s.setupDone(r.Context())
+		if err != nil {
+			s.fail(w, r, "platform config", err)
+			return
+		}
+		setupRequired = !done
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"features":       map[string]bool{"billing": !single, "multi_tenant": !single},
+		"setup_required": setupRequired,
 	})
 }
 
@@ -192,6 +282,11 @@ func (s *Server) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_body", "request body is not valid JSON")
 		return
+	}
+	// A single-tenant install has exactly one workspace, at the configured
+	// slug, so once it exists this answers 409 slug_taken.
+	if s.cfg.SingleTenant() {
+		req.Slug = s.cfg.TenantSlug
 	}
 	result, err := s.tenant.Commands.CreateWorkspace.Handle(r.Context(), tenantcommand.CreateWorkspace{
 		OwnerID: user.ID, Name: req.Name, Slug: req.Slug,
