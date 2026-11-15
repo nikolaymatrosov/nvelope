@@ -50,3 +50,24 @@ run "queues" {
     error_message = "both job queues and the feedback trigger need a dead-letter queue"
   }
 }
+
+run "containers" {
+  command = plan
+
+  assert {
+    condition     = yandex_serverless_container.worker.concurrency == 1
+    error_message = "the worker runs one job per instance"
+  }
+  assert {
+    condition     = yandex_serverless_container.worker.image[0].environment["NVELOPE_LONG_JOB_TIMEOUT"] == "55m"
+    error_message = "long jobs must stop 5 min before the worker's 1 h timeout"
+  }
+  assert {
+    condition     = contains([for s in yandex_serverless_container.api.secrets : s.environment_variable], "NVELOPE_SETUP_TOKEN")
+    error_message = "api needs the setup token"
+  }
+  assert {
+    condition     = yandex_serverless_container_iam_member.invoker["worker"].member == "serviceAccount:ajetrigger"
+    error_message = "only the trigger account may invoke worker"
+  }
+}
