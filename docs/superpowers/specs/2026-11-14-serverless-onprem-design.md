@@ -351,32 +351,43 @@ out of scope, and TTL replaces the cleanup.
 
 ### Terraform module: `deploy/terraform/nvelope-serverless/`
 
-Inputs: `folder_id`, `domain`, `image_tag`, `tenant_slug`, `system_from_email`,
+Inputs: `folder_id`, `domain`, `dns_zone_id` or `certificate_id` (exactly one),
+`image_tag`, `registry_id`, `tenant_slug`, `system_sender_domain`,
 `send_rate_per_sec`, `provisioned_instances` (default 0),
-`ydb_throttling_rcu_limit` (default 1000 RU/s; 0 or unset disables the limit,
-per the docs; the default value is a Plan C choice). Serverless YDB is
-throttled at 10 RU/s by default (V5), which would make imports and sends crawl.
-The provider arguments are **to verify in Plan C**, since Plan A did not read
-them in a source. Candidates on `yandex_ydb_database_serverless`:
-`serverless_database { throttling_rcu_limit, provisioned_rcu_limit,
-storage_size_limit }`.
+`ydb_throttling_rcu_limit` (default 1000 RU/s; 0 disables the limit) and
+`deletion_protection` (default true). Serverless YDB is throttled at 10 RU/s by
+default (V5), which would make imports and sends crawl. The provider arguments
+were verified in Plan C3 (see "Plan C3 planning spike"):
+`serverless_database { enable_throttling_rcu_limit, throttling_rcu_limit }`.
 
 Resources:
 
-- Service accounts `api`, `worker`, `invoker`, each with minimal roles (YDB
-  editor, YMQ reader/writer, storage editor on the media bucket, Postbox sender,
-  Lockbox payload viewer, as each needs).
-- Static access keys for YMQ and S3, stored in Lockbox.
+- Service accounts (Plan C3):
+  - `app`, the runtime identity of `api` and `worker`. Both build the same
+    clients, so they need the same roles: YDB editor on the database, YMQ
+    writer, Postbox editor, storage editor on the media bucket, Lockbox payload
+    viewer on the secret.
+  - `gateway`, which invokes `api` and `frontend`.
+  - `trigger`, which reads the queues and the topic and invokes `worker`.
+  - `queues`, used by Terraform only, to create the queues: their API takes
+    only static keys.
+- One static access key for `app`, used for YMQ, Postbox and S3, stored in
+  Lockbox.
 - Serverless YDB database and a YDB topic for Postbox feedback.
-- YMQ queues `jobs` and `jobs-long`, each with a DLQ.
+- YMQ queues `jobs` and `jobs-long`, each with a DLQ, and a DLQ for the
+  feedback trigger.
 - An Object Storage bucket for media.
-- A Lockbox secret holding the session secret, setup token and static keys.
+- A Lockbox secret holding the setup token, the TOTP encryption key and the
+  static key.
 - Serverless Containers `api`, `frontend` and `worker`, with images from the
   project's public Container Registry at `image_tag`. The registry is created
   once by the maintainers, and its ID is a module default.
-- API Gateway with an OpenAPI spec that routes paths to the containers, a
-  custom domain, and a Let's Encrypt certificate from Certificate Manager. This
-  requires a DNS zone in YC; otherwise the user supplies a certificate ID.
+- Two API gateways (Plan C3):
+  - `public` routes paths to `api` and `frontend` on the custom domain, with a
+    Let's Encrypt certificate from Certificate Manager. This requires a DNS
+    zone in YC; otherwise the user supplies a certificate ID.
+  - `bff` routes `/t/{slug}/api/*` to `api` on its default domain. The BFF
+    calls Go through it.
 - Triggers: 2 Message Queue (`jobs`, `jobs-long`), 2 timer, 1 Data Streams.
 - Postbox is **not** created by Terraform: the provider has no Postbox resource
   (V2). Address and configuration set (with the topic as feedback destination)
@@ -392,7 +403,8 @@ Migrations:
 Upgrade: bump `image_tag`, then `terraform apply`.
 
 CI: publish `api`, `worker` and `frontend` images to the public registry, tagged
-by release version.
+by release version. A `v*` tag push builds them for `linux/amd64` (Serverless
+Containers run only x86_64 images) and pushes them as `cr.yandex/<registry>/<name>:<tag>`.
 
 ## Testing
 
@@ -878,6 +890,133 @@ Carried to C3 and C4 (final review of Plan C1):
   the JSON protocol before C4. If it fails, the fallback is a query-protocol
   `service/sqs` release built on the current core.
 
+### Plan C3 planning spike
+
+Run on 2026-11-15 while planning the Terraform module and image publishing.
+Provider `yandex-cloud/yandex` v0.248.0 (from `terraform providers schema
+-json`), Terraform v1.16.1. A draft of the whole module passed
+`terraform validate` and `terraform test` with mock providers. A
+`terraform plan` against a real folder (read-only, nothing applied) planned 41
+resources with `certificate_id` and 44 with `dns_zone_id`. Docs are the
+`yandex-cloud/docs` sources (`en/`).
+
+- **Provider arguments** (resolves the V2 and "to verify in Plan C" items):
+  - `yandex_ydb_database_serverless.serverless_database`:
+    `enable_throttling_rcu_limit` (bool), `throttling_rcu_limit`,
+    `provisioned_rcu_limit`, `storage_size_limit`. `database_path` and
+    `ydb_full_endpoint` are exported.
+  - `yandex_function_trigger`: a `container` block (`id`, `path`,
+    `service_account_id`, `retry_attempts`, `retry_interval`) beside
+    `message_queue` (`queue_id` = the queue ARN, `batch_size`,
+    `batch_cutoff`, `visibility_timeout`), `timer` (`cron_expression`,
+    `payload`), `data_streams` (`database` = the database path,
+    `stream_name`, `batch_size` in bytes up to 64 KB, `batch_cutoff`) and
+    `dlq` (`queue_id` = ARN). The docs say the retry settings apply to every
+    trigger type except Message Queue, which relies on the queue's redrive
+    policy.
+  - `yandex_message_queue.id` is the queue URL (provider source:
+    `d.SetId(output.QueueUrl)`). Creating a queue takes a static key
+    (`access_key`/`secret_key`).
+  - `yandex_serverless_container`: `concurrency`, `execution_timeout`,
+    `provision_policy { min_instances }`, `secrets { id, version_id, key,
+    environment_variable }`. There is **no per-container instance limit**.
+  - `yandex_serverless_container_iam_member` binds a role on one container.
+    YMQ, Postbox and YDS roles bind only at folder or cloud level (YMQ docs).
+  - `yandex_api_gateway.custom_domains { fqdn, certificate_id }`; the
+    `domain` attribute is the default `*.apigw.yandexcloud.net` domain.
+  - `yandex_cm_certificate` (`managed { challenge_type }`, exported
+    `challenges`) plus `data "yandex_cm_certificate" { wait_validation = true }`.
+  - `yandex_iam_service_account_static_access_key`, `yandex_lockbox_secret`,
+    `yandex_lockbox_secret_version`, `yandex_lockbox_secret_iam_member`,
+    `yandex_ydb_database_iam_member`, `yandex_storage_bucket_iam_binding`,
+    `yandex_ydb_topic` (with a `consumer` block): all present.
+  - **No alerting resource.** Only `yandex_monitoring_dashboard` exists, so DLQ
+    alerts are a README step.
+- **Containers strip `Cookie` and `Authorization` on direct HTTPS calls**
+  (`serverless-containers/concepts/invoke.md`, "Filtering message headers").
+  The BFF forwards the session cookie to `${NV_GO_API_URL}/t/:slug/api/...`.
+  That is the same path the public gateway routes to `frontend`, so it cannot
+  go through the public gateway either. Decision: a second gateway, `bff`,
+  routes `/t/{slug}/api/{path+}` to `api`, and `NV_GO_API_URL` is its default
+  domain. The docs do not say whether a gateway passes `Cookie` and
+  `Authorization` through. That is assumed, and the C4 smoke test checks it
+  first (login, and an API-key `POST /t/{slug}/api/tx`).
+- **Gateway routing.** Fixed segments outrank path parameters, which outrank
+  greedy `{x+}` parameters, and of two greedy routes the longer wins
+  (`api-gateway/concepts/index.md`). So the three BFF paths beat
+  `/t/{slug}/api/{path+}`, which beats `/{path+}`. The integration is
+  `x-yc-apigateway-integration: {type: serverless_containers, container_id,
+  service_account_id}`, and the container sees the original path and `Host`.
+- **Platform limits:**
+  - API Gateway caps a request and a response at 2.5 MB, and a container
+    request at 3.5 MB. The biggest SPA chunk is 2.2 MB today.
+  - The container timeout maximum is 1 h. Above 10 min the container is
+    "long-lived", and the platform may force-terminate an instance with 10 min
+    notice.
+  - Environment variables, Lockbox secrets included, total at most 4 KB.
+  - Images must be Linux x86_64.
+  - `PORT` is set by the platform. Nitro reads `NITRO_PORT ?? PORT`, so the
+    frontend image needs no change. The Go services must listen on `$PORT`
+    (C4).
+  - Default quotas per availability zone, shared by every container in the
+    cloud: 10 instances and 10 concurrent requests. Above that a call queues,
+    then fails with `429 TooManyRequests`. Provisioned instances are capped
+    at 2 per cloud.
+- **A throttled invocation consumes a receive count.** The docs say an MQ
+  trigger returns a message to the queue with its visibility timeout on any
+  invocation error, and nothing exempts a 429. Each trigger receive increments
+  `ApproximateReceiveCount`. So a campaign fan-out beyond the request quota
+  burns retries, and a throttled `jobs-long` message waits the full long
+  visibility timeout before its next try. Inferred from the docs, not stated
+  by them.
+- **Roles named by the docs.** MQ trigger: `editor` on the queue's folder and
+  `serverless.containers.invoker` on the container's folder. Timer: invoker on
+  the folder. Data Streams: invoker on the container and `yds.admin` on the
+  stream. The module grants narrower roles: `ymq.reader` (plus `ymq.writer`
+  for the feedback DLQ), `yds.admin` on the folder, and invoker on `worker`
+  alone. Unverified until the C4 smoke test.
+- **Provider hashes.** `terraform providers lock` ignores the CLI
+  `network_mirror` setting; it needs `-net-mirror=https://terraform-mirror.yandexcloud.net/`.
+- **Mock-provider tests** must use `command = plan`. An `apply` runs the
+  migrate step's `local-exec` even when `terraform_data.migrate` is overridden.
+  Values that assertions read are mocked with `override_during = plan`.
+
+Decisions for Plan C3:
+
+- Service accounts `app`, `gateway`, `trigger` and `queues` replace `api`,
+  `worker` and `invoker` (see "Terraform module"). The input
+  `system_from_email` becomes `system_sender_domain`, since the config takes a
+  domain and sends from `no-reply@<domain>`.
+- **Timeouts and visibility.** `worker` runs with `execution_timeout` 3600 s.
+  C4's dispatcher bounds short jobs to 60 s (`NVELOPE_JOB_TIMEOUT`) and long
+  jobs to 55 min (`NVELOPE_LONG_JOB_TIMEOUT`). The `jobs` queue's visibility
+  timeout is 120 s and `jobs-long`'s is 3900 s. The trigger's own
+  `visibility_timeout` stays unset.
+- **Retry budget.** `maxReceiveCount` is 20 on `jobs` (about 40 min of
+  retries) and 10 on `jobs-long` (about 11 h), because a 429 consumes a
+  receive. DLQs keep messages for 14 days. The feedback trigger retries 5
+  times, 60 s apart, then writes to the `nvelope-feedback-dlq` queue.
+- **Instance limits** cannot be set per container. Sizing becomes a quota
+  request in the README and a C4 smoke-test measurement. `jobs-long` keeps the
+  one `worker` container: a second container would share the same quota, so it
+  would not isolate anything.
+- **IAM.** Invoker is bound per container. `gateway` gets it on `api` and
+  `frontend`, `trigger` on `worker` only. A mock-provider test pins the
+  `worker` binding.
+- **Timers.** The domain sweep fires every 15 min from the same local that sets
+  `NVELOPE_SENDING_DOMAIN_VERIFY_INTERVAL`. Analytics refreshes hourly.
+- **Media and uploads.** `NVELOPE_MEDIA_MAX_BYTES` is 2 MiB, under the gateway
+  cap. A CI step fails the frontend build if any static asset exceeds 2400 KiB.
+- **The Data Streams trigger's consumer.** The topic has
+  `lifecycle { ignore_changes = [consumer] }`, so a later apply does not
+  delete a consumer the trigger registers.
+- **Images.** A `v*` tag push builds `api`, `worker` and `frontend` with
+  `--platform linux/amd64` and pushes them to `cr.yandex/<registry_id>`. The
+  registry is public (`container-registry.images.puller` for `system:allUsers`).
+- **The real-YMQ probe** is an env-gated Go test that creates and deletes its
+  own queue. It runs only with the user's go-ahead, because it creates a real
+  queue and a service account.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -934,6 +1073,26 @@ These are known limits, marked in code with `ponytail:` comments.
 - The `/jobs` dispatcher assumes the trigger's batch size 1. With a larger
   batch, one failed job redelivers the whole batch, including jobs that
   already succeeded.
+- API Gateway caps requests and responses at 2.5 MB. Media uploads are held to
+  2 MiB (`NVELOPE_MEDIA_MAX_BYTES`), a CSV import is capped by the same limit,
+  and a static asset above 2400 KiB fails CI. The upgrade path is presigned
+  uploads straight to the bucket and serving static assets from Object
+  Storage.
+- The default container quotas (10 instances and 10 concurrent requests per
+  availability zone, shared by every container in the cloud) throttle a
+  campaign fan-out. They also starve `api` while it runs. A throttled job
+  message burns a receive and waits a full visibility timeout. The upgrade
+  paths are a quota increase and a staggered batch enqueue (`not_before`).
+- Job retries use a fixed visibility timeout with no backoff. That is about
+  40 min for short jobs and 11 h for long ones before the DLQ. The upgrade
+  path is a per-attempt delayed re-send in the dispatcher.
+- Analytics refresh hourly in serverless mode, so dashboards lag by up to an
+  hour.
+- The TOTP encryption key lives in Lockbox and in Terraform state. Losing the
+  state rotates it on the next apply and orphans every enrolled TOTP secret.
+- The `bff` gateway's default domain is public. It exposes only `api`'s
+  tenant API, which the public gateway already exposes, plus Go's own
+  visual-save handlers, which sanitize and validate on their own.
 
 ## Implementation phasing
 
@@ -966,7 +1125,7 @@ The plan is split into three plans. Each one merges to `main` on its own.
   - **C2, single-tenant bootstrap:** setup-token signup, `/api/platform/config`
     and the frontend flags.
   - **C3, packaging:** the Terraform module and image publishing. Only
-    `terraform validate` and `plan` can run before C4.
+    `terraform validate`, `test` and `plan` can run before C4.
   - **C4, assembly (after Plan B):** the serverless composition root, the
     serverless modes of `cmd/worker` and `cmd/api`, the README quickstart and
     the smoke test.
