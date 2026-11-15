@@ -1013,9 +1013,7 @@ Decisions for Plan C3:
 - **Images.** A `v*` tag push builds `api`, `worker` and `frontend` with
   `--platform linux/amd64` and pushes them to `cr.yandex/<registry_id>`. The
   registry is public (`container-registry.images.puller` for `system:allUsers`).
-- **The real-YMQ probe** is an env-gated Go test that creates and deletes its
-  own queue. It runs only with the user's go-ahead, because it creates a real
-  queue and a service account.
+- **Real-YMQ probe: PASS** (2026-11-15). SendMessage through the production Enqueuer, then ReceiveMessage and DeleteMessage with service/sqs v1.42.27, against https://message-queue.api.cloud.yandex.net. YMQ accepts the AWS JSON protocol.
 
 ## Ceilings
 
