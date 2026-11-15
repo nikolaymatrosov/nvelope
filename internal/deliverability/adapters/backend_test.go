@@ -27,6 +27,7 @@ type backend struct {
 	events       func(t *testing.T) domain.EventRepository
 	suppressions func(t *testing.T) domain.SuppressionRepository
 	settings     func(t *testing.T) domain.SettingsRepository
+	analytics    func(t *testing.T) domain.AnalyticsRepository
 	checker      func(t *testing.T) campaigndomain.SuppressionChecker
 	audit        func(t *testing.T) command.AuditWriter
 	// The seeds below create rows owned by other contexts. On Postgres they
@@ -52,6 +53,9 @@ var backends = []backend{
 		},
 		settings: func(t *testing.T) domain.SettingsRepository {
 			return adapters.NewSettings(dbtest.AppPool(t))
+		},
+		analytics: func(t *testing.T) domain.AnalyticsRepository {
+			return adapters.NewAnalytics(dbtest.AppPool(t))
 		},
 		checker: func(t *testing.T) campaigndomain.SuppressionChecker {
 			return adapters.NewSuppressionChecker(dbtest.AppPool(t))
@@ -126,6 +130,9 @@ var backends = []backend{
 		},
 		settings: func(t *testing.T) domain.SettingsRepository {
 			return adapters.NewYDBSettings(dbtest.YDBMigrated(t))
+		},
+		analytics: func(t *testing.T) domain.AnalyticsRepository {
+			return adapters.NewYDBAnalytics(dbtest.YDBMigrated(t))
 		},
 		checker: func(t *testing.T) campaigndomain.SuppressionChecker {
 			return adapters.NewYDBSuppressionChecker(dbtest.YDBMigrated(t))
