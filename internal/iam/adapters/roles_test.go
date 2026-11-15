@@ -200,6 +200,34 @@ func TestRolesEffectiveFor(t *testing.T) {
 	})
 }
 
+// TestRolesAssignUnknownListFails pins the Postgres foreign key from a per-list
+// assignment to its list: assigning a role on a list that does not exist
+// fails and grants nothing. Postgres returns a wrapped foreign-key error; YDB
+// returns domain.ErrListNotFound.
+func TestRolesAssignUnknownListFails(t *testing.T) {
+	t.Parallel()
+	eachBackend(t, func(t *testing.T, b backend) {
+		repo := b.roles(t)
+		ctx := context.Background()
+		tenantID := b.newTenant(t)
+		userID := newTenantUser(t, b, tenantID)
+		roleID, err := repo.Add(ctx, tenantID, newRole(t, tenantID, "List editor"))
+		require.NoError(t, err)
+
+		err = repo.AssignListRole(ctx, tenantID, userID, uuid.NewString(), roleID)
+		require.Error(t, err)
+		if b.name == "ydb" {
+			require.ErrorIs(t, err, domain.ErrListNotFound)
+		}
+
+		_, listPerms, err := repo.EffectiveFor(ctx, tenantID, userID)
+		require.NoError(t, err)
+		require.Empty(t, listPerms)
+		// The role is not held, so it can be deleted.
+		require.NoError(t, repo.Delete(ctx, tenantID, roleID))
+	})
+}
+
 // TestRolesAssignUnknownRoleFails pins the Postgres foreign key from an
 // assignment to its role: assigning a role that does not exist fails and
 // grants nothing.
