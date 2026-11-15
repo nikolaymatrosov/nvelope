@@ -4,56 +4,38 @@ shell commands, and other important information, read the current plan at
 `specs/017-three-pane-visual-editor/plan.md`.
 <!-- SPECKIT END -->
 
-Use [go-ddd-architecture](.claude/skills/go-ddd-architecture) skill when need to plan Go architecture.
+## Go code
+
+Before planning, writing, or reviewing Go code, invoke the
+[`go-ddd-architecture`](.claude/skills/go-ddd-architecture) skill and read the
+`references/*.md` module for the layer you touch. Subagents don't load skills on
+their own: every Go implementer or reviewer subagent prompt must start with
+"invoke the `go-ddd-architecture` skill first".
+
+## Frontend UI
+
+Before adding or changing anything in `frontend/src/components/ui/` or composing
+UI from those components, invoke the `shadcn` skill. Check UI changes in a real
+browser with the `playwright` MCP server; run the test suite via the
+`running-frontend-tests` skill. Every frontend UI subagent prompt must start with
+"invoke the `shadcn` skill first".
 
 ## Working directory and paths
 
-- Always pass paths relative to the project root to Bash, Read, Edit, and Write (e.g. `internal/campaign/...`, not `/Users/nikthespirit/Documents/experiment/nvelope/internal/campaign/...`). The working directory is already the project root.
-- Never prepend `cd /Users/nikthespirit/Documents/experiment/nvelope && ...` or `cd $(pwd) && ...` to a command. The compound `cd <current-dir> && X` does not match permission rules written for `X` and forces an unnecessary approval prompt.
+- Always pass paths relative to the project root to Bash, Read, Edit, and Write (e.g. `internal/campaign/...`, not `<repo>/internal/campaign/...`). The working directory is already the project root.
+- Never prepend `cd <repo> && ...` or `cd $(pwd) && ...` to a command. The compound `cd <current-dir> && X` does not match permission rules written for `X` and forces an unnecessary approval prompt.
 - `cd` is only appropriate when entering a *different* directory (e.g. `cd frontend && pnpm test`).
 - **`cd` persists between Bash calls.** Shell env/aliases reset, but `pwd` carries over. After one `cd frontend && pnpm lint`, the next call already starts inside `frontend/` — repeating `cd frontend` will fail with `no such file or directory`. Omit the `cd` on subsequent calls, or `cd ..` back to root first.
 
-## Services
+## Visual-editor endpoints go through Node first
 
-The platform runs four stateless Go services:
-
-- `cmd/api` — the HTTP API.
-- `cmd/worker` — consumes the River job queues (import/export, sending,
-  `feedback.process`, `analytics.refresh`).
-- `cmd/scheduler` — periodically enqueues recovery and refresh jobs
-  (sending-domain verification sweep, per-tenant analytics refresh).
-- `cmd/consumer` — reads the Postbox delivery-feedback Yandex Data Streams topic
-  and stages each notification for asynchronous attribution.
-
-Plus one Node-side tier:
-
-- `frontend/` — TanStack Start + Nitro BFF that hosts the SPA *and* intercepts
-  three Phase 7 visual-editor endpoints (`PUT /t/:slug/api/campaigns/:id/visual`,
-  `PUT /t/:slug/api/templates/:id/visual`, `POST /t/:slug/api/render-preview`)
-  before the catch-all vite proxy. For those paths the BFF renders the
-  structured `VisualDoc` to email-ready HTML + plain text via `react-email`
-  and then forwards the rendered output to Go for sanitization, validation,
-  and persistence. Render tier lives under
-  [`frontend/src/server/`](frontend/src/server/) — `render/` (react-email
-  mapping + golden tests), `validate/` (TS port of the Go validator with a
-  cross-stack drift-catcher), `clients/go-api.ts` (typed Go-API client with
-  cookie + `X-Request-Id` forwarding), and `routes/` (orchestrators + Nitro
-  file-based-routing shims). See
-  [`specs/014-visual-email-editor/research.md` § R4](specs/014-visual-email-editor/research.md).
-
-## Database queries
-
-The pgx adapters under `internal/*/adapters/` follow a placeholder convention:
-
-- **≥ 4 placeholders** → use `pgx.NamedArgs` with `@snake_case` placeholders that
-  match the column names. The visual alignment between column list, `VALUES (...)`,
-  and the args map makes ordering errors obvious and survives column reordering.
-- **< 4 placeholders** (typical `WHERE id = $1`, `LIMIT $1 OFFSET $2`) → keep
-  positional `$N`. A `NamedArgs` map literal is noise at that size.
-
-`pgx.NamedArgs` is a thin client-side rewrite to positional params (no server
-cost), but it loses compile-time "did I pass N args for N placeholders" checking
-— typos in `@foo` become runtime errors. The threshold reflects that trade-off.
+`PUT /t/:slug/api/campaigns/:id/visual`, `PUT /t/:slug/api/templates/:id/visual`
+and `POST /t/:slug/api/render-preview` are intercepted by the Nitro BFF in
+[`frontend/src/server/`](frontend/src/server/) before the vite proxy: it renders
+the `VisualDoc` with `react-email`, then forwards the HTML + text to Go for
+sanitization, validation, and persistence. `validate/` is a TS port of the Go
+validator — change both together (a cross-stack drift-catcher test checks it).
+See [`specs/014-visual-email-editor/research.md` § R4](specs/014-visual-email-editor/research.md).
 
 ## Running tests
 
@@ -72,6 +54,7 @@ To run against an existing database instead of testcontainers, set
 ## Skill Loading
 
 Before substantial work:
+
 - Skill check: run `pnpm dlx @tanstack/intent@latest list`, or use skills already listed in context.
 - Skill guidance: if one local skill clearly matches the task, run `pnpm dlx @tanstack/intent@latest load <package>#<skill>` and follow the returned `SKILL.md`.
 - Monorepos: when working across packages, run the skill check from the workspace root and prefer the local skill for the package being changed.
