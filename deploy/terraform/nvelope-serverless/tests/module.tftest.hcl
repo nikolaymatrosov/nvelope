@@ -88,8 +88,8 @@ run "gateways" {
     error_message = "greedy and plain path parameters must both be declared"
   }
   assert {
-    condition     = !strcontains(yandex_api_gateway.public.spec, "/metrics")
-    error_message = "/metrics must not be public"
+    condition     = yamldecode(yandex_api_gateway.public.spec).paths["/metrics"]["x-yc-apigateway-any-method"]["x-yc-apigateway-integration"] == { type = "dummy", http_code = 404, content = { "text/plain" = "not found" } }
+    error_message = "/metrics must be answered 404 by the gateway, not routed to a container"
   }
   assert {
     condition     = yandex_serverless_container_iam_member.invoker["frontend"].member == "serviceAccount:ajegateway"

@@ -2,10 +2,12 @@ locals {
   # Public routes: OpenAPI path => container. API Gateway prefers fixed
   # segments over parameters and parameters over greedy {x+} segments, and of
   # two greedy routes the longer one, so the three BFF paths win over
-  # /t/{slug}/api/{path+}, which wins over /{path+}. /metrics and /healthz are
-  # deliberately not routed.
+  # /t/{slug}/api/{path+}, which wins over /{path+}. /metrics is answered 404
+  # by the gateway itself, so the frontend catch-all cannot expose the BFF's
+  # metrics; /healthz is not routed to api.
   public_routes = {
     "/"                                   = "frontend"
+    "/metrics"                            = "dummy"
     "/{path+}"                            = "frontend"
     "/t/{slug}/api/campaigns/{id}/visual" = "frontend"
     "/t/{slug}/api/templates/{id}/visual" = "frontend"
@@ -53,10 +55,22 @@ resource "yandex_api_gateway" "public" {
         "x-yc-apigateway-any-method" = {
           parameters = local.route_parameters[path]
           "x-yc-apigateway-integration" = {
-            type               = "serverless_containers"
-            container_id       = to == "api" ? yandex_serverless_container.api.id : yandex_serverless_container.frontend.id
-            service_account_id = yandex_iam_service_account.sa["gateway"].id
-          }
+            api = {
+              type               = "serverless_containers"
+              container_id       = yandex_serverless_container.api.id
+              service_account_id = yandex_iam_service_account.sa["gateway"].id
+            }
+            frontend = {
+              type               = "serverless_containers"
+              container_id       = yandex_serverless_container.frontend.id
+              service_account_id = yandex_iam_service_account.sa["gateway"].id
+            }
+            dummy = {
+              type      = "dummy"
+              http_code = 404
+              content   = { "text/plain" = "not found" }
+            }
+          }[to]
         }
       }
     }
