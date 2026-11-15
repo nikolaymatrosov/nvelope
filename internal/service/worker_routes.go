@@ -55,8 +55,14 @@ type WorkerRoutes struct {
 	Logger         *slog.Logger
 }
 
-// Handler routes the trigger and deploy paths.
+// Handler routes the trigger and deploy paths. It panics on a missing
+// dependency, so the container fails at boot instead of on each trigger.
 func (wr WorkerRoutes) Handler() http.Handler {
+	if wr.Jobs == nil || wr.Feedback == nil || wr.YDB == nil || wr.Tenants == nil ||
+		wr.Domains == nil || wr.Enqueuer == nil || wr.Logger == nil ||
+		wr.TenantSlug == "" || wr.VerifyInterval <= 0 {
+		panic("service: nil dependency in WorkerRoutes")
+	}
 	mux := http.NewServeMux()
 	mux.Handle("POST /jobs", wr.Jobs)
 	mux.HandleFunc("POST /feedback", wr.feedback)
@@ -141,9 +147,10 @@ func (wr WorkerRoutes) tenantID(ctx context.Context) (string, error) {
 // sweepDomains re-arms verification for each pending domain whose last poll
 // (or, if it was never polled, its creation) is older than two poll
 // intervals. Such a domain's self-snoozing job chain was lost: it was
-// dead-lettered, or the enqueue after creation failed. A live chain polls
-// every interval, so the sweep never starts a second chain beside it. In SaaS,
-// River's unique insert gives the same guarantee. YMQ has no equivalent.
+// dead-lettered, or the enqueue after creation failed. A chain that
+// is on schedule polls every interval, so the sweep never doubles it. If job
+// delivery stalls for more than two intervals, the sweep does start one. In
+// SaaS, River's unique insert prevents that. YMQ has no equivalent.
 func (wr WorkerRoutes) sweepDomains(ctx context.Context) error {
 	tenantID, err := wr.tenantID(ctx)
 	if err != nil || tenantID == "" {

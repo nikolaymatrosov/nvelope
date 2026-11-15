@@ -70,7 +70,7 @@ func pump(t *testing.T, q testQueues, queueURL string, h http.Handler, wait time
 }
 
 func newTestDispatcher(q testQueues) *Dispatcher {
-	return NewDispatcher(q.enqueuer, time.Minute, slog.New(slog.DiscardHandler))
+	return NewDispatcher(q.enqueuer, time.Minute, time.Minute, slog.New(slog.DiscardHandler))
 }
 
 func TestDispatcherRunsTheJobAndAcknowledgesIt(t *testing.T) {
@@ -98,7 +98,7 @@ func TestDispatcherSnoozeSendsADelayedCopy(t *testing.T) {
 	AddWorker(d, workerFunc[jobs.DomainVerifyArgs](func(context.Context, jobs.DomainVerifyArgs) error {
 		runs = append(runs, time.Now())
 		if len(runs) == 1 {
-			return river.JobSnooze(2 * time.Second)
+			return river.JobSnooze(3 * time.Second)
 		}
 		return nil
 	}))
@@ -108,7 +108,7 @@ func TestDispatcherSnoozeSendsADelayedCopy(t *testing.T) {
 	require.Zero(t, pump(t, q, q.short, d, time.Second), "the copy must stay hidden for the snooze")
 	require.Equal(t, http.StatusOK, pump(t, q, q.short, d, 5*time.Second))
 	require.Len(t, runs, 2)
-	require.GreaterOrEqual(t, runs[1].Sub(runs[0]), 2*time.Second)
+	require.GreaterOrEqual(t, runs[1].Sub(runs[0]), 3*time.Second)
 }
 
 func TestDispatcherCapsALongSnoozeAtTheMaximumDelay(t *testing.T) {
@@ -174,7 +174,7 @@ func TestDispatcherFailureIsRedeliveredThenDeadLettered(t *testing.T) {
 func TestDispatcherRejectsWhatItCannotRun(t *testing.T) {
 	t.Parallel()
 	q := newTestQueues(t)
-	d := NewDispatcher(q.enqueuer, 50*time.Millisecond, slog.New(slog.DiscardHandler))
+	d := NewDispatcher(q.enqueuer, 50*time.Millisecond, time.Minute, slog.New(slog.DiscardHandler))
 	AddWorker(d, workerFunc[jobs.DomainVerifyArgs](func(ctx context.Context, _ jobs.DomainVerifyArgs) error {
 		<-ctx.Done() // runs until the job timeout
 		return ctx.Err()
@@ -187,6 +187,15 @@ func TestDispatcherRejectsWhatItCannotRun(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError,
 		serve(t, d, "m4", `{"kind":"domain.verify","args":{"tenant_id":"t1","domain_id":"d1"}}`),
 		"a job past its timeout")
+
+	var longDeadline time.Time
+	AddWorker(d, workerFunc[jobs.ImportArgs](func(ctx context.Context, _ jobs.ImportArgs) error {
+		longDeadline, _ = ctx.Deadline()
+		return nil
+	}))
+	require.Equal(t, http.StatusOK,
+		serve(t, d, "m5", `{"kind":"audience.import","args":{"tenant_id":"t1","job_id":"j1"}}`))
+	require.Greater(t, time.Until(longDeadline), time.Second, "a long kind gets the long timeout")
 
 	rec := httptest.NewRecorder()
 	d.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/jobs", bytes.NewReader([]byte("{"))))

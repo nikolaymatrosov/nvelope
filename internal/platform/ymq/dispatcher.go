@@ -21,25 +21,31 @@ import (
 // reappear after the queue's visibility timeout, and after maxReceiveCount
 // deliveries the redrive policy moves it to the dead-letter queue.
 type Dispatcher struct {
-	enq      *Enqueuer
-	timeout  time.Duration
-	logger   *slog.Logger
-	handlers map[string]func(context.Context, json.RawMessage) error
+	enq         *Enqueuer
+	timeout     time.Duration
+	longTimeout time.Duration
+	logger      *slog.Logger
+	handlers    map[string]func(context.Context, json.RawMessage) error
 }
 
 // NewDispatcher builds a Dispatcher. enq re-sends snoozed and not-yet-due
-// messages. timeout bounds one job run: set it to the container's execution
-// timeout minus a safety margin, so a long batch stops cleanly (and is
-// redelivered) before the platform kills the invocation.
-func NewDispatcher(enq *Enqueuer, timeout time.Duration, logger *slog.Logger) *Dispatcher {
-	if enq == nil || logger == nil || timeout <= 0 {
+// messages. timeout bounds a job of a short-queue kind. It must stay below the
+// short queue's visibility timeout, or the message reappears and a second run
+// starts while the first is still going. longTimeout bounds the long kinds
+// (import, export, campaign start and batch). Set it to the container's
+// execution timeout minus a safety margin, below the long queue's visibility
+// timeout, so a long batch stops cleanly (and is redelivered) before the
+// platform kills the invocation.
+func NewDispatcher(enq *Enqueuer, timeout, longTimeout time.Duration, logger *slog.Logger) *Dispatcher {
+	if enq == nil || logger == nil || timeout <= 0 || longTimeout <= 0 {
 		panic("ymq: nil dependency or non-positive timeout")
 	}
 	return &Dispatcher{
-		enq:      enq,
-		timeout:  timeout,
-		logger:   logger,
-		handlers: map[string]func(context.Context, json.RawMessage) error{},
+		enq:         enq,
+		timeout:     timeout,
+		longTimeout: longTimeout,
+		logger:      logger,
+		handlers:    map[string]func(context.Context, json.RawMessage) error{},
 	}
 }
 
@@ -112,7 +118,11 @@ func (d *Dispatcher) run(ctx context.Context, body string) error {
 	if !ok {
 		return fmt.Errorf("no worker registered for job kind %q", env.Kind)
 	}
-	jobCtx, cancel := context.WithTimeout(ctx, d.timeout)
+	timeout := d.timeout
+	if longKinds[env.Kind] {
+		timeout = d.longTimeout
+	}
+	jobCtx, cancel := context.WithTimeout(ctx, timeout)
 	err := handle(jobCtx, env.Args)
 	cancel()
 

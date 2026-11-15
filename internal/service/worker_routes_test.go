@@ -130,13 +130,14 @@ func post(t *testing.T, h http.Handler, path, body string) int {
 
 func TestWorkerRoutesDomainSweepRearmsOnlyLostChains(t *testing.T) {
 	t.Parallel()
-	wr, enq, _ := newWorkerRoutes(t, "")
+	wr, enq, _ := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 	slug, tenantID := createTenant(t, wr)
 	wr.TenantSlug = slug
 	_, otherTenantID := createTenant(t, wr)
 
 	addDomain(t, wr, tenantID, "fresh.example.com", nil)
 	addDomain(t, wr, tenantID, "recent.example.com", checkedAgo(testVerifyInterval/2))
+	addDomain(t, wr, tenantID, "behind.example.com", checkedAgo(3*testVerifyInterval/2)) // a 1x rule would re-arm it
 	lost := addDomain(t, wr, tenantID, "lost.example.com", checkedAgo(3*testVerifyInterval))
 	addDomain(t, wr, tenantID, "verified.example.com", func(d *sendingdomain.SendingDomain) error {
 		d.RecordCheck(time.Now().Add(-3 * testVerifyInterval))
@@ -150,7 +151,7 @@ func TestWorkerRoutesDomainSweepRearmsOnlyLostChains(t *testing.T) {
 
 func TestWorkerRoutesAnalyticsRefreshTargetsTheInstallTenant(t *testing.T) {
 	t.Parallel()
-	wr, enq, _ := newWorkerRoutes(t, "")
+	wr, enq, _ := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 	slug, tenantID := createTenant(t, wr)
 	wr.TenantSlug = slug
 	createTenant(t, wr)
@@ -175,33 +176,33 @@ func TestWorkerRoutesFeedbackStagesEachNotification(t *testing.T) {
 	const batch = `{"messages":[{"eventType":"Bounce","n":1},{"eventType":"Complaint","n":2}]}`
 
 	t.Run("all staged", func(t *testing.T) {
-		wr, _, ing := newWorkerRoutes(t, "")
+		wr, _, ing := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 		require.Equal(t, http.StatusOK, post(t, wr.Handler(), "/feedback", batch))
 		require.Len(t, ing.payloads, 2)
 		require.JSONEq(t, `{"eventType":"Bounce","n":1}`, ing.payloads[0])
 		require.JSONEq(t, `{"eventType":"Complaint","n":2}`, ing.payloads[1])
 	})
 	t.Run("a malformed notification is skipped", func(t *testing.T) {
-		wr, _, ing := newWorkerRoutes(t, "")
+		wr, _, ing := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 		ing.errs = []error{deliverabilitydomain.ErrValidationFailed.WithMessage("not valid JSON")}
 		require.Equal(t, http.StatusOK, post(t, wr.Handler(), "/feedback", batch))
 		require.Len(t, ing.payloads, 2, "the batch goes on past it")
 	})
 	t.Run("a transient failure fails the batch", func(t *testing.T) {
-		wr, _, ing := newWorkerRoutes(t, "")
+		wr, _, ing := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 		ing.errs = []error{errors.New("ydb unavailable")}
 		require.Equal(t, http.StatusInternalServerError, post(t, wr.Handler(), "/feedback", batch))
 		require.Len(t, ing.payloads, 1)
 	})
 	t.Run("an undecodable request fails", func(t *testing.T) {
-		wr, _, _ := newWorkerRoutes(t, "")
+		wr, _, _ := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 		require.Equal(t, http.StatusInternalServerError, post(t, wr.Handler(), "/feedback", "{"))
 	})
 }
 
 func TestWorkerRoutesMigrateIsIdempotent(t *testing.T) {
 	t.Parallel()
-	wr, _, _ := newWorkerRoutes(t, "")
+	wr, _, _ := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 	h := wr.Handler()
 
 	require.Equal(t, http.StatusOK, post(t, h, "/admin/migrate", ""))
@@ -210,7 +211,7 @@ func TestWorkerRoutesMigrateIsIdempotent(t *testing.T) {
 
 func TestWorkerRoutesServeOnlyTheTriggerPaths(t *testing.T) {
 	t.Parallel()
-	wr, _, _ := newWorkerRoutes(t, "")
+	wr, _, _ := newWorkerRoutes(t, "unused-"+dbtest.RandString())
 	h := wr.Handler()
 
 	require.Equal(t, http.StatusTeapot, post(t, h, "/jobs", "{}"), "/jobs reaches the dispatcher")
@@ -218,4 +219,16 @@ func TestWorkerRoutesServeOnlyTheTriggerPaths(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/migrate", nil))
 	require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+}
+
+func TestWorkerRoutesHandlerRejectsMissingDependencies(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() { WorkerRoutes{}.Handler() })
+
+	wr, _, _ := newWorkerRoutes(t, "unused-"+dbtest.RandString())
+	wr.TenantSlug = ""
+	require.Panics(t, func() { wr.Handler() }, "an empty tenant slug")
+	wr.TenantSlug = "x"
+	wr.VerifyInterval = 0
+	require.Panics(t, func() { wr.Handler() }, "a zero verify interval")
 }
