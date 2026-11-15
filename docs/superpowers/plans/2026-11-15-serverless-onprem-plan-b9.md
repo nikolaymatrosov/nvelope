@@ -9,7 +9,7 @@
 **Architecture:**
 - **Migration.** One file, `internal/db/ydbmigrations/000010_media.up.sql`, creates `media_assets`, keyed `(tenant_id, id)`, no secondary index.
 - **Adapter.** `YDBAssets` sits next to the pg `Assets` in `internal/media/adapters` and calls `db.Query()` / `DoTx` directly, like the B5 to B8 adapters. It owns two small helpers (`ydbTenantAndID`, `ydbTenantParam`); the package has no `ydb_common.go` because nothing else in it needs YDB.
-- **Blob store.** Unchanged: `S3BlobStore` serves both runtimes, `MemoryBlobStore` serves the tests. S3 stays outside every `DoTx`.
+- **Blob store.** Unchanged: `S3BlobStore` serves both runtimes, `MemoryBlobStore` serves the tests. The media repository makes no S3 call inside its own `DoTx`; the campaign `Update` closures' publish copy is the V6 exception, which `TestPublishAssetsIsRepeatable` covers.
 - **Contract tests.** `assets_pg_test.go` becomes `assets_test.go`, a pg+ydb suite through an `eachBackend` harness (a `backend` struct with `assets` and `newTenant`), as in campaign and deliverability. `usecases_test.go` runs the publish and delete handlers over both.
 
 **Tech Stack:**
@@ -512,8 +512,7 @@ func TestAssetsMarkPublished(t *testing.T) {
 
 		a := newAsset(t, tenantID)
 		require.NoError(t, repo.Add(ctx, a))
-		first := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
-		require.NoError(t, repo.MarkPublished(ctx, tenantID, a.ID(), first))
+		require.NoError(t, repo.MarkPublished(ctx, tenantID, a.ID(), time.Now()))
 		require.NoError(t, repo.MarkPublished(ctx, tenantID, a.ID(), time.Now()), "marking twice is fine")
 
 		got, err := repo.Get(ctx, tenantID, a.ID())
@@ -544,8 +543,8 @@ func TestAssetsStorePDFWithoutDimensions(t *testing.T) {
 	})
 }
 
-// The uploader is a real user on Postgres (a foreign key), which the media
-// package cannot seed, so this one runs on YDB only.
+// The uploader is a foreign key to users on Postgres (it needs a platform user
+// and a user row), so this one test runs on YDB only.
 func TestYDBAssetsStoreTheUploader(t *testing.T) {
 	t.Parallel()
 	repo := adapters.NewYDBAssets(dbtest.YDBMigrated(t))
@@ -745,5 +744,5 @@ git commit -m "test(media): hold publish and delete to the same suite on both ba
 - The spec's "Plan B9 planning spike" lists every repository constructor the app wires and its YDB version: Plan B is complete for every in-scope context.
 - **Not done here, left to Plan C4** (spec "Plan B9 planning spike", "For C4 and the completeness of Plan B"):
   - wiring `NewYDBAssets` in `buildMedia` of the serverless composition root;
-  - billing nil-wiring, the Redis throttles replaced by `ydbthrottle`, and the cron routes that replace `cmd/scheduler`'s pg reads;
+  - billing nil-wiring, the Redis throttles replaced by `ydbthrottle`, and the billing usage-rollup, which has no `/cron` route (billing is not wired); the other cron routes were built in C1 (`internal/service/worker_routes.go` mounts `/cron/domain-verify-sweep` and `/cron/analytics-refresh`), and B8's `/cron/feedback-sweep` route plus its timer remain for C4/C3;
   - verifying `S3BlobStore.Publish`'s `ACL: public-read` against the real bucket and service account.

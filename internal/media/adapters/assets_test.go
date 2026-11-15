@@ -164,8 +164,7 @@ func TestAssetsMarkPublished(t *testing.T) {
 
 		a := newAsset(t, tenantID)
 		require.NoError(t, repo.Add(ctx, a))
-		first := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
-		require.NoError(t, repo.MarkPublished(ctx, tenantID, a.ID(), first))
+		require.NoError(t, repo.MarkPublished(ctx, tenantID, a.ID(), time.Now()))
 		require.NoError(t, repo.MarkPublished(ctx, tenantID, a.ID(), time.Now()), "marking twice is fine")
 
 		got, err := repo.Get(ctx, tenantID, a.ID())
@@ -196,8 +195,8 @@ func TestAssetsStorePDFWithoutDimensions(t *testing.T) {
 	})
 }
 
-// The uploader is a real user on Postgres (a foreign key), which the media
-// package cannot seed, so this one runs on YDB only.
+// The uploader is a foreign key to users on Postgres (it needs a platform user
+// and a user row), so this one test runs on YDB only.
 func TestYDBAssetsStoreTheUploader(t *testing.T) {
 	t.Parallel()
 	repo := adapters.NewYDBAssets(dbtest.YDBMigrated(t))
