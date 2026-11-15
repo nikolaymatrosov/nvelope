@@ -220,6 +220,21 @@ func (r *YDBSubscribers) Get(ctx context.Context, tenantID, id string) (*domain.
 		ydbTenantAndID(tenantID, id)))
 }
 
+// GetByEmail returns the subscriber with exactly this email, or
+// domain.ErrSubscriberNotFound. The column holds the email lower-cased, so
+// lower-casing the argument matches the Postgres citext comparison.
+func (r *YDBSubscribers) GetByEmail(ctx context.Context, tenantID, email string) (*domain.Subscriber, error) {
+	return ydbSubscriberFromRow(r.driver.Query().QueryRow(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $email AS Utf8;
+SELECT `+ydbSubscriberColumns+`
+FROM subscribers VIEW idx_subscribers_email AS s
+WHERE s.tenant_id = $tenant_id AND s.email = $email;`,
+		query.WithParameters(ydb.ParamsBuilder().
+			Param("$tenant_id").Text(tenantID).
+			Param("$email").Text(strings.ToLower(email)).
+			Build())))
+}
+
 // Search returns a page of subscribers whose email or name contains q, case
 // insensitively, and the total count. An empty q matches all subscribers.
 func (r *YDBSubscribers) Search(ctx context.Context, tenantID, q string,

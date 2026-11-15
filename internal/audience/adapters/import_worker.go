@@ -93,18 +93,18 @@ func (w *ImportWorker) process(ctx context.Context, tenantID string,
 }
 
 // attachToLists attaches an upserted subscriber to each target list. The
-// subscriber is re-loaded by email to obtain its id.
+// subscriber is re-loaded by its exact email to obtain its id.
 func (w *ImportWorker) attachToLists(ctx context.Context, tenantID, email string, listIDs []string) {
 	if len(listIDs) == 0 {
 		return
 	}
-	subs, _, err := w.subscribers.Search(ctx, tenantID, email, domain.Page{Limit: 1})
-	if err != nil || len(subs) == 0 {
+	sub, err := w.subscribers.GetByEmail(ctx, tenantID, email)
+	if err != nil {
 		return
 	}
 	for _, listID := range listIDs {
 		// A list-attach failure (including an already-attached subscriber)
 		// does not fail the row's import.
-		_ = w.memberships.Attach(ctx, tenantID, subs[0].ID(), listID, domain.SubscriptionUnconfirmed)
+		_ = w.memberships.Attach(ctx, tenantID, sub.ID(), listID, domain.SubscriptionUnconfirmed)
 	}
 }

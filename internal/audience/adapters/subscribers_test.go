@@ -483,3 +483,29 @@ func TestSubscribersRunSegmentOperators(t *testing.T) {
 		}
 	})
 }
+
+// TestSubscribersGetByEmail pins an exact, case-insensitive email lookup: it
+// never returns a subscriber whose email merely contains the address, as a
+// Search for it would.
+func TestSubscribersGetByEmail(t *testing.T) {
+	t.Parallel()
+	eachBackend(t, func(t *testing.T, b backend) {
+		repo := b.subscribers(t)
+		ctx := context.Background()
+		tenantID := b.newTenant(t)
+		alice := addSubscriber(t, repo, tenantID, "alice@example.com")
+		addSubscriber(t, repo, tenantID, "malice@example.com") // newer, and contains "alice@example.com"
+
+		got, err := repo.GetByEmail(ctx, tenantID, "alice@example.com")
+		require.NoError(t, err)
+		require.Equal(t, alice, got.ID())
+		got, err = repo.GetByEmail(ctx, tenantID, "Alice@Example.COM")
+		require.NoError(t, err)
+		require.Equal(t, alice, got.ID(), "the lookup ignores case, as citext does")
+
+		_, err = repo.GetByEmail(ctx, tenantID, "lice@example.com")
+		require.ErrorIs(t, err, domain.ErrSubscriberNotFound)
+		_, err = repo.GetByEmail(ctx, b.newTenant(t), "alice@example.com")
+		require.ErrorIs(t, err, domain.ErrSubscriberNotFound)
+	})
+}

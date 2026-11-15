@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
@@ -127,6 +128,15 @@ func (f *fakeSubscribers) Delete(_ context.Context, tenantID, id string) error {
 	}
 	delete(f.byID, id)
 	return nil
+}
+
+func (f *fakeSubscribers) GetByEmail(_ context.Context, tenantID, email string) (*domain.Subscriber, error) {
+	for _, s := range f.byID {
+		if s.TenantID() == tenantID && strings.EqualFold(s.Email(), email) {
+			return s, nil
+		}
+	}
+	return nil, domain.ErrSubscriberNotFound
 }
 
 func (f *fakeSubscribers) Get(_ context.Context, tenantID, id string) (*domain.Subscriber, error) {

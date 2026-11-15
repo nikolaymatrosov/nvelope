@@ -63,6 +63,9 @@ type SubscriberRepository interface {
 	Delete(ctx context.Context, tenantID, id string) error
 	// Get returns the subscriber, or ErrSubscriberNotFound.
 	Get(ctx context.Context, tenantID, id string) (*Subscriber, error)
+	// GetByEmail returns the subscriber with exactly this email, compared
+	// case-insensitively, or ErrSubscriberNotFound.
+	GetByEmail(ctx context.Context, tenantID, email string) (*Subscriber, error)
 	// Search returns a page of subscribers matching the free-text query q
 	// (empty q matches all) and the total count.
 	Search(ctx context.Context, tenantID, q string, page Page) ([]*Subscriber, int, error)

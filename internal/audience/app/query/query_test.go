@@ -52,6 +52,10 @@ func (f *fakeSubscribers) Get(_ context.Context, _, id string) (*domain.Subscrib
 	}
 	return nil, domain.ErrSubscriberNotFound
 }
+func (f *fakeSubscribers) GetByEmail(context.Context, string, string) (*domain.Subscriber, error) {
+	return nil, domain.ErrSubscriberNotFound
+}
+
 func (f *fakeSubscribers) Search(context.Context, string, string, domain.Page) ([]*domain.Subscriber, int, error) {
 	return f.items, len(f.items), nil
 }

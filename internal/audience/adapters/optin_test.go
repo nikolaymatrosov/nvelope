@@ -258,6 +258,11 @@ func TestConfirmSubscriptionLifecycle(t *testing.T) {
 		confirm := audiencecommand.NewConfirmSubscriptionHandler(pending, subscribers, memberships,
 			fakeSuppression{})
 
+		// alice is already a subscriber, and a newer subscriber's email
+		// contains hers: the confirmation must reach alice, not malice.
+		addSubscriber(t, subscribers, tenantID, "alice@example.com")
+		malice := addSubscriber(t, subscribers, tenantID, "malice@example.com")
+
 		// Submit → pending row, then confirm → subscriber with a confirmed membership.
 		rawToken, _ := token.New()
 		ps, err := domain.NewPendingSubscription(tenantID, pageID, "alice@example.com",
@@ -271,14 +276,16 @@ func TestConfirmSubscriptionLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, res.AlreadyConfirmed)
 
-		subs, total, err := subscribers.Search(ctx, tenantID, "alice@example.com", domain.Page{Limit: 1})
+		alice, err := subscribers.GetByEmail(ctx, tenantID, "alice@example.com")
 		require.NoError(t, err)
-		require.Equal(t, 1, total)
-		require.Equal(t, "Alice", subs[0].Name())
-		mships, err := memberships.ForSubscriber(ctx, tenantID, subs[0].ID())
+		require.Equal(t, "Alice", alice.Name())
+		mships, err := memberships.ForSubscriber(ctx, tenantID, alice.ID())
 		require.NoError(t, err)
 		require.Len(t, mships, 1)
 		require.Equal(t, domain.SubscriptionConfirmed, mships[0].Status())
+		mships, err = memberships.ForSubscriber(ctx, tenantID, malice)
+		require.NoError(t, err)
+		require.Empty(t, mships)
 
 		// The pending row is consumed; a repeat visit is benign.
 		res, err = confirm.Handle(ctx, audiencecommand.ConfirmSubscription{TenantID: tenantID, Token: rawToken})

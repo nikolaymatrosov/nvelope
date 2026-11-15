@@ -195,8 +195,10 @@ func TestImportWorker(t *testing.T) {
 		jobRepo, subscribers, memberships := b.jobs(t), b.subscribers(t), b.memberships(t)
 		listID := addList(t, b.lists(t), tenantID, "Imported")
 
-		// Seed an existing subscriber so the import exercises an update.
+		// Seed an existing subscriber so the import exercises an update, and a
+		// newer one whose email contains it, which the import must not attach.
 		existing := addSubscriber(t, subscribers, tenantID, "existing@example.com")
+		addSubscriber(t, subscribers, tenantID, "preexisting@example.com")
 
 		// Stage a CSV with a new row, an existing row, and an invalid row.
 		csv := "email,name\nnew@example.com,New\nexisting@example.com,Updated\nnot-an-email,Bad\n"
