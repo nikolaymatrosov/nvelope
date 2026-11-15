@@ -108,6 +108,25 @@ describe("Signup", () => {
     )
   })
 
+  it("in first-run setup, a lost slug race goes to the landing page", async () => {
+    vi.mocked(api.config).mockResolvedValue({
+      status: 200,
+      ok: true,
+      data: { features: { billing: false, multi_tenant: false }, setup_required: true },
+    })
+    vi.mocked(api.signup).mockRejectedValue(
+      new ApiError(409, "slug_taken", "taken", "/api/platform/signup"),
+    )
+    renderWithClient(<Signup />)
+    const token = await screen.findByLabelText(/setup token/i)
+    fill()
+    fireEvent.change(token, { target: { value: "the-setup-token" } })
+    fireEvent.click(screen.getByRole("button", { name: /^set up$/i }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/" }))
+    expect(screen.queryByText(/already exists/i)).toBeNull()
+  })
+
   it("surfaces a duplicate-email error without creating a second account", async () => {
     vi.mocked(api.signup).mockRejectedValue(
       new ApiError(409, "email_taken", "exists", "/api/platform/signup"),

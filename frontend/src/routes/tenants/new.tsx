@@ -27,7 +27,7 @@ function slugify(name: string): string {
     .replace(/^-+|-+$/g, "")
 }
 
-function NewTenant() {
+export function NewTenant() {
   const navigate = useNavigate()
   const [formError, setFormError] = useState("")
   const [slugTaken, setSlugTaken] = useState(false)
@@ -51,9 +51,10 @@ function NewTenant() {
       setFormError("")
       setSlugTaken(false)
       try {
-        await create.mutateAsync(value)
+        // Single-tenant installs pin the slug server-side; trust the response.
+        const res = await create.mutateAsync(value)
         await queryClient.invalidateQueries({ queryKey: ["me"] })
-        await navigate({ to: "/t/$slug", params: { slug: value.slug.trim() } })
+        await navigate({ to: "/t/$slug", params: { slug: res.data.tenant.slug } })
       } catch {
         // surfaced via mutation onError
       }

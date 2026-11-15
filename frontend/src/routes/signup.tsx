@@ -45,7 +45,13 @@ export function Signup() {
       // No session is issued — the account must verify its email first.
       setSentTo(res.data.verification.email)
     },
-    onError: (e) => {
+    onError: async (e) => {
+      if (setupRequired && e instanceof ApiError && e.slug === "slug_taken") {
+        // Lost the setup race after the owner was signed in: go to the landing page.
+        await queryClient.invalidateQueries({ queryKey: queryKeys.me() })
+        await navigate({ to: "/" })
+        return
+      }
       if (isConflict(e)) {
         setEmailTaken(true)
         return
@@ -203,7 +209,7 @@ export function Signup() {
                     label={t("signup.setupToken")}
                     type="password"
                     required
-                    autoComplete="off"
+                    autoComplete="one-time-code"
                     hint={t("signup.setupTokenHint")}
                     value={field.state.value}
                     onBlur={field.handleBlur}

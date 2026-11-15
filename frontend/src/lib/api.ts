@@ -45,6 +45,7 @@ import type {
   PlanView,
   PlatformAccount,
   PlatformConfig,
+  PlatformTenant,
   PlatformUser,
   RawHTMLSanitization,
   RenderPreviewInput,
@@ -171,7 +172,7 @@ export const api = {
   updateMyLocale: (locale: string) =>
     request<{ user: PlatformUser }>("PUT", "/api/platform/me", { locale }),
   createTenant: (name: string, slug: string) =>
-    request<{ id: string }>("POST", "/api/platform/tenants", { name, slug }),
+    request<{ tenant: PlatformTenant }>("POST", "/api/platform/tenants", { name, slug }),
   listTenants: () =>
     request<{ tenants: Array<Membership> }>("GET", "/api/platform/tenants"),
   getInvitation: (token: string) =>
