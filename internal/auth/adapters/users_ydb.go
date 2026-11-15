@@ -111,14 +111,16 @@ DECLARE $email AS Utf8;
 DECLARE $email_key AS Utf8;
 DECLARE $password_hash AS Utf8;
 DECLARE $name AS Utf8;
-INSERT INTO platform_users (id, email, email_key, password_hash, name, created_at, updated_at)
-VALUES ($id, $email, $email_key, $password_hash, $name, CurrentUtcTimestamp(), CurrentUtcTimestamp());`,
+DECLARE $email_verified_at AS Optional<Timestamp>;
+INSERT INTO platform_users (id, email, email_key, password_hash, name, email_verified_at, created_at, updated_at)
+VALUES ($id, $email, $email_key, $password_hash, $name, $email_verified_at, CurrentUtcTimestamp(), CurrentUtcTimestamp());`,
 		query.WithParameters(ydb.ParamsBuilder().
 			Param("$id").Text(id).
 			Param("$email").Text(u.Email().String()).
 			Param("$email_key").Text(ydbEmailKey(u.Email().String())).
 			Param("$password_hash").Text(passwordHash).
 			Param("$name").Text(u.Name()).
+			Param("$email_verified_at").BeginOptional().Timestamp(u.EmailVerifiedAt()).EndOptional().
 			Build()))
 	if db.IsYDBConflict(err) {
 		return domain.ErrEmailTaken
@@ -129,10 +131,10 @@ VALUES ($id, $email, $email_key, $password_hash, $name, CurrentUtcTimestamp(), C
 	return nil
 }
 
-// newlyCreatedUser is the persisted form of a just-inserted user, which has no
-// locale yet and is unverified, as on Postgres.
+// newlyCreatedUser is the persisted form of a just-inserted user: no locale
+// yet, and the verification state the user was inserted with.
 func newlyCreatedUser(id string, u *domain.User) *domain.User {
-	return domain.HydrateUser(id, u.Email().String(), u.Name(), "", nil)
+	return domain.HydrateUser(id, u.Email().String(), u.Name(), "", u.EmailVerifiedAt())
 }
 
 // MarkEmailVerified records that the user verified their email address at now.

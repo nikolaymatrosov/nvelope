@@ -195,6 +195,7 @@ func TestUsersCreateWithSession(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, created.ID(), "the adapter assigns an id")
 		require.Equal(t, addr, created.Email().String())
+		require.False(t, created.IsEmailVerified(), "an unverified user stays unverified")
 
 		// The session was inserted in the same transaction, for the new user.
 		s, err := b.sessions(t).ResolveByTokenHash(ctx, tokenHash)
@@ -325,5 +326,30 @@ func TestUsersMarkEmailVerified(t *testing.T) {
 		again, err := repo.GetByID(ctx, created.ID())
 		require.NoError(t, err)
 		require.WithinDuration(t, *reloaded.EmailVerifiedAt(), *again.EmailVerifiedAt(), time.Second)
+	})
+}
+
+// TestUsersCreateWithSessionKeepsVerification pins that CreateWithSession
+// persists the user's verification state: first-run setup creates its owner
+// account already verified, so a later login is not refused.
+func TestUsersCreateWithSessionKeepsVerification(t *testing.T) {
+	t.Parallel()
+	eachBackend(t, func(t *testing.T, b backend) {
+		repo := b.users(t)
+		ctx := context.Background()
+
+		u, _ := newUser(t, "Owner")
+		u.MarkEmailVerified(time.Now())
+		created, err := repo.CreateWithSession(ctx, u, "hash",
+			func(userID string) (*domain.Session, string, error) {
+				s, err := domain.NewSession(userID, time.Hour)
+				return s, dbtest.RandString(), err
+			})
+		require.NoError(t, err)
+		require.True(t, created.IsEmailVerified())
+
+		got, err := repo.GetByID(ctx, created.ID())
+		require.NoError(t, err)
+		require.True(t, got.IsEmailVerified(), "the verification state is persisted")
 	})
 }

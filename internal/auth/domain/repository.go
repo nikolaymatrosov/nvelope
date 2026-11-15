@@ -14,7 +14,9 @@ type UserRepository interface {
 	Create(ctx context.Context, u *User, passwordHash string) (*User, error)
 	// CreateWithSession atomically inserts a new user and issues an initial
 	// session. issueSession is called with the new user's id and returns the
-	// session to persist together with its token hash. The whole operation is
+	// session to persist together with its token hash. The user's verification
+	// state is persisted as given, so a caller that has already established
+	// email ownership can insert a verified account. The whole operation is
 	// one transaction, so a failure leaves neither the user nor the session.
 	// issueSession may be called more than once (a backend may retry the
 	// transaction), so any side effect must be overwrite-only (e.g. assigning
