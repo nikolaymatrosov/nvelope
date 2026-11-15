@@ -106,7 +106,41 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # API Gateway caps a response at 2.5 MB, so on the serverless install a
+      # bigger static asset would not load.
+      - name: Static assets fit API Gateway
+        run: |
+          big=$(find .output/public -type f -size +2400k)
+          if [ -n "$big" ]; then echo "over the API Gateway response cap (2.5 MB): $big"; exit 1; fi
+
       # Smoke gate: a broken story or Storybook config fails the build even if
       # the story tests happened to pass.
       - name: Build Storybook
         run: pnpm build-storybook
+
+  terraform:
+    name: Terraform (fmt · validate · test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/terraform/nvelope-serverless
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.1"
+
+      - name: Format
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      # Plan-only tests with mock providers: no cloud credentials needed.
+      - name: Test
+        run: terraform test

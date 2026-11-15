@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	// Platform API — not scoped to a tenant.
 	r.Route("/api/platform", func(r chi.Router) {
 		r.Post("/signup", s.handleSignup)
+		r.Get("/config", s.handlePlatformConfig)
 		r.Post("/login", s.handleLogin)
 		r.Post("/verify-email", s.handleVerifyEmail)
 		r.Post("/verify-email/resend", s.handleResendVerification)

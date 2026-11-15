@@ -58,6 +58,7 @@ These are deferred on purpose:
 ```
                ┌───────────── API Gateway (custom domain, Certificate Manager) ─────────────┐
  browser ─────►│ 3 Phase 7 visual endpoints, SPA      → container `frontend` (Node BFF)      │
+               │ (a second `bff` gateway serves /t/:slug/api/* for the frontend's BFF → `api`) │
                │ /t/:slug/api/*, /api/platform/*, tracking, unsubscribe, public pages → `api` │
                └──────────────────────────────────────────────────────────────────────────────┘
  api ── Enqueue ──► YMQ `jobs` / `jobs-long` (each + DLQ) ──MQ trigger──► worker POST /jobs
@@ -76,8 +77,9 @@ Each container is built from an existing image. There are no new binaries.
 | `frontend` | `frontend` | — | high | 30 s | SPA + 3 visual endpoints |
 | `worker` | `worker` | `NVELOPE_ROLE=worker` | 1 | up to 1 h | `/jobs`, `/cron/:name`, `/feedback`, `/admin/migrate` |
 
-- All containers are **private**. API Gateway and triggers invoke them with an
-  `invoker` service account that has `serverless.containers.invoker`.
+- All containers are **private**. The `gateway` service account (API Gateway)
+  invokes `api` and `frontend`. The `trigger` service account invokes only
+  `worker`. Both hold `serverless.containers.invoker`.
 - `cmd/worker` in serverless mode starts an HTTP server on `$PORT` instead of a
   River client. The worker-only routes are registered **only** when
   `NVELOPE_ROLE=worker`.
@@ -334,58 +336,78 @@ out of scope, and TTL replaces the cleanup.
   Existing `/t/:slug/...` URLs are unchanged.
 - Terraform generates a random `setup_token` and stores it in Lockbox. Terraform
   output prints the `yc lockbox payload get ...` command to read it.
-- While no user exists, `POST /api/platform/signup` requires the setup token. A
-  valid token:
+- While the workspace at `NVELOPE_TENANT_SLUG` does not exist, `POST /api/platform/signup`
+  requires the setup token (`setup_token` in the body, at least 32 characters by config
+  validation). A valid token:
   - creates the first user, **skipping email verification**, because nothing can
     send mail before the first login and holding the token already proves the
-    right to install;
+    right to install. The user is signed in at once (`UserRepository.CreateWithSession`);
   - creates the tenant through the existing `create_workspace` command, with the
-    user as owner.
+    user as owner. Its name starts as the slug; the owner renames it in Settings.
 
-  Without the token, or once any user exists, signup returns 403.
+  Without the token: 403 `setup_token_invalid`. Once the workspace exists: 403
+  `setup_complete`. Plan C2 keyed "setup is open" on the workspace, not on "no user
+  exists": it reuses the `LocateWorkspace` query, it is testable on a shared database,
+  and the cron sweeps and invitations need the workspace anyway.
+- If the account is created but the workspace is not, the owner is already signed in:
+  the landing page offers "Create workspace", and `POST /api/platform/tenants` always
+  uses `NVELOPE_TENANT_SLUG` in single-tenant mode.
 - After that, people join only by invitation (`invite_teammate` /
   `accept_invitation`).
-- `POST /api/platform/tenants` returns 409 once the tenant exists.
-- The setup-token comparison is constant-time.
+- `POST /api/platform/tenants` pins the slug to `NVELOPE_TENANT_SLUG`, so it returns 409 `slug_taken` once the tenant exists.
+- The setup-token comparison is constant-time: both sides are hashed with SHA-256 first, so the length does not leak either.
 
 ### UI feature flags
 
 - A public `GET /api/platform/config` returns
-  `{"features": {"billing": bool, "multiTenant": bool}, "setupRequired": bool}`.
-  It is added to the OpenAPI spec (spec-first API).
+  `{"features": {"billing": bool, "multi_tenant": bool}, "setup_required": bool}`
+  (snake_case, like the rest of the platform plane). It is a hand-written route:
+  only the tenant plane is spec-first so far, and the route moves into
+  `api/openapi/platform.yaml` when the platform plane migrates (Plan C2).
 - The frontend hides billing screens and the tenant switcher when the flags are
   false. It shows the setup-token field on the signup page when
-  `setupRequired` is true.
-- No other frontend changes.
+  `setup_required` is true.
+- The signup links on the landing and login pages are hidden once a single-tenant install is set up. No other frontend changes.
 
 ### Terraform module: `deploy/terraform/nvelope-serverless/`
 
-Inputs: `folder_id`, `domain`, `image_tag`, `tenant_slug`, `system_from_email`,
+Inputs: `folder_id`, `domain`, `dns_zone_id` or `certificate_id` (exactly one),
+`image_tag`, `registry_id`, `tenant_slug`, `system_sender_domain`,
 `send_rate_per_sec`, `provisioned_instances` (default 0),
-`ydb_throttling_rcu_limit` (default 1000 RU/s; 0 or unset disables the limit,
-per the docs; the default value is a Plan C choice). Serverless YDB is
-throttled at 10 RU/s by default (V5), which would make imports and sends crawl.
-The provider arguments are **to verify in Plan C**, since Plan A did not read
-them in a source. Candidates on `yandex_ydb_database_serverless`:
-`serverless_database { throttling_rcu_limit, provisioned_rcu_limit,
-storage_size_limit }`.
+`ydb_throttling_rcu_limit` (default 1000 RU/s; 0 disables the limit) and
+`deletion_protection` (default true). Serverless YDB is throttled at 10 RU/s by
+default (V5), which would make imports and sends crawl. The provider arguments
+were verified in Plan C3 (see "Plan C3 planning spike"):
+`serverless_database { enable_throttling_rcu_limit, throttling_rcu_limit }`.
 
 Resources:
 
-- Service accounts `api`, `worker`, `invoker`, each with minimal roles (YDB
-  editor, YMQ reader/writer, storage editor on the media bucket, Postbox sender,
-  Lockbox payload viewer, as each needs).
-- Static access keys for YMQ and S3, stored in Lockbox.
+- Service accounts (Plan C3):
+  - `app`, the runtime identity of `api` and `worker`. Both build the same
+    clients, so they need the same roles: YDB editor on the database, YMQ
+    writer, Postbox editor, storage editor on the media bucket, Lockbox payload
+    viewer on the secret.
+  - `gateway`, which invokes `api` and `frontend`.
+  - `trigger`, which reads the queues and the topic and invokes `worker`.
+  - `queues`, used by Terraform only, to create the queues: their API takes
+    only static keys.
+- One static access key for `app`, used for YMQ, Postbox and S3, stored in
+  Lockbox.
 - Serverless YDB database and a YDB topic for Postbox feedback.
-- YMQ queues `jobs` and `jobs-long`, each with a DLQ.
+- YMQ queues `jobs` and `jobs-long`, each with a DLQ, and a DLQ for the
+  feedback trigger.
 - An Object Storage bucket for media.
-- A Lockbox secret holding the session secret, setup token and static keys.
+- A Lockbox secret holding the setup token, the TOTP encryption key and the
+  static key.
 - Serverless Containers `api`, `frontend` and `worker`, with images from the
   project's public Container Registry at `image_tag`. The registry is created
   once by the maintainers, and its ID is a module default.
-- API Gateway with an OpenAPI spec that routes paths to the containers, a
-  custom domain, and a Let's Encrypt certificate from Certificate Manager. This
-  requires a DNS zone in YC; otherwise the user supplies a certificate ID.
+- Two API gateways (Plan C3):
+  - `public` routes paths to `api` and `frontend` on the custom domain, with a
+    Let's Encrypt certificate from Certificate Manager. This requires a DNS
+    zone in YC; otherwise the user supplies a certificate ID.
+  - `bff` routes `/t/{slug}/api/*` to `api` on its default domain. The BFF
+    calls Go through it.
 - Triggers: 2 Message Queue (`jobs`, `jobs-long`), 2 timer, 1 Data Streams.
 - Postbox is **not** created by Terraform: the provider has no Postbox resource
   (V2). Address and configuration set (with the topic as feedback destination)
@@ -401,7 +423,8 @@ Migrations:
 Upgrade: bump `image_tag`, then `terraform apply`.
 
 CI: publish `api`, `worker` and `frontend` images to the public registry, tagged
-by release version.
+by release version. A `v*` tag push builds them for `linux/amd64` (Serverless
+Containers run only x86_64 images) and pushes them as `cr.yandex/<registry>/<name>:<tag>`.
 
 ## Testing
 
@@ -974,12 +997,13 @@ Decisions for Plan B6:
     (path-style, static keys, `cfg.ObjectStorageRegion`). It also wires
     `NewYDBSubscriptionPages` and `NewYDBPendingSubscriptions`.
   - The `api` and `worker` service accounts need read and write on the media
-    bucket. C3's bucket policy keeps anonymous read on `published/*` only.
-  - **C3.** Public read on the media bucket must come only from the bucket
-    policy on `published/*`. Bucket-wide anonymous read (the YC bucket's
-    `anonymous_access_flags.read`) must stay off, because `jobs/` holds
-    subscriber PII. Add a C3 smoke check: an anonymous GET on a `jobs/` key
-    expects 403.
+    bucket. Anonymous read covers only the `published/` copies, through the
+    per-object `public-read` ACL `NewS3BlobStore.Publish` sets. The bucket has
+    no bucket policy (Plan C3).
+  - **C3.** Bucket-wide anonymous read (the YC bucket's
+    `anonymous_access_flags.read`) stays off, because `jobs/` holds subscriber
+    PII. The C4 smoke test checks that an anonymous GET on a `jobs/` key
+    answers 403.
   - **C4.** The S3 client for `NewYDBJobs` must copy
     `mediaadapters.NewS3BlobStore`'s options, including the `Region: "auto"`
     fallback when `cfg.ObjectStorageRegion` is empty.
@@ -1362,15 +1386,15 @@ Decisions for Plan B9:
   the `PublishAssets` handler, so the port covers every read and write path.
   There are no media workers.
 
-Found, not fixed:
+Resolved by C3 (merged after this plan):
 
-- `S3BlobStore.Publish` sends `ACL: public-read` on the copy. C3's design
-  grants anonymous read through a bucket policy on `published/*` alone. The ACL
-  is redundant there, and on Yandex Object Storage setting an object ACL may need
-  a role the `api` and `worker` service accounts do not have. Not verifiable
-  without a real bucket; fakecloud accepts it. The Postgres runtime has used it
-  since the media library. C3's smoke check should upload through the real
-  service account and publish once, and C4 should drop the ACL if that fails.
+- `S3BlobStore.Publish` sends `ACL: public-read` on the copy. That is the access
+  model C3 kept: the bucket has no bucket policy, and anonymous read comes only
+  from the per-object ACL. C3 grants the app service account `storage.editor`
+  on the bucket, because `storage.uploader` cannot set that ACL. The B9 worry
+  that the ACL was redundant and might lack a role is therefore resolved.
+  Only C4's smoke test, which publishes once through the real service account,
+  confirms it against Object Storage.
 
 For C4 and the completeness of Plan B:
 
@@ -1419,6 +1443,130 @@ For C4 and the completeness of Plan B:
     and are unused in serverless mode.
   - `platform/jobs` (River) and `platform/tenantdb` are pg-only by design and
     stay out of the serverless builder.
+### Plan C3 planning spike
+
+Run on 2026-11-15 while planning the Terraform module and image publishing.
+Provider `yandex-cloud/yandex` v0.248.0 (from `terraform providers schema
+-json`), Terraform v1.16.1. A draft of the whole module passed
+`terraform validate` and `terraform test` with mock providers. A
+`terraform plan` against a real folder (read-only, nothing applied) planned 41
+resources with `certificate_id` and 44 with `dns_zone_id`. Docs are the
+`yandex-cloud/docs` sources (`en/`).
+
+- **Provider arguments** (resolves the V2 and "to verify in Plan C" items):
+  - `yandex_ydb_database_serverless.serverless_database`:
+    `enable_throttling_rcu_limit` (bool), `throttling_rcu_limit`,
+    `provisioned_rcu_limit`, `storage_size_limit`. `database_path` and
+    `ydb_full_endpoint` are exported.
+  - `yandex_function_trigger`: a `container` block (`id`, `path`,
+    `service_account_id`, `retry_attempts`, `retry_interval`) beside
+    `message_queue` (`queue_id` = the queue ARN, `batch_size`,
+    `batch_cutoff`, `visibility_timeout`), `timer` (`cron_expression`,
+    `payload`), `data_streams` (`database` = the database path,
+    `stream_name`, `batch_size` in bytes up to 64 KB, `batch_cutoff`) and
+    `dlq` (`queue_id` = ARN). The docs say the retry settings apply to every
+    trigger type except Message Queue, which relies on the queue's redrive
+    policy.
+  - `yandex_message_queue.id` is the queue URL (provider source:
+    `d.SetId(output.QueueUrl)`). Creating a queue takes a static key
+    (`access_key`/`secret_key`).
+  - `yandex_serverless_container`: `concurrency`, `execution_timeout`,
+    `provision_policy { min_instances }`, `secrets { id, version_id, key,
+    environment_variable }`. There is **no per-container instance limit**.
+  - `yandex_serverless_container_iam_member` binds a role on one container.
+    YMQ, Postbox and YDS roles bind only at folder or cloud level (YMQ docs).
+  - `yandex_api_gateway.custom_domains { fqdn, certificate_id }`; the
+    `domain` attribute is the default `*.apigw.yandexcloud.net` domain.
+  - `yandex_cm_certificate` (`managed { challenge_type }`, exported
+    `challenges`) plus `data "yandex_cm_certificate" { wait_validation = true }`.
+  - `yandex_iam_service_account_static_access_key`, `yandex_lockbox_secret`,
+    `yandex_lockbox_secret_version`, `yandex_lockbox_secret_iam_member`,
+    `yandex_ydb_database_iam_member`, `yandex_storage_bucket_iam_binding`,
+    `yandex_ydb_topic` (with a `consumer` block): all present.
+  - **No alerting resource.** Only `yandex_monitoring_dashboard` exists, so DLQ
+    alerts are a README step.
+- **Containers strip `Cookie` and `Authorization` on direct HTTPS calls**
+  (`serverless-containers/concepts/invoke.md`, "Filtering message headers").
+  The BFF forwards the session cookie to `${NV_GO_API_URL}/t/:slug/api/...`.
+  That is the same path the public gateway routes to `frontend`, so it cannot
+  go through the public gateway either. Decision: a second gateway, `bff`,
+  routes `/t/{slug}/api/{path+}` to `api`, and `NV_GO_API_URL` is its default
+  domain. The docs do not say whether a gateway passes `Cookie` and
+  `Authorization` through. That is assumed, and the C4 smoke test checks it
+  first (login, and an API-key `POST /t/{slug}/api/tx`).
+- **Gateway routing.** Fixed segments outrank path parameters, which outrank
+  greedy `{x+}` parameters, and of two greedy routes the longer wins
+  (`api-gateway/concepts/index.md`). So the three BFF paths beat
+  `/t/{slug}/api/{path+}`, which beats `/{path+}`. The integration is
+  `x-yc-apigateway-integration: {type: serverless_containers, container_id,
+  service_account_id}`, and the container sees the original path and `Host`.
+- **Platform limits:**
+  - API Gateway caps a request and a response at 2.5 MB, and a container
+    request at 3.5 MB. The biggest SPA chunk is 2.2 MB today.
+  - The container timeout maximum is 1 h. Above 10 min the container is
+    "long-lived", and the platform may force-terminate an instance with 10 min
+    notice.
+  - Environment variables, Lockbox secrets included, total at most 4 KB.
+  - Images must be Linux x86_64.
+  - `PORT` is set by the platform. Nitro reads `NITRO_PORT ?? PORT`, so the
+    frontend image needs no change. The Go services must listen on `$PORT`
+    (C4).
+  - Default quotas per availability zone, shared by every container in the
+    cloud: 10 instances and 10 concurrent requests. Above that a call queues,
+    then fails with `429 TooManyRequests`. Provisioned instances are capped
+    at 2 per cloud.
+- **A throttled invocation consumes a receive count.** The docs say an MQ
+  trigger returns a message to the queue with its visibility timeout on any
+  invocation error, and nothing exempts a 429. Each trigger receive increments
+  `ApproximateReceiveCount`. So a campaign fan-out beyond the request quota
+  burns retries, and a throttled `jobs-long` message waits the full long
+  visibility timeout before its next try. Inferred from the docs, not stated
+  by them.
+- **Roles named by the docs.** MQ trigger: `editor` on the queue's folder and
+  `serverless.containers.invoker` on the container's folder. Timer: invoker on
+  the folder. Data Streams: invoker on the container and `yds.admin` on the
+  stream. The module grants narrower roles: `ymq.reader` (plus `ymq.writer`
+  for the feedback DLQ), `yds.admin` on the folder, and invoker on `worker`
+  alone. Unverified until the C4 smoke test.
+- **Provider hashes.** `terraform providers lock` ignores the CLI
+  `network_mirror` setting; it needs `-net-mirror=https://terraform-mirror.yandexcloud.net/`.
+- **Mock-provider tests** must use `command = plan`. An `apply` runs the
+  migrate step's `local-exec` even when `terraform_data.migrate` is overridden.
+  Values that assertions read are mocked with `override_during = plan`.
+
+Decisions for Plan C3:
+
+- Service accounts `app`, `gateway`, `trigger` and `queues` replace `api`,
+  `worker` and `invoker` (see "Terraform module"). The input
+  `system_from_email` becomes `system_sender_domain`, since the config takes a
+  domain and sends from `no-reply@<domain>`.
+- **Timeouts and visibility.** `worker` runs with `execution_timeout` 3600 s.
+  C4's dispatcher bounds short jobs to 60 s (`NVELOPE_JOB_TIMEOUT`) and long
+  jobs to 55 min (`NVELOPE_LONG_JOB_TIMEOUT`). The `jobs` queue's visibility
+  timeout is 120 s and `jobs-long`'s is 3900 s. The trigger's own
+  `visibility_timeout` stays unset.
+- **Retry budget.** `maxReceiveCount` is 20 on `jobs` (about 40 min of
+  retries) and 10 on `jobs-long` (about 11 h), because a 429 consumes a
+  receive. DLQs keep messages for 14 days. The feedback trigger retries 5
+  times, 60 s apart, then writes to the `nvelope-feedback-dlq` queue.
+- **Instance limits** cannot be set per container. Sizing becomes a quota
+  request in the README and a C4 smoke-test measurement. `jobs-long` keeps the
+  one `worker` container: a second container would share the same quota, so it
+  would not isolate anything.
+- **IAM.** Invoker is bound per container. `gateway` gets it on `api` and
+  `frontend`, `trigger` on `worker` only. A mock-provider test pins the
+  `worker` binding.
+- **Timers.** The domain sweep fires every 15 min from the same local that sets
+  `NVELOPE_SENDING_DOMAIN_VERIFY_INTERVAL`. Analytics refreshes hourly.
+- **Media and uploads.** `NVELOPE_MEDIA_MAX_BYTES` is 2 MiB, under the gateway
+  cap. A CI step fails the frontend build if any static asset exceeds 2400 KiB.
+- **The Data Streams trigger's consumer.** The topic has
+  `lifecycle { ignore_changes = [consumer] }`, so a later apply does not
+  delete a consumer the trigger registers.
+- **Images.** A `v*` tag push builds `api`, `worker` and `frontend` with
+  `--platform linux/amd64` and pushes them to `cr.yandex/<registry_id>`. The
+  registry is public (`container-registry.images.puller` for `system:allUsers`).
+- **Real-YMQ probe: PASS** (2026-11-15). SendMessage through the production Enqueuer, then ReceiveMessage and DeleteMessage with service/sqs v1.42.27, against https://message-queue.api.cloud.yandex.net. YMQ accepts the AWS JSON protocol.
 
 ## Ceilings
 
@@ -1431,6 +1579,10 @@ These are known limits, marked in code with `ponytail:` comments.
   is `provisioned_instances > 0`, which costs money.
 - The fixed-window throttle allows up to 2× the limit at a window boundary.
   This is acceptable for anti-abuse and Postbox pacing.
+- Two concurrent first-run setups with the right token both pass the "workspace does
+  not exist" check; the second then fails on the slug and leaves a verified account
+  with no workspace. Only the token holder can race. The upgrade path is one
+  transaction across auth and tenant, as invitation onboarding does.
 - The default serverless YDB throttle of 10 RU/s (V5) throttles bulk jobs
   (imports, sends). The upgrade path is raising or removing the limit through
   the `ydb_throttling_rcu_limit` Terraform input.
@@ -1529,6 +1681,26 @@ These are known limits, marked in code with `ponytail:` comments.
 - `media_assets.uploaded_by` has no `ON DELETE SET NULL` counterpart on YDB:
   no code deletes users or tenants, so nothing can leave it dangling. A user
   or tenant delete added later must clear it (or the asset rows) explicitly.
+- API Gateway caps requests and responses at 2.5 MB. Media uploads are held to
+  2 MiB (`NVELOPE_MEDIA_MAX_BYTES`), a CSV import is capped by the same limit,
+  and a static asset above 2400 KiB fails CI. The upgrade path is presigned
+  uploads straight to the bucket and serving static assets from Object
+  Storage.
+- The default container quotas (10 instances and 10 concurrent requests per
+  availability zone, shared by every container in the cloud) throttle a
+  campaign fan-out. They also starve `api` while it runs. A throttled job
+  message burns a receive and waits a full visibility timeout. The upgrade
+  paths are a quota increase and a staggered batch enqueue (`not_before`).
+- Job retries use a fixed visibility timeout with no backoff. That is about
+  40 min for short jobs and 11 h for long ones before the DLQ. The upgrade
+  path is a per-attempt delayed re-send in the dispatcher.
+- Analytics refresh hourly in serverless mode, so dashboards lag by up to an
+  hour.
+- The TOTP encryption key lives in Lockbox and in Terraform state. Losing the
+  state rotates it on the next apply and orphans every enrolled TOTP secret.
+- The `bff` gateway's default domain is public. It exposes only `api`'s
+  tenant API, which the public gateway already exposes, plus Go's own
+  visual-save handlers, which sanitize and validate on their own.
 
 ## Implementation phasing
 
@@ -1567,7 +1739,7 @@ The plan is split into three plans. Each one merges to `main` on its own.
   - **C2, single-tenant bootstrap:** setup-token signup, `/api/platform/config`
     and the frontend flags.
   - **C3, packaging:** the Terraform module and image publishing. Only
-    `terraform validate` and `plan` can run before C4.
+    `terraform validate`, `test` and `plan` can run before C4.
   - **C4, assembly (after Plan B):** the serverless composition root, the
     serverless modes of `cmd/worker` and `cmd/api`, the README quickstart and
     the smoke test.

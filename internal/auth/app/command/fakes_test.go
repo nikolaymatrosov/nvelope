@@ -31,7 +31,7 @@ func (f *fakeUsers) Create(_ context.Context, u *domain.User, passwordHash strin
 	}
 	f.nextID++
 	id := "user-" + strconv.Itoa(f.nextID)
-	stored := domain.HydrateUser(id, u.Email().String(), u.Name(), u.Locale().String(), nil)
+	stored := domain.HydrateUser(id, u.Email().String(), u.Name(), u.Locale().String(), u.EmailVerifiedAt())
 	f.byID[id] = stored
 	f.hashes[u.Email().String()] = passwordHash
 	return stored, nil

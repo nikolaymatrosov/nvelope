@@ -37,6 +37,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { usePermissions } from "@/hooks/use-permissions"
+import { usePlatformConfig } from "@/hooks/use-platform-config"
 
 // A key under the `common` namespace's `nav` group.
 type NavLabelKey = `nav.${keyof Resources["common"]["nav"]}`
@@ -126,6 +127,7 @@ const NAV: Array<NavEntry> = [
 export function WorkspaceSidebar({ slug }: { slug: string }) {
   const location = useLocation()
   const { canAny } = usePermissions(slug)
+  const { billing } = usePlatformConfig()
   const { t } = useTranslation("common")
   const base = `/t/${slug}`
 
@@ -145,7 +147,9 @@ export function WorkspaceSidebar({ slug }: { slug: string }) {
           <SidebarGroupContent>
             <SidebarMenu>
               {NAV.filter(
-                (entry) => entry.requires.length === 0 || canAny(entry.requires),
+                (entry) =>
+                  (billing || entry.segment !== "billing") &&
+                  (entry.requires.length === 0 || canAny(entry.requires)),
               ).map((entry) => {
                 const href = `${base}/${entry.segment}`
                 const active = location.pathname.startsWith(href)

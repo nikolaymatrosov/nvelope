@@ -98,7 +98,10 @@ type testServer struct {
 	blobs       *mediaadapters.MemoryBlobStore
 }
 
-func newTestServer(t *testing.T) *testServer {
+func newTestServer(t *testing.T) *testServer { return newTestServerWith(t, nil) }
+
+// newTestServerWith is newTestServer with a hook that adjusts the config before the application is built.
+func newTestServerWith(t *testing.T, adjust func(*config.Config)) *testServer {
 	t.Helper()
 	pool := dbtest.AppPool(t)
 	blobs := mediaadapters.NewMemoryBlobStore("https://media.test")
@@ -119,6 +122,9 @@ func newTestServer(t *testing.T) *testServer {
 		TOTPEncryptionKey:    "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
 		MediaMaxBytes:        10 << 20,
 		EmailVerificationTTL: time.Hour,
+	}
+	if adjust != nil {
+		adjust(&cfg)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	txMessenger := &capturingMessenger{}

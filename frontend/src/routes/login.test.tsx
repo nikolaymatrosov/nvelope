@@ -18,7 +18,19 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-vi.mock("@/lib/api", () => ({ api: { login: vi.fn() } }))
+vi.mock("@/lib/api", () => ({
+  api: {
+    login: vi.fn(),
+    config: vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      data: {
+        features: { billing: true, multi_tenant: true },
+        setup_required: false,
+      },
+    }),
+  },
+}))
 
 afterEach(() => {
   cleanup()
@@ -46,21 +58,21 @@ describe("Login", () => {
     fireEvent.click(screen.getByRole("button", { name: /log in/i }))
 
     await waitFor(() =>
-      expect(api.login).toHaveBeenCalledWith("ann@example.com", "supersecret"),
+      expect(api.login).toHaveBeenCalledWith("ann@example.com", "supersecret")
     )
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/" }))
   })
 
   it("shows a non-specific error on invalid credentials", async () => {
     vi.mocked(api.login).mockRejectedValue(
-      new ApiError(401, "unauthenticated", "bad", "/api/platform/login"),
+      new ApiError(401, "unauthenticated", "bad", "/api/platform/login")
     )
     renderWithClient(<Login />)
     fill()
     fireEvent.click(screen.getByRole("button", { name: /log in/i }))
 
     expect(
-      await screen.findByText(/that email and password do not match/i),
+      await screen.findByText(/that email and password do not match/i)
     ).toBeDefined()
     expect(navigate).not.toHaveBeenCalled()
   })

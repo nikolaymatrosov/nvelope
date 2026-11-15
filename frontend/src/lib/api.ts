@@ -44,6 +44,8 @@ import type {
   Permission,
   PlanView,
   PlatformAccount,
+  PlatformConfig,
+  PlatformTenant,
   PlatformUser,
   RawHTMLSanitization,
   RenderPreviewInput,
@@ -55,6 +57,7 @@ import type {
   SaveVisualTemplateInput,
   SegmentNode,
   SessionResult,
+  SignupResult,
   StartExportInput,
   SubscribeResult,
   SubscriptionPageView,
@@ -141,11 +144,14 @@ const tp = (slug: string, suffix: string) => `/t/${slug}/api${suffix}`
 
 export const api = {
   // ── Platform plane ─────────────────────────────────────────────────────────
-  signup: (email: string, password: string, name: string) =>
-    request<{ verification: { required: boolean; email: string } }>(
+  config: () => request<PlatformConfig>("GET", "/api/platform/config"),
+  signup: (email: string, password: string, name: string, setupToken?: string) =>
+    request<SignupResult>(
       "POST",
       "/api/platform/signup",
-      { email, password, name },
+      setupToken === undefined
+        ? { email, password, name }
+        : { email, password, name, setup_token: setupToken },
     ),
   login: (email: string, password: string) =>
     request("POST", "/api/platform/login", { email, password }),
@@ -166,7 +172,7 @@ export const api = {
   updateMyLocale: (locale: string) =>
     request<{ user: PlatformUser }>("PUT", "/api/platform/me", { locale }),
   createTenant: (name: string, slug: string) =>
-    request<{ id: string }>("POST", "/api/platform/tenants", { name, slug }),
+    request<{ tenant: PlatformTenant }>("POST", "/api/platform/tenants", { name, slug }),
   listTenants: () =>
     request<{ tenants: Array<Membership> }>("GET", "/api/platform/tenants"),
   getInvitation: (token: string) =>

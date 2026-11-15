@@ -255,3 +255,67 @@ func TestValidateReportsEveryOffendingVariable(t *testing.T) {
 	require.True(t, strings.Contains(msg, "NVELOPE_SESSION_TTL"))
 	require.True(t, strings.Contains(msg, "NVELOPE_INVITE_TTL"))
 }
+
+// testSetupToken is 32 characters, the minimum NVELOPE_SETUP_TOKEN length.
+const testSetupToken = "0123456789abcdef0123456789abcdef"
+
+func setBaseEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("NVELOPE_DATABASE_URL", testDSN)
+	t.Setenv("NVELOPE_TOTP_ENCRYPTION_KEY", testTOTPKey)
+	setPhase3Env(t)
+}
+
+func TestLoadRuntimeDefaultsToSaaS(t *testing.T) {
+	setBaseEnv(t)
+
+	cfg, err := Load("")
+	require.NoError(t, err)
+	require.False(t, cfg.SingleTenant(), "an unset NVELOPE_RUNTIME is SaaS")
+}
+
+func TestLoadServerlessRuntime(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("NVELOPE_RUNTIME", "serverless")
+	t.Setenv("NVELOPE_TENANT_SLUG", "acme")
+	t.Setenv("NVELOPE_SETUP_TOKEN", testSetupToken)
+
+	cfg, err := Load("")
+	require.NoError(t, err)
+	require.Equal(t, RuntimeServerless, cfg.Runtime)
+	require.True(t, cfg.SingleTenant())
+	require.Equal(t, "acme", cfg.TenantSlug)
+	require.Equal(t, testSetupToken, cfg.SetupToken)
+}
+
+func TestLoadServerlessRejectsReservedSlug(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("NVELOPE_RUNTIME", "serverless")
+	t.Setenv("NVELOPE_TENANT_SLUG", "admin")
+	t.Setenv("NVELOPE_SETUP_TOKEN", testSetupToken)
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_TENANT_SLUG")
+}
+
+func TestLoadServerlessRequiresSlugAndToken(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("NVELOPE_RUNTIME", "serverless")
+	t.Setenv("NVELOPE_SETUP_TOKEN", testSetupToken[:31])
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_TENANT_SLUG")
+	require.Contains(t, err.Error(), "NVELOPE_SETUP_TOKEN")
+	require.NotContains(t, err.Error(), testSetupToken[:31], "the token value is never echoed")
+}
+
+func TestLoadRejectsUnknownRuntime(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("NVELOPE_RUNTIME", "lambda")
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_RUNTIME")
+}
