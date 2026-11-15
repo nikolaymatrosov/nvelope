@@ -24,6 +24,30 @@ override_resource {
   values          = { id = "ajetrigger" }
 }
 
+override_resource {
+  target          = yandex_message_queue.dlq["feedback"]
+  override_during = plan
+  values          = { arn = "arn:fb-dlq" }
+}
+
+override_resource {
+  target          = yandex_message_queue.job["jobs"]
+  override_during = plan
+  values          = { arn = "arn:jobs" }
+}
+
+override_resource {
+  target          = yandex_message_queue.job["jobs-long"]
+  override_during = plan
+  values          = { arn = "arn:jobs-long" }
+}
+
+override_resource {
+  target          = yandex_ydb_database_serverless.db
+  override_during = plan
+  values          = { database_path = "/ru-central1/b1g/etn" }
+}
+
 variables {
   folder_id            = "b1gtestfolder"
   domain               = "mail.example.com"
@@ -113,15 +137,50 @@ run "triggers" {
   command = plan
 
   assert {
-    condition     = alltrue([for t in yandex_function_trigger.jobs : t.message_queue[0].batch_size == "1" && t.container[0].path == "/jobs"])
-    error_message = "the job triggers deliver one message per /jobs call"
+    condition     = toset(keys(yandex_function_trigger.jobs)) == toset(["jobs", "jobs-long"])
+    error_message = "one trigger per job queue"
+  }
+  assert {
+    condition     = alltrue([for t in yandex_function_trigger.jobs : t.message_queue[0].batch_size == "1" && t.container[0].path == "/jobs" && t.message_queue[0].service_account_id == "ajetrigger"])
+    error_message = "the job triggers deliver one message per /jobs call, as the trigger SA"
+  }
+  assert {
+    condition     = alltrue([for k, t in yandex_function_trigger.jobs : t.message_queue[0].queue_id == yandex_message_queue.job[k].arn])
+    error_message = "each job trigger reads its own queue"
   }
   assert {
     condition     = yandex_function_trigger.cron["domain-verify-sweep"].timer[0].cron_expression == "0/15 * * * ? *" && yandex_serverless_container.worker.image[0].environment["NVELOPE_SENDING_DOMAIN_VERIFY_INTERVAL"] == "15m"
     error_message = "the domain sweep fires once per verify interval"
   }
   assert {
-    condition     = yandex_function_trigger.feedback.container[0].path == "/feedback" && length(yandex_function_trigger.feedback.dlq) == 1
-    error_message = "feedback goes to /feedback, with a dead-letter queue"
+    condition     = yandex_function_trigger.cron["analytics-refresh"].timer[0].cron_expression == "0 * * * ? *"
+    error_message = "analytics refresh fires hourly"
+  }
+  assert {
+    condition     = yandex_function_trigger.cron["domain-verify-sweep"].container[0].path == "/cron/domain-verify-sweep" && yandex_function_trigger.cron["analytics-refresh"].container[0].path == "/cron/analytics-refresh"
+    error_message = "each timer calls its own worker path"
+  }
+  assert {
+    condition = alltrue([for t in concat(values(yandex_function_trigger.jobs), values(yandex_function_trigger.cron), [yandex_function_trigger.feedback]) :
+    t.container[0].service_account_id == "ajetrigger" && t.container[0].id == yandex_serverless_container.worker.id])
+    error_message = "every trigger invokes the worker as the trigger SA, the only account allowed to"
+  }
+  assert {
+    condition = (yandex_function_trigger.feedback.container[0].path == "/feedback"
+      && yandex_function_trigger.feedback.container[0].retry_attempts == "5"
+    && yandex_function_trigger.feedback.container[0].retry_interval == "60")
+    error_message = "feedback goes to /feedback, 5 retries 60 s apart"
+  }
+  assert {
+    condition = (length(yandex_function_trigger.feedback.dlq) == 1
+      && yandex_function_trigger.feedback.dlq[0].queue_id == yandex_message_queue.dlq["feedback"].arn
+    && yandex_function_trigger.feedback.dlq[0].service_account_id == "ajetrigger")
+    error_message = "feedback dead-letters to the feedback DLQ"
+  }
+  assert {
+    condition = (yandex_function_trigger.feedback.data_streams[0].database == yandex_ydb_database_serverless.db.database_path
+      && yandex_function_trigger.feedback.data_streams[0].stream_name == yandex_ydb_topic.feedback.name
+    && yandex_function_trigger.feedback.data_streams[0].service_account_id == "ajetrigger")
+    error_message = "feedback reads the feedback topic of the module's database"
   }
 }

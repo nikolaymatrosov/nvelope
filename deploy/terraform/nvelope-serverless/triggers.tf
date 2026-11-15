@@ -24,6 +24,7 @@ locals {
   # ponytail: analytics refreshes hourly, not every minute as in SaaS, so an
   # idle install costs almost nothing; dashboards lag by up to an hour.
   cron = {
+    # ponytail: step must stay below 60 minutes; for longer intervals switch to an hourly "0 0/N" form.
     "domain-verify-sweep" = "0/${local.verify_interval_minutes} * * * ? *"
     "analytics-refresh"   = "0 * * * ? *"
   }
