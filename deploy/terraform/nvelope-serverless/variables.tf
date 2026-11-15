@@ -27,6 +27,7 @@ variable "image_tag" {
 
 variable "registry_id" {
   type        = string
+  default     = "crph4jime5u3se6cdju5"
   description = "The public Container Registry the nvelope images are published to."
 }
 
