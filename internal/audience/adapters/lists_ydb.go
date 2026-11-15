@@ -125,8 +125,8 @@ WHERE tenant_id = $tenant_id AND id = $id;`,
 }
 
 // Delete removes the list and, in the same transaction, the rows Postgres
-// deletes by foreign-key cascade: the list's memberships and the iam per-list
-// role assignments on it. It returns domain.ErrListNotFound when absent.
+// deletes by foreign-key cascade: the list's memberships, the iam per-list
+// role assignments on it and the campaign targets that name it. It returns domain.ErrListNotFound when absent.
 func (r *YDBLists) Delete(ctx context.Context, tenantID, id string) error {
 	return r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
 		_, err := tx.QueryRow(ctx, `DECLARE $tenant_id AS Utf8;
@@ -159,6 +159,17 @@ DECLARE $id AS Utf8;
 DELETE FROM user_list_roles
 WHERE tenant_id = $tenant_id AND list_id = $id;`, ydbTenantAndID(tenantID, id)); err != nil {
 			return fmt.Errorf("deleting list roles: %w", err)
+		}
+		// campaign_lists belongs to campaign. Postgres cascades into it
+		// through its foreign key to lists; a dangling target would make
+		// every send of that campaign resolve a list that no longer exists.
+		if err := tx.Exec(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+DELETE FROM campaign_lists ON
+SELECT tenant_id, campaign_id, id
+FROM campaign_lists VIEW idx_campaign_lists_list
+WHERE tenant_id = $tenant_id AND list_id = $id;`, ydbTenantAndID(tenantID, id)); err != nil {
+			return fmt.Errorf("deleting campaign targets: %w", err)
 		}
 		return nil
 	})

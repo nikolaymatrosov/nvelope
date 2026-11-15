@@ -5,7 +5,9 @@ package command
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/nikolaymatrosov/nvelope/internal/deliverability/domain"
 )
@@ -136,13 +138,16 @@ func (h ProcessFeedbackHandler) Handle(ctx context.Context, cmd ProcessFeedback)
 		return err
 	}
 
-	recorded, err := h.events.RecordEvent(ctx, event)
+	id, err := h.events.RecordEvent(ctx, event)
 	if err != nil {
 		return err
 	}
-	// Suppression runs only when the event was newly recorded, so a retried
-	// job never applies it twice.
-	if recorded && h.suppressor != nil {
+	event = event.Recorded(id)
+	// Suppression runs even when the event was already recorded: a retry after
+	// RecordEvent committed but Apply failed must still suppress. Upsert is a
+	// no-op for an already suppressed address, and IsProcessed stops finished
+	// rows from reaching this point.
+	if h.suppressor != nil {
 		if _, drives := event.SuppressionReason(); drives {
 			if err := h.suppressor.Apply(ctx, event); err != nil {
 				return err
@@ -161,4 +166,51 @@ func (h ProcessFeedbackHandler) markUnattributed(ctx context.Context,
 		"inbound_event_id", n.ID, "provider_message_id", n.ProviderMessageID,
 		"event_kind", string(n.Kind))
 	return h.events.MarkInbound(ctx, n.ID, domain.InboundUnattributed)
+}
+
+// feedbackSweepLimit bounds the notifications one sweep re-enqueues.
+// ponytail: the next tick takes the rest; a retention job for processed rows
+// if the staging table grows.
+const feedbackSweepLimit = 500
+
+// SweepPendingFeedback is the request to re-enqueue feedback.process for
+// staged notifications still pending after OlderThan.
+type SweepPendingFeedback struct {
+	OlderThan time.Duration
+}
+
+// SweepPendingFeedbackHandler handles SweepPendingFeedback. A feedback.process
+// job that exhausts its retries is dead-lettered, which leaves its notification
+// pending and its bounce or complaint unapplied. The sweep enqueues the job
+// again. A job that is only slow runs twice, which is safe: ProcessFeedback is
+// idempotent.
+type SweepPendingFeedbackHandler struct {
+	events   domain.EventRepository
+	enqueuer FeedbackEnqueuer
+}
+
+// NewSweepPendingFeedbackHandler builds the handler, failing fast on a nil
+// dependency.
+func NewSweepPendingFeedbackHandler(events domain.EventRepository,
+	enqueuer FeedbackEnqueuer) SweepPendingFeedbackHandler {
+	if events == nil || enqueuer == nil {
+		panic("nil dependency")
+	}
+	return SweepPendingFeedbackHandler{events: events, enqueuer: enqueuer}
+}
+
+// Handle enqueues every pending notification older than cmd.OlderThan. One
+// failed enqueue does not stop the rest; the errors are joined.
+func (h SweepPendingFeedbackHandler) Handle(ctx context.Context, cmd SweepPendingFeedback) error {
+	ids, err := h.events.PendingInbound(ctx, time.Now().Add(-cmd.OlderThan), feedbackSweepLimit)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, id := range ids {
+		if err := h.enqueuer.EnqueueFeedbackProcess(ctx, id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }

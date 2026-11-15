@@ -56,3 +56,55 @@ SELECT list_id FROM user_list_roles WHERE tenant_id = $tenant_id;`,
 	}
 	require.Equal(t, []string{kept}, left, "only the deleted list's role assignments go")
 }
+
+// TestYDBListsDeleteRemovesCampaignTargets covers the stand-in for the
+// Postgres cascade from lists into campaign_lists, which no audience port can
+// observe. Segment targets and targets of other lists stay.
+func TestYDBListsDeleteRemovesCampaignTargets(t *testing.T) {
+	t.Parallel()
+	d := dbtest.YDBMigrated(t)
+	ctx := context.Background()
+	tenantID, campaignID := uuid.NewString(), uuid.NewString()
+	lists := adapters.NewYDBLists(d)
+	gone := addList(t, lists, tenantID, "Gone")
+	kept := addList(t, lists, tenantID, "Kept")
+	targets := map[string]*string{uuid.NewString(): &gone, uuid.NewString(): &kept, uuid.NewString(): nil}
+	for id, listID := range targets {
+		require.NoError(t, d.Query().Exec(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $campaign_id AS Utf8;
+DECLARE $id AS Utf8;
+DECLARE $list_id AS Optional<Utf8>;
+INSERT INTO campaign_lists (tenant_id, campaign_id, id, list_id, segment_query)
+VALUES ($tenant_id, $campaign_id, $id, $list_id, NULL);`,
+			query.WithParameters(ydb.ParamsBuilder().
+				Param("$tenant_id").Text(tenantID).
+				Param("$campaign_id").Text(campaignID).
+				Param("$id").Text(id).
+				Param("$list_id").BeginOptional().Text(listID).EndOptional().
+				Build())))
+	}
+
+	require.NoError(t, lists.Delete(ctx, tenantID, gone))
+
+	rs, err := d.Query().QueryResultSet(ctx, `DECLARE $tenant_id AS Utf8;
+SELECT id FROM campaign_lists WHERE tenant_id = $tenant_id;`,
+		query.WithParameters(ydb.ParamsBuilder().Param("$tenant_id").Text(tenantID).Build()))
+	require.NoError(t, err)
+	defer func() { _ = rs.Close(ctx) }()
+	var left int
+	for row, err := range rs.Rows(ctx) {
+		require.NoError(t, err)
+		var id string
+		require.NoError(t, row.Scan(&id))
+		require.NotEqual(t, gone, deref(targets[id]), "the deleted list's target is gone")
+		left++
+	}
+	require.Equal(t, 2, left, "only the deleted list's target goes")
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

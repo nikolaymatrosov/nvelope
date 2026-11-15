@@ -25,8 +25,19 @@ func (p fakeParser) Parse([]byte) (domain.InboundNotification, bool, error) {
 // fakeEvents is an in-memory EventRepository for ingestion tests.
 type fakeEvents struct {
 	staged []domain.InboundNotification
-	byKey  map[string]string
-	nextID int
+	// pending is what PendingInbound returns; pendingBefore records the cutoff
+	// it was asked for.
+	pending       []string
+	pendingBefore time.Time
+	byKey         map[string]string
+	nextID        int
+	// ProcessFeedback configuration; the zero values keep the ingestion tests'
+	// "nothing attributable" behaviour.
+	inbound  domain.InboundNotification
+	tenantID string
+	attr     *domain.Attribution
+	eventID  string // the delivery_events row id RecordEvent returns
+	marked   []domain.InboundStatus
 }
 
 func newFakeEvents() *fakeEvents { return &fakeEvents{byKey: map[string]string{}} }
@@ -43,23 +54,32 @@ func (f *fakeEvents) StageInbound(_ context.Context, n domain.InboundNotificatio
 }
 
 func (f *fakeEvents) LoadInbound(context.Context, string) (domain.InboundNotification, error) {
-	return domain.InboundNotification{}, nil
+	return f.inbound, nil
 }
 
 func (f *fakeEvents) TenantForMessage(context.Context, string) (string, bool, error) {
-	return "", false, nil
+	return f.tenantID, f.tenantID != "", nil
 }
 
 func (f *fakeEvents) Attribute(context.Context, string, string) (domain.Attribution, bool, error) {
-	return domain.Attribution{}, false, nil
+	if f.attr == nil {
+		return domain.Attribution{}, false, nil
+	}
+	return *f.attr, true, nil
 }
 
-func (f *fakeEvents) RecordEvent(context.Context, *domain.DeliveryEvent) (bool, error) {
-	return false, nil
+func (f *fakeEvents) RecordEvent(context.Context, *domain.DeliveryEvent) (string, error) {
+	return f.eventID, nil
 }
 
-func (f *fakeEvents) MarkInbound(context.Context, string, domain.InboundStatus) error {
+func (f *fakeEvents) MarkInbound(_ context.Context, _ string, st domain.InboundStatus) error {
+	f.marked = append(f.marked, st)
 	return nil
+}
+
+func (f *fakeEvents) PendingInbound(_ context.Context, before time.Time, _ int) ([]string, error) {
+	f.pendingBefore = before
+	return f.pending, nil
 }
 
 // fakeEnqueuer records enqueued feedback-process jobs.
@@ -126,4 +146,53 @@ func TestIngestNotificationPropagatesParseError(t *testing.T) {
 		fakeParser{err: domain.ErrValidationFailed}, newFakeEvents(), &fakeEnqueuer{})
 	err := h.Handle(context.Background(), command.IngestNotification{RawPayload: []byte("not json")})
 	require.ErrorIs(t, err, domain.ErrValidationFailed)
+}
+
+func TestSweepPendingFeedbackEnqueuesEveryPendingNotification(t *testing.T) {
+	t.Parallel()
+	events := newFakeEvents()
+	events.pending = []string{"evt-a", "evt-b"}
+	enqueuer := &fakeEnqueuer{}
+	handler := command.NewSweepPendingFeedbackHandler(events, enqueuer)
+
+	start := time.Now()
+	require.NoError(t, handler.Handle(context.Background(),
+		command.SweepPendingFeedback{OlderThan: 10 * time.Minute}))
+
+	require.Equal(t, []string{"evt-a", "evt-b"}, enqueuer.enqueued)
+	require.WithinDuration(t, start.Add(-10*time.Minute), events.pendingBefore, time.Minute,
+		"the cutoff is now minus OlderThan")
+}
+
+// fakeSuppressor counts Apply calls.
+type fakeSuppressor struct {
+	applied   int
+	sourceIDs []string
+}
+
+func (s *fakeSuppressor) Apply(_ context.Context, e *domain.DeliveryEvent) error {
+	s.applied++
+	s.sourceIDs = append(s.sourceIDs, e.ID())
+	return nil
+}
+
+// A retry after RecordEvent committed but Apply failed gets the id of the row
+// the earlier attempt recorded; suppression must still be applied, naming it.
+func TestProcessFeedbackAppliesSuppressionForAnAlreadyRecordedEvent(t *testing.T) {
+	t.Parallel()
+	n := bounceNotification(t)
+	n.ID = "evt-1"
+	events := newFakeEvents()
+	events.inbound = n
+	events.tenantID = "tenant-1"
+	events.attr = &domain.Attribution{CampaignID: "camp-1", CampaignRecipientID: "rcpt-1"}
+	events.eventID = "dev-1" // recorded by the earlier attempt
+	sup := &fakeSuppressor{}
+	h := command.NewProcessFeedbackHandler(events, sup, nil)
+
+	require.NoError(t, h.Handle(context.Background(),
+		command.ProcessFeedback{InboundEventID: "evt-1"}))
+	require.Equal(t, 1, sup.applied)
+	require.Equal(t, []string{"dev-1"}, sup.sourceIDs)
+	require.Equal(t, []domain.InboundStatus{domain.InboundAttributed}, events.marked)
 }

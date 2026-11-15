@@ -58,40 +58,73 @@ func (m *crashingMessenger) duplicates() []string {
 }
 
 func TestSendPipelineResumesAfterWorkerCrash(t *testing.T) {
-	t.Parallel()
-	limit := ratelimit.Limit{Max: 1000, Window: time.Second}
-	f := newPipelineFixture(t, 10, 100, limit, limit)
+	eachBackend(t, func(t *testing.T, b backend) {
+		limit := ratelimit.Limit{Max: 1000, Window: time.Second}
+		f := newPipelineFixture(t, b, 10, 100, limit, limit)
 
-	// Materialise recipients and the single batch via the start worker.
-	start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
-		f.source, f.enqueuer, nil, 100)
-	require.NoError(t, start.Work(context.Background(), jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID}))
-	require.Len(t, f.enqueuer.batches, 1)
+		// Materialise recipients and the single batch via the start worker.
+		start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
+			f.source, f.enqueuer, nil, 100)
+		require.NoError(t, start.Work(context.Background(), jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID}))
+		require.Len(t, f.enqueuer.batches, 1)
 
-	messenger := &crashingMessenger{sent: map[string]int{}, crashAt: 4}
-	newBatch := func() *adapters.BatchWorker {
-		return adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
-			messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
-			noopSuppression{}, nil, nil, nil, nil,
-			domain.Limit{Max: limit.Max, Window: limit.Window}, "https://track.test")
-	}
-	job := jobs.CampaignBatchArgs{TenantID: f.tenantID, CampaignID: f.campaignID, Offset: 0, Limit: 100}
+		messenger := &crashingMessenger{sent: map[string]int{}, crashAt: 4}
+		newBatch := func() *adapters.BatchWorker {
+			return adapters.NewBatchWorker(f.campaigns, f.recipients, f.tracking,
+				messenger, adapters.NewRateLimiter(f.limiter), fakeDomainLookup{name: "mail.acme.com"},
+				noopSuppression{}, nil, nil, nil, nil,
+				domain.Limit{Max: limit.Max, Window: limit.Window}, "https://track.test")
+		}
+		job := jobs.CampaignBatchArgs{TenantID: f.tenantID, CampaignID: f.campaignID, Offset: 0, Limit: 100}
 
-	// First run: the worker is "killed" after crashAt sends.
-	crashCtx, cancel := context.WithCancel(context.Background())
-	messenger.cancel = cancel
-	err := newBatch().Work(crashCtx, job)
-	require.Error(t, err, "the cancelled context aborts the batch")
-	require.Less(t, messenger.total(), 10, "the crash left recipients unsent")
+		// First run: the worker is "killed" after crashAt sends.
+		crashCtx, cancel := context.WithCancel(context.Background())
+		messenger.cancel = cancel
+		err := newBatch().Work(crashCtx, job)
+		require.Error(t, err, "the cancelled context aborts the batch")
+		require.Less(t, messenger.total(), 10, "the crash left recipients unsent")
 
-	// Restart: River redelivers the same batch with a fresh context.
-	require.NoError(t, newBatch().Work(context.Background(), job))
+		// Restart: River redelivers the same batch with a fresh context.
+		require.NoError(t, newBatch().Work(context.Background(), job))
 
-	require.Equal(t, 10, messenger.total(), "every recipient is eventually sent")
-	require.Empty(t, messenger.duplicates(), "no recipient is sent twice across the restart")
+		require.Equal(t, 10, messenger.total(), "every recipient is eventually sent")
+		require.Empty(t, messenger.duplicates(), "no recipient is sent twice across the restart")
 
-	c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
-	require.NoError(t, err)
-	require.Equal(t, domain.CampaignFinished, c.Status())
-	require.Equal(t, 10, c.SentCount())
+		c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CampaignFinished, c.Status())
+		require.Equal(t, 10, c.SentCount())
+	})
+}
+
+// TestStartWorkerResumeCoversSkippedRecipients pins that a re-run start job
+// (Resume enqueues one) fans out batches over every recipient row, skipped
+// ones included. Pending windows span every row in id order, so counting only
+// sent, failed and pending rows drops the last window, whose recipients are
+// then never sent and the campaign never finishes.
+func TestStartWorkerResumeCoversSkippedRecipients(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		limit := ratelimit.Limit{Max: 1000, Window: time.Second}
+		f := newPipelineFixture(t, b, 3, 100, limit, limit)
+		ctx := context.Background()
+		args := jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID}
+		start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
+			f.source, f.enqueuer, nil, 2)
+		require.NoError(t, start.Work(ctx, args))
+
+		first, err := f.recipients.Pending(ctx, f.tenantID, f.campaignID, 0, 2)
+		require.NoError(t, err)
+		require.Len(t, first, 2)
+		for _, r := range first {
+			require.NoError(t, f.recipients.MarkSkipped(ctx, f.tenantID, r.ID(), "hard_bounce"))
+		}
+
+		f.enqueuer.batches = nil
+		require.NoError(t, start.Work(ctx, args))
+		require.Equal(t, [][2]int{{0, 2}, {2, 2}}, f.enqueuer.batches,
+			"the re-run start still reaches the window of the last pending recipient")
+		c, err := f.campaigns.Get(ctx, f.tenantID, f.campaignID)
+		require.NoError(t, err)
+		require.Equal(t, 3, c.RecipientCount())
+	})
 }

@@ -150,11 +150,11 @@ func (r *Events) Attribute(ctx context.Context, tenantID, providerMessageID stri
 }
 
 // RecordEvent inserts the attributed delivery event, idempotent on the inbound
-// event id. recorded reports whether a new row was written.
-func (r *Events) RecordEvent(ctx context.Context, e *domain.DeliveryEvent) (bool, error) {
-	var recorded bool
+// event id, and returns the row id, new or already recorded.
+func (r *Events) RecordEvent(ctx context.Context, e *domain.DeliveryEvent) (string, error) {
+	var id string
 	err := tenantdb.WithTenant(ctx, r.pool, e.TenantID(), func(ctx context.Context, tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx,
+		err := tx.QueryRow(ctx,
 			`INSERT INTO delivery_events
 			   (tenant_id, inbound_event_id, event_kind, recipient_email,
 			    campaign_id, campaign_recipient_id, transactional_message_id,
@@ -162,7 +162,8 @@ func (r *Events) RecordEvent(ctx context.Context, e *domain.DeliveryEvent) (bool
 			 VALUES (@tenant_id, @inbound_event_id, @event_kind, @recipient_email,
 			         @campaign_id, @campaign_recipient_id, @transactional_message_id,
 			         @provider_message_id, @occurred_at)
-			 ON CONFLICT (inbound_event_id) DO NOTHING`,
+			 ON CONFLICT (inbound_event_id) DO NOTHING
+			 RETURNING id`,
 			pgx.NamedArgs{
 				"tenant_id":                e.TenantID(),
 				"inbound_event_id":         e.InboundEventID(),
@@ -173,17 +174,23 @@ func (r *Events) RecordEvent(ctx context.Context, e *domain.DeliveryEvent) (bool
 				"transactional_message_id": nullString(e.TransactionalMessageID()),
 				"provider_message_id":      e.ProviderMessageID(),
 				"occurred_at":              e.OccurredAt(),
-			})
+			}).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Already recorded. ON CONFLICT waited for a concurrent insert to
+			// commit, and this new statement (READ COMMITTED) sees its row.
+			err = tx.QueryRow(ctx,
+				`SELECT id FROM delivery_events WHERE inbound_event_id = $1`,
+				e.InboundEventID()).Scan(&id)
+		}
 		if err != nil {
 			return fmt.Errorf("recording delivery event: %w", err)
 		}
-		recorded = tag.RowsAffected() > 0
 		return nil
 	})
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return recorded, nil
+	return id, nil
 }
 
 // MarkInbound sets the staged row's terminal status and processed-at time.
@@ -195,4 +202,21 @@ func (r *Events) MarkInbound(ctx context.Context, eventID string, status domain.
 		return fmt.Errorf("marking inbound notification: %w", err)
 	}
 	return nil
+}
+
+// PendingInbound returns the ids of staged notifications still pending that
+// were received before receivedBefore, oldest first.
+func (r *Events) PendingInbound(ctx context.Context, receivedBefore time.Time, limit int) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id FROM inbound_feedback_events
+		 WHERE status = 'pending' AND received_at < $1
+		 ORDER BY received_at LIMIT $2`, receivedBefore, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing pending notifications: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("listing pending notifications: %w", err)
+	}
+	return ids, nil
 }

@@ -173,7 +173,7 @@ Each container is built from an existing image. There are no new binaries.
 | Postgres | YQL |
 |----------|-----|
 | `INSERT ... ON CONFLICT DO UPDATE` (18 sites, together with DO NOTHING) | `UPSERT` |
-| `INSERT ... ON CONFLICT DO NOTHING` | An INSERT conflict aborts the whole interactive transaction ("Plan B2 planning spike"). Inside a transaction use `SELECT` then `INSERT` (as `AddYDBMembership` does, Plan B3). A standalone single-statement INSERT may treat `db.IsYDBConflict` as a no-op. `UPSERT` is wrong where it would overwrite existing data. Still open, for the campaign plan: whether `Recipients.BulkInsert` can continue after a conflict, or needs `SELECT` then `INSERT`/chunk-level `UPSERT`. |
+| `INSERT ... ON CONFLICT DO NOTHING` | An INSERT conflict aborts the whole interactive transaction ("Plan B2 planning spike"). Inside a transaction use `SELECT` then `INSERT` (as `AddYDBMembership` does, Plan B3). A standalone single-statement INSERT may treat `db.IsYDBConflict` as a no-op. `UPSERT` is wrong where it would overwrite existing data. `Recipients.BulkInsert` (Plan B7) reads the emails already present through the unique index, then inserts only the others, one transaction per chunk of 1000: the transaction cannot continue after a conflict, and a batch that repeats a key fails whole ("Plan B7 planning spike"). A write keyed by a unique index only (`links`) does the same. |
 | `SELECT ... FOR UPDATE` (7) | removed. A serializable conflict aborts the tx and the SDK retries it. |
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
@@ -183,9 +183,17 @@ Each container is built from an existing image. There are no new binaries.
 | `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`, audience `subscribers.email`), the column itself carries the unique index. A query that compares such a column with user input lower-cases the input in Go (the segment `email` condition, Plan B5). Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
 | foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A stand-in read may also target another context's table already on YDB (iam per-list role assignments read audience `lists`, Plan B6). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
 | `ORDER BY` on a text column | YDB orders `Utf8` by bytes, pg by the database collation, so mixed-case and non-ASCII values order differently. Acceptable for display lists (iam `roles` by `name`). If a later plan needs collation-equal order, sort in Go or store a sort key. |
+| `UPDATE ... WHERE id = $1` on a table whose key is not the id alone (`campaign_recipients`: `(tenant_id, campaign_id, id)`) | `UPDATE t ON SELECT <key columns>, <new values> AS col FROM t VIEW idx WHERE ...` through a `GLOBAL SYNC` index on the id. An id that matches no row updates nothing and is no error, as the Postgres `UPDATE` (Plan B7). |
+| a bulk `INSERT` of many rows | `INSERT INTO t (...) SELECT $const, id, ... FROM AS_TABLE($rows)` with `$rows` as `List<Struct<...>>`, bound with `types.ListValue(types.StructValue(...))` through `Param(...).Any(...)`. The ids are fixed in Go before the transaction (Plan B7). |
+| `SECURITY DEFINER` lookup of the tenant that owns an id (`tracking_tenant_for_link`, `..._for_campaign`) | a `GLOBAL UNIQUE SYNC` index on `(id)` alone, read with `VIEW`. The index entry carries the primary key, so `tenant_id` comes with it (Plan B7). It leaks what the function leaked: the tenant of a caller-supplied id. |
 | bound parameters (`$1`, `@name`) | `$name` parameters, each declared explicitly with `DECLARE $name AS <Type>;`. String literals that target a `Utf8` column take the `u` suffix (`"pending"u`); a bare `"..."` literal is `String`. Identifiers avoid YQL keywords (e.g. `throttle_key`, not `key`). |
 | segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | its own YQL port, `segment_yql.go` (Plan B5). The attribute key is bound, never part of the path: `JSON_VALUE(s.attributes, "$.keyvalue() ? (@.name == $k).value" PASSING $pN AS k)` for `->>`, the same path in `JSON_EXISTS` for `?`, and `CAST(JSON_VALUE(...) AS Double)` for `::numeric`. A list-membership condition is `s.id IN (SELECT subscriber_id FROM subscriber_lists VIEW ... WHERE ...)`, because YQL has no correlated `EXISTS`. |
-| `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE`. Plan B5 verified it on `Utf8` columns, with a bound `%...%` pattern and with `"%"u || $v || "%"u`, against Cyrillic data (`ё` included). No lowercase column is needed. |
+| `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE`. Plan B5 verified it on `Utf8` columns, with a bound `%...%` pattern and with `"%"u || $v || "%"u`, against Cyrillic data (`ё` included). No lowercase column is needed. Plan B8 ported the `suppression_pg.go` site and tested it on both backends with an ASCII and a Cyrillic (`ЁЛК` against `ёлка@пример.рф`) filter. |
+| `SECURITY DEFINER` lookup of the tenant that owns a provider message id (`feedback_tenant_for_message`) | two reads, `campaign_recipients VIEW idx_campaign_recipients_provider` and then `transactional_messages VIEW idx_transactional_messages_provider`, each with `LIMIT 1`. The index entry carries `tenant_id` (Plan B8; the indexes are Plan B7's). |
+| `INSERT ... ON CONFLICT DO NOTHING` that must report whether it inserted (`StageInbound`, `RecordEvent`) | `SELECT` through the unique index, then `INSERT` when absent, in one `DoTx`. A concurrent identical write aborts one transaction and the SDK retries it, so exactly one writes (Plan B8; `TestEventsStageInboundIsRaceFree`, `TestEventsRecordEventIsRaceFree`). |
+| a per-campaign aggregate that is a correlated `(SELECT count(...) ... WHERE x.campaign_id = c.id)` subquery (`campaign_analytics` refresh) | named subqueries `$name = SELECT campaign_id, COUNT(...) ... GROUP BY campaign_id;` and `LEFT JOIN`s from `campaigns`, written by `UPSERT INTO ... SELECT`. `count(DISTINCT x) FILTER (...)` becomes `COUNT(DISTINCT IF(cond, x))`. The select list must alias each column to its table column name, and a `COALESCE(count, 0ul)` is cast and wrapped: `Unwrap(CAST(COALESCE(n, 0ul) AS Int64))` (Plan B8). |
+| a nullable numeric column the domain reads as `0` for "absent" (`media_assets.width`, `height`: `COALESCE(width, 0)`, NULL for a PDF so that `CHECK (> 0)` holds) | a `NOT NULL Int32` column that stores `0`. With no CHECK constraints, the CHECK is the reason Postgres needed NULL, and the adapter scans into `int32` and converts (Plan B9). |
+| a read-then-write `UPDATE ... SET c = COALESCE(c, $v)` that must report a missing row (`MarkPublished`) | `SELECT` the row in the `DoTx` (no row: not-found), return when the column is already set, else `UPDATE` by primary key (Plan B9; six concurrent calls on one asset all succeed and leave it published (spike)). |
 | `SECURITY DEFINER` functions (6) | ordinary queries. With no RLS, the privilege bypass they existed for is unnecessary. Billing-only functions are dropped. |
 
 ### Throttling
@@ -580,7 +588,7 @@ The 1,000-row truncation applies to the legacy `ExecuteDataQuery` path and its a
 
 Scanned: 39 UpdateFn closures outside pg adapters (the grep listed 40 lines; `internal/dbtest/ydb.go:117` is `context.WithTimeout`, not a closure site, and `internal/auth/app/command/set_locale.go:43` passes no closure); 129 transaction bodies in pg adapters.
 
-No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier, blob store or Postbox client, sleeps, or uses a channel. The enqueues in `StartCampaign`, `ResumeCampaign` and `StartWorker` run after `Update` returns, and the verifier check in `VerifyWorker` runs before it. `MediaRefValidator.IsTenantMediaRef(ref string) bool` takes no context and is pure, so `ApplyVisualSave` inside the save-visual closures is safe. Plain assignments to outer variables (`updated = s`, `res.CurrentUpdatedAt = ...`) are safe: the last run wins. The pg adapter bodies reference only `tx`, locals and pure helpers (the adapters hold only `pool`); there is no injected port, no HTTP/S3/Postbox call, no enqueue, no channel op, and no `slog`/`log` call inside any transaction body.
+No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier or Postbox client, sleeps, or uses a channel, with one exception: the `media.Publish` calls below, which reach the blob store (S3). The enqueues in `StartCampaign`, `ResumeCampaign` and `StartWorker` run after `Update` returns, and the verifier check in `VerifyWorker` runs before it. `MediaRefValidator.IsTenantMediaRef(ref string) bool` takes no context and is pure, so `ApplyVisualSave` inside the save-visual closures is safe. Plain assignments to outer variables (`updated = s`, `res.CurrentUpdatedAt = ...`) are safe: the last run wins. The pg adapter bodies reference only `tx`, locals and pure helpers (the adapters hold only `pool`); there is no injected port, no HTTP/S3/Postbox call, no enqueue, no channel op, and no `slog`/`log` call inside any transaction body.
 
 | Site (file:line) | Class | What repeats on retry | Fix in Plan B |
 |------------------|-------|-----------------------|---------------|
@@ -590,6 +598,7 @@ No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier,
 | `internal/billing/app/command/charge_invoice.go:259` (billing, not ported) | safe-time-inside | `i.MarkPaid(time.Now())` timestamp advances on retry. | Not ported. |
 | `internal/iam/app/command/sessions.go:152` | safe-time-inside | `s.Revoke(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
 | `internal/campaign/app/command/set_archive_visibility.go:35` | safe-time-inside | `SetArchiveVisible(..., time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/campaign/app/command/campaigns.go:236-247`, `templates.go:105-111`, `save_visual_template.go:88-96` | external-call-idempotent | `media.Publish` copies the tenant's media to a fixed S3 key and skips assets already published, inside the `Update` closure. On YDB a `DoTx` retry re-runs it. | Accept: the publish is idempotent, so a re-run copies nothing new. |
 | `internal/campaign/app/command/campaigns.go:214` | safe-time-inside | `c.Start(time.Now())` timestamp advances on retry. The enqueue is outside the closure. | Accept; keep `EnqueueStart` after `Update` returns. |
 | `internal/campaign/adapters/batch_worker.go:258` | safe-time-inside | `c.Finish(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
 | `internal/audience/adapters/import_worker.go:40` | safe-time-inside | `j.Start(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
@@ -599,9 +608,11 @@ No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier,
 | `internal/audience/adapters/export_worker.go:66` | safe-time-inside | `j.Complete(..., time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
 | `internal/auth/app/command/signup.go:87-99` (the `issueVerification` callback passed to `CreateWithVerification`; `CreateWithSession` takes the same kind of `issueSession` callback) | safe (last write wins) | `token.New()` runs again and the outer `rawToken` is overwritten by the last run, which is the run whose hash is persisted. | None; documented on the port. |
 | `internal/campaign/adapters/recipients_pg.go:49` (`BulkInsert`) | unsafe-mutation (pg body) | `inserted += tag.RowsAffected()` on an outer counter: a retry double-counts rows the first attempt inserted (the rolled-back attempt's count is not undone). | Declare the counter inside the closure and assign it to the outer variable once at the end, or reset `inserted = 0` at closure start. |
-| `internal/audience/adapters/lists_pg.go:165`, `memberships_pg.go:119`, `subscribers_pg.go:205`, `subscribers_pg.go:247`, `subscribers_pg.go:285`, `subscription_pages_pg.go:191`, `internal/billing/adapters/invoices_pg.go:179` (billing, not ported), `internal/campaign/adapters/templates_pg.go:152`, `campaigns_pg.go:201`, `campaigns_pg.go:232`, `campaigns_pg.go:285`, `recipients_pg.go:88`, `internal/deliverability/adapters/suppression_pg.go:118`, `analytics_pg.go:100` (`dash.Recent`), `internal/iam/adapters/audit_pg.go:82`, `roles_pg.go:156`, `apikeys_pg.go:132`, `internal/sending/adapters/domains_pg.go:164`, `domains_pg.go:189`, `internal/media/adapters/assets_pg.go:115` | unsafe-mutation (pg body, read paths) | Each does `append` to a slice declared outside the transaction closure. A retry after a partial read appends the rows again, returning duplicates. | Rewritten in Plan B anyway: build the slice inside the closure and assign it to the outer variable at the end (`result = local`), or reset it (`out = nil`) at closure start. Apply to every YDB read helper that collects rows inside a `DoTx` closure. |
+| `internal/audience/adapters/lists_pg.go:165`, `memberships_pg.go:119`, `subscribers_pg.go:205`, `subscribers_pg.go:247`, `subscribers_pg.go:285`, `subscription_pages_pg.go:191`, `internal/billing/adapters/invoices_pg.go:179` (billing, not ported), `internal/campaign/adapters/templates_pg.go:152`, `campaigns_pg.go:201`, `campaigns_pg.go:232`, `campaigns_pg.go:285`, `recipients_pg.go:88`, `internal/deliverability/adapters/suppression_pg.go:118`, `analytics_pg.go:100` (`dash.Recent`), `internal/iam/adapters/audit_pg.go:82`, `roles_pg.go:156`, `apikeys_pg.go:132`, `internal/sending/adapters/domains_pg.go:164`, `domains_pg.go:189`, `internal/media/adapters/assets_pg.go:147` | unsafe-mutation (pg body, read paths) | Each does `append` to a slice declared outside the transaction closure. A retry after a partial read appends the rows again, returning duplicates. | Rewritten in Plan B anyway: build the slice inside the closure and assign it to the outer variable at the end (`result = local`), or reset it (`out = nil`) at closure start. Apply to every YDB read helper that collects rows inside a `DoTx` closure. |
 
 All other sites are `safe`.
+
+Plan B9 note: `YDBAssets.List` (the YDB counterpart of `assets_pg.go:147`) builds its rows in a local and assigns them at the end. The Postgres adapter is unchanged.
 
 ### Plan B2 planning spike
 
@@ -793,7 +804,7 @@ Decisions for Plan B5:
     subscriber delete into `campaign_recipients` and a list delete into
     `campaign_lists`. Those tables are not on YDB yet. The campaign plan must
     either extend `YDBSubscribers.Delete` and `YDBLists.Delete`, or make its
-    readers tolerate a dangling id.
+    readers tolerate a dangling id. Plan B7 extends both.
   - Still open, an iam follow-up: `YDBRoles.AssignListRole` does not read
     the list it assigns a role on. With `lists` now on YDB it should, as
     `YDBMemberships.Attach` does; otherwise an assignment to an unknown or
@@ -883,6 +894,10 @@ Carried to C3 and C4 (final review of Plan C1):
   path: a cron sweep that re-enqueues `feedback.process` for staged events left
   unprocessed past a threshold, like the domain sweep. This needs a
   deliverability port method.
+  **Settled in Plan B8**: B8 adds the port method
+  `EventRepository.PendingInbound` on both backends and the use case
+  `SweepPendingFeedbackHandler`; C4 only wires the cron route (see "Plan B8
+  planning spike").
 - **Instance limits.** Size the worker container's instance limit against the
   campaign fan-out, or give `jobs-long` its own container built from the same
   image.
@@ -993,6 +1008,445 @@ Decisions for Plan B6:
     `mediaadapters.NewS3BlobStore`'s options, including the `Region: "auto"`
     fallback when `cfg.ObjectStorageRegion` is empty.
 
+### Plan B7 planning spike
+
+Run on 2026-11-15 against `ydbplatform/local-ydb:26.3.1.23` while planning the
+campaign port, on throwaway tables shaped like the planned `000008_campaign`
+`campaign_recipients` and `campaign_lists`. A dry run of the whole plan then
+passed on the real migration, with `go test ./...`, `golangci-lint run` and
+`make lint-arch` clean.
+
+- **Bulk insert from a parameter.** `INSERT INTO t (...) SELECT $tenant_id,
+  $campaign_id, id, subscriber_id, email, "pending"u FROM AS_TABLE($rows)`, with
+  `$rows AS List<Struct<id: Utf8, subscriber_id: Utf8, email: Utf8>>` bound as
+  `types.ListValue(types.StructValue(types.StructFieldValue(...)...)...)`:
+  PASS. `ydb.ParamsBuilder()` has no list-of-struct form; `Param(name).Any(v)`
+  takes the `types` value.
+- **Conflicts in a bulk insert.**
+  - A batch that repeats a key fails whole: `PRECONDITION_FAILED`, issue 2012
+    `Duplicated keys found`. `db.IsYDBConflict` is true for it.
+  - A row whose key exists fails whole: `PRECONDITION_FAILED`, issue 2012
+    `Conflict with existing key`.
+  - **Continuing after a conflict (the open B2 item): FAIL.** In one `DoTx`, a
+    conflicting `INSERT` returns the conflict, and the next statement fails with
+    `NOT_FOUND`, `Transaction not found: <id>`. The conflict already rolled the
+    transaction back.
+- `SELECT ... FROM t VIEW idx_email WHERE tenant_id = $t AND campaign_id = $c
+  AND email IN $emails`, with `$emails AS List<Utf8>`, through a `GLOBAL UNIQUE
+  SYNC` index: PASS. `IN` takes a bound list.
+- `UPDATE t ON SELECT tenant_id, campaign_id, id, "sent"u AS status,
+  CurrentUtcTimestamp() AS sent_at FROM t VIEW idx_id WHERE tenant_id = $t AND
+  id = $id`, where the index is on `(tenant_id, id)` and the primary key is
+  `(tenant_id, campaign_id, id)`: PASS. An id that matches no row updates
+  nothing and returns no error.
+- `SELECT ... WHERE tenant_id = $t AND campaign_id = $c ORDER BY id LIMIT $l
+  OFFSET $o` over a primary-key prefix, and `SELECT status, COUNT(*) ... GROUP
+  BY status`: PASS.
+- A `GLOBAL UNIQUE SYNC` index on `(tenant_id, campaign_id, list_id)` with a
+  nullable `list_id`: two rows with a NULL `list_id` are accepted, and a
+  repeated non-NULL `list_id` conflicts. This is the Postgres `UNIQUE
+  (campaign_id, list_id)`, whose NULLs are distinct too.
+- `DELETE FROM t ON SELECT <key> FROM t VIEW idx WHERE tenant_id = $t AND
+  subscriber_id = $s`, and `UPDATE t SET col = NULL WHERE tenant_id = $t AND
+  other IS NULL`: PASS.
+
+The dry run added:
+
+- `BulkInsert` of 2300 recipients with repeats across the 1000-row chunk
+  boundary inserts 2300 rows, on both backends. Six concurrent `BulkInsert`s of
+  the same 40 emails insert each email once and none fails (three repeated
+  runs). Six concurrent `UpsertLinks` of the same URLs return identical ids.
+- Sabotage checks: with the existence read removed, the dedup test fails; with
+  the template unlink, the list-target delete or the recipient delete removed,
+  its test fails.
+
+Decisions for Plan B7:
+
+- **Scope.** `000008_campaign` creates the eight tables the campaign ports
+  own: `templates`, `campaigns`, `campaign_lists`, `campaign_recipients`,
+  `links`, `link_clicks`, `campaign_views`, `transactional_messages`.
+  `campaign_analytics` and `delivery_events` belong to deliverability (B8).
+- **No CHECK constraints, no defaults.** The domain keeps `status`, `kind` and
+  the one-of-list-or-segment rule valid. Every `INSERT` writes every `NOT NULL`
+  column. Counts and `max_send_errors` are `Int64` so a Go `int` binds without
+  a narrowing conversion. `body_doc` and `theme` are JSON stored and read back
+  whole, so plain nullable `Utf8` (Postgres `jsonb` normalizes key order and
+  spacing). `normalizeRawJSON` only trims whitespace and maps `null` to nil, so
+  YDB returns `body_doc`, `theme` and `segment_query` byte-for-byte as written
+  and Postgres its canonical `jsonb` form; no Go code compares the bytes.
+- **Keys.**
+  - `templates`, `campaigns`, `links` and the two event tables: `(tenant_id,
+    id)`. `templates` has a unique `(tenant_id, name)` index, as Postgres has.
+  - `campaign_recipients`: `(tenant_id, campaign_id, id)`, so a campaign's
+    recipients are one key range in id order, which the batch window reads. The
+    send worker and the tracking endpoints know a recipient by id alone, so
+    `GLOBAL SYNC (tenant_id, id)` finds it; the writes go `UPDATE ON` through
+    it. A unique `(tenant_id, campaign_id, email)` index reproduces
+    `UNIQUE (campaign_id, email)`.
+  - `campaign_lists`: `(tenant_id, campaign_id, id)` with a generated id,
+    because a segment target has no natural key. Unique `(tenant_id,
+    campaign_id, list_id)` reproduces `UNIQUE (campaign_id, list_id)`.
+- **`Recipients.BulkInsert`** (the open B2/V5 item). Dedupe the input by email
+  in Go (the first wins), then per chunk of 1000: one `DoTx` that reads the
+  emails the campaign already has and inserts the rest with `AS_TABLE`. A
+  concurrent insert of the same email aborts one transaction and the SDK
+  retries it. The ids are generated before the `DoTx`, the count is assigned at
+  its end (V6). The returned count can fall short only when a first attempt
+  committed and its response was lost.
+- **`Recipients.Pending`** keeps the Postgres window: `ORDER BY id LIMIT
+  OFFSET` over every recipient of the campaign, then the pending rows of it,
+  read in chunks of 1000 inside the adapter. Pending is filtered in Go, so a
+  window never shifts as rows are sent.
+- **The Postgres foreign keys.**
+  - Stand-in reads, as `YDBMemberships.Attach` does: `YDBRecipients.BulkInsert`
+    reads the chunk's subscribers in its `DoTx` and fails if one is missing,
+    and `YDBCampaigns.SaveTargets` reads the targeted lists in its `DoTx` and
+    fails if one is missing. A concurrent `Subscribers.Delete` or list delete
+    then conflicts with the insert, so a start job racing a delete cannot mail
+    a deleted subscriber.
+  - `YDBLists.Delete` also deletes the campaign's `campaign_lists` rows for the
+    list, through `idx_campaign_lists_list`. Without it a campaign would keep
+    a target that resolves nothing, or fails.
+  - `YDBSubscribers.Delete` also deletes the subscriber's `campaign_recipients`
+    rows, through `idx_campaign_recipients_subscriber`. The alternative, letting
+    readers tolerate a dangling id, was rejected: an erased subscriber's address
+    would stay in the campaign and a running campaign would still mail it. The
+    `link_clicks` and `campaign_views` rows of those recipients stay: no query
+    reads them, so they carry no index.
+  - `YDBTemplates.Delete` sets `campaigns.template_id` to NULL, by a scan of
+    the tenant's campaigns (a ceiling). `transactional_messages.template_id` is
+    only written, so it is left dangling.
+  - `campaigns.sending_domain_id` (`ON DELETE SET NULL`) needs nothing: no code
+    deletes a sending domain.
+  - `campaigns.Update` never writes `template_id`, as the Postgres `UPDATE`
+    does not.
+- **Tracking lookups without a tenant.** `ResolveTenantForLink` and
+  `ResolveTenantForCampaign` read `idx_links_id` and `idx_campaigns_id`,
+  `GLOBAL UNIQUE SYNC` indexes on `(id)`. They stand in for the two `SECURITY
+  DEFINER` functions. `UpsertLinks` reads the URLs the campaign has and inserts
+  the others, because an `INSERT` onto an existing key aborts the transaction.
+  `RecordClick` and `RecordView` read the recipient through the id index and
+  record nothing unless it belongs to the link's campaign.
+- **Indexes for B8, created here.** The recipients and transactional tables
+  are written by this plan's migration, so it also creates what delivery
+  feedback reads: `GLOBAL SYNC (provider_message_id)` on `campaign_recipients`
+  and `GLOBAL UNIQUE SYNC (provider_message_id)` on `transactional_messages`.
+  A later `ALTER TABLE ... ADD INDEX` would have to sit alone in its own file.
+- **Tests.** `templates`, `campaigns`, archive, `recipients`, `tracking` and
+  `transactional` tests become pg+ydb contract suites through an `eachBackend`
+  harness, as in audience. The send-pipeline and resumability tests (the start
+  and batch workers) run on both backends. The two start-worker quota tests
+  stay on Postgres: billing is not ported. The two cascades into audience's
+  adapters are tested in the audience package, on YDB only, with raw SQL, as
+  B5's `user_list_roles` test does.
+- **A V6 fix on Postgres.** `Recipients.BulkInsert`'s `inserted` counter is
+  reset at the start of its closure (the V6 table lists it). No other Postgres
+  adapter changes.
+- **Found by the B7 review, fixed after B9 (both backends).** `StartWorker.Work`
+  set a campaign's `recipient_count` and fanned out batches from
+  `sent + failed + pending`, which left out `skipped` recipients, while the
+  `Pending` window spans every row. A campaign resumed after some recipients were
+  skipped could fan out too few batches, leave its last recipients unselected,
+  and never finish. `RecipientRepository.Counts` now also returns `skipped`, and
+  the start worker counts every row (`TestStartWorkerResumeCoversSkippedRecipients`).
+- **For B8, B9 and C4.**
+  - **B8.** Attribution resolves a provider message id with no tenant bound:
+    read `campaign_recipients VIEW idx_campaign_recipients_provider` and
+    `transactional_messages VIEW idx_transactional_messages_provider`; each
+    entry carries `tenant_id`. With a tenant, add `AND tenant_id = $t` (the
+    index's second key component filters). Analytics reads `campaign_recipients`
+    by the `(tenant_id, campaign_id)` key range and `campaigns` by `(tenant_id,
+    id)`. `delivery_events` carries `campaign_id` and `campaign_recipient_id`
+    with `ON DELETE SET NULL` on Postgres; here a campaign's recipients now go
+    when their subscriber is deleted, so B8 must tolerate or null a dangling
+    `campaign_recipient_id`. `campaign_recipients.status` has four values
+    (`pending`, `sent`, `failed`, `skipped`).
+  - **B9.** Nothing: campaigns reference media by ref string only, validated in
+    the domain.
+  - **C4.** Wire `NewYDBTemplates`, `NewYDBCampaigns`, `NewYDBRecipients`,
+    `NewYDBTracking` and `NewYDBTransactionalMessages`, each over the
+    `*ydb.Driver`, and the already-ported `NewYDBRateLimiter` for the batch
+    worker. `BatchWorker.Work` and `StartWorker.Work` take them through their
+    ports, unchanged. The start worker's `recipients.BulkInsert` writes in
+    chunks of 1000 rows, each its own transaction: a campaign.start job that
+    dies halfway re-runs and inserts only the rest.
+
+### Plan B8 planning spike
+
+Run on 2026-11-15 against `ydbplatform/local-ydb:26.3.1.23` while planning the
+deliverability port, on the real `000009_deliverability` and the `000008`
+campaign tables. A dry run of the whole plan then passed stage by stage, with
+`go build`, `go vet`, `golangci-lint run`, `make lint-arch` and `go test ./...`
+(49 `ok` packages) clean.
+
+- **Refresh as one `UPSERT ... SELECT`.** Tested on 3 campaigns (one a draft),
+  4 recipients (3 of one campaign, one of them `failed`) and 6 delivery events
+  (one of another tenant): PASS, and a second run returns the same rows.
+  - Shape: `$sent = SELECT campaign_id, COUNT(*) AS n FROM campaign_recipients
+    WHERE tenant_id = $t AND status = "sent"u GROUP BY campaign_id;` and
+    `$ev = SELECT campaign_id, COUNT(DISTINCT IF(event_kind = "delivery"u,
+    recipient_email)) AS delivered, ... GROUP BY campaign_id;`, then `UPSERT
+    INTO campaign_analytics (...) SELECT c.tenant_id AS tenant_id, c.id AS
+    campaign_id, Unwrap(CAST(COALESCE(s.n, 0ul) AS Int64)) AS sent_count, ...
+    FROM campaigns AS c LEFT JOIN $sent AS s ON s.campaign_id = c.id LEFT JOIN
+    $ev AS e ON e.campaign_id = c.id WHERE c.tenant_id = $t AND c.status !=
+    "draft"u`.
+  - Result: the campaign with 2 sent recipients and events `delivery` x3 (two
+    distinct addresses), `open`, `bounce` got sent 2, delivered 2, opened 1,
+    bounced 1; the other tenant's `click` was not counted; the second campaign
+    got sent 1 and zeros; the draft got no row.
+  - What failed first: without `AS tenant_id, AS campaign_id` the statement is
+    `BAD_REQUEST` ("Column names in SELECT don't match column specification");
+    `CAST(COALESCE(n, 0) AS Int64)` is `Optional<Int64>` and fails with
+    "Can't set NULL or optional value to not null column", which `0ul` and
+    `Unwrap(...)` fix.
+- **Totals and the recent list.** `SELECT COALESCE(SUM(sent_count), 0), ...
+  FROM campaign_analytics WHERE tenant_id = $t` returns `0` for a tenant with
+  no rows. `SELECT ... FROM campaign_analytics AS ca JOIN campaigns AS c ON
+  c.tenant_id = ca.tenant_id AND c.id = ca.campaign_id WHERE ca.tenant_id = $t
+  ORDER BY COALESCE(c.started_at, c.created_at) DESC LIMIT 10`: PASS, newest
+  first.
+- **Scanning.** An `Int64` column does not scan into `*int` (`cast failed
+  'Int64(2)' to '*int' destination`); scan into `int64` and convert.
+- **Pending sweep read.** `SELECT id FROM inbound_feedback_events VIEW
+  idx_inbound_status WHERE status = "pending"u AND received_at < $before ORDER
+  BY received_at LIMIT $limit` over `GLOBAL SYNC (status, received_at)`: PASS,
+  only the rows older than the cutoff, oldest first.
+- **`Interval`** takes a string literal, not an expression
+  (`Interval("PT"u || ...)` fails with "Expected literal string as argument").
+  Nothing in the port needs it.
+
+The dry run added: `StageInbound` and `RecordEvent` each pass a six-goroutine
+race on both backends (three repeated runs); with the existence read removed,
+the idempotence and race tests fail on YDB; a Cyrillic `ILIKE` filter on the
+suppression list passes on Postgres and YDB.
+
+Decisions for Plan B8:
+
+- **Scope.** `000009_deliverability` creates `inbound_feedback_events`,
+  `delivery_events`, `suppression_list`, `bounce_settings` and
+  `campaign_analytics`. `audit_log` is iam's (000005); `YDBAuditLog` writes to
+  it, as the Postgres `AuditLog` does. `transactional_messages` is B7's.
+- **No CHECK constraints, no defaults, no foreign keys**, as B7.
+- **Keys.**
+  - `inbound_feedback_events`: `(id)`, the one table here without a tenant,
+    because a notification is staged before its tenant is known. `GLOBAL UNIQUE
+    SYNC (dedupe_key)` is the idempotency key. `raw_payload` is a plain `Utf8`
+    column (JSON stored and read back whole).
+  - `delivery_events`: `(tenant_id, id)`, plus `GLOBAL UNIQUE SYNC (tenant_id,
+    inbound_event_id)` for `RecordEvent`. The Postgres indexes
+    `(campaign_id, event_kind)` and `(tenant_id, recipient_email)` are not
+    created: the refresh groups the tenant's events by one key-range scan, and
+    nothing reads by recipient.
+  - `suppression_list`: `(tenant_id, id)`, because `List` pages in id order,
+    plus `GLOBAL UNIQUE SYNC (tenant_id, email)`, which `Upsert`, `Remove` and
+    the pre-send check read.
+  - `bounce_settings`: `(tenant_id)`. `campaign_analytics`: `(tenant_id,
+    campaign_id)`; Postgres keyed it by `campaign_id` alone.
+- **Retry-safe by construction (V6).** The YDB `List`, `GetDashboard` and
+  `PendingInbound` build their rows in a local and assign them at the end, which
+  covers the `analytics_pg.go` `dash.Recent` and `suppression_pg.go` `List`
+  sites for the YDB runtime. The Postgres adapters do not change (River does not
+  retry a pgx transaction).
+- **Dangling ids.** `delivery_events.campaign_recipient_id` is written and
+  never read back, so a recipient deleted with its subscriber (B7) leaves a
+  dangling id that nothing follows. `campaign_id` is read: the refresh groups
+  the events by it and joins them to `campaigns`, so an event of an unknown
+  campaign counts nowhere. No campaign delete exists, so no `campaign_analytics`
+  cascade is needed. A campaign's `sent_count` is the count of its `sent`
+  recipients, so it falls when a subscriber's deletion removes recipients (B7).
+  On Postgres the same delete cascades to `campaign_recipients`, and
+  `delivery_events.campaign_recipient_id ON DELETE SET NULL` clears the id. That
+  used to violate `CHECK ((campaign_recipient_id IS NOT NULL) <>
+  (transactional_message_id IS NOT NULL))`, so the delete failed. Migration
+  `000025_delivery_event_source_check` relaxes the check to "at most one
+  source", so an event outlives its deleted source on both backends.
+- **Feedback recovery (the C1 carry-over).** B8 owns the port, so it adds
+  `EventRepository.PendingInbound(ctx, receivedBefore, limit)` on both backends
+  (Postgres: the existing `status` and `received_at` indexes) and
+  `command.SweepPendingFeedbackHandler`, which enqueues `feedback.process` for
+  up to 500 notifications pending past `OlderThan`. A job that is only slow runs
+  twice, which `ProcessFeedback` tolerates. C4 wires the cron route. This is
+  small, and leaving the port to C4 would put a port change into the assembly
+  plan.
+- **`ProcessFeedback` changes by one line** (the final review found that a
+  failure inside `Apply` after `RecordEvent` committed was never retried; the
+  `recorded &&` guard is dropped), and `cmd/consumer` stays a SaaS binary.
+  The `/feedback` route already stages through `IngestNotificationHandler`,
+  which takes the `EventRepository` port.
+- **Tests.** The suppression, settings, checker, audit, events, feedback-worker
+  and analytics tests become pg+ydb contract suites through an `eachBackend`
+  harness (`backend_test.go`), as in campaign. `stageInbound` retires the
+  notifications a test leaves pending, so the shared database does not pile
+  them up for the `PendingInbound` test.
+- **Found by the B8 review, fixed after B9.**
+  - Both backends: `SuppressionApplier.Apply` passed `e.ID()` as the entry's
+    source event id, but nothing set it, so `suppression_list.source_event_id`
+    was always NULL. `RecordEvent` now returns the row id (`(id string, err
+    error)`; the unused `recorded` flag is gone). On a retry that is the row an
+    earlier attempt wrote. `ProcessFeedback` hands `event.Recorded(id)` to the
+    applier. Postgres reads the existing id with a second statement after
+    `ON CONFLICT DO NOTHING RETURNING id` returns no row.
+  - Postgres only (an existing SaaS bug): deleting a subscriber that had any
+    campaign delivery event failed on the CHECK above. Fixed by migration
+    `000025` (see "Dangling ids"), pinned by
+    `TestSubscribersDeleteKeepsDeliveryEvents`.
+- **For B9 and C4.**
+  - **B9.** Nothing: no deliverability table references media, and media owns
+    no table deliverability reads. The next migration number is `000010`.
+  - **C4.**
+    - Wire `NewYDBEvents`, `NewYDBSuppressions`, `NewYDBSettings`,
+      `NewYDBAnalytics`, `NewYDBSuppressionChecker` and `NewYDBAuditLog`, each
+      over the `*ydb.Driver`. `NewYDBSuppressionChecker` is what the campaign
+      start and batch workers take as their `SuppressionChecker`, and also
+      what `SendTransactional` (`internal/service/application.go` ~518) and
+      `ConfirmSubscription` (~716, ~758) take;
+      `NewSuppressionApplier` takes the two YDB repositories unchanged;
+      `NewProcessFeedbackHandler` and `NewIngestNotificationHandler` take
+      `NewYDBEvents`.
+    - Add `POST /cron/feedback-sweep` to `WorkerRoutes`: it runs
+      `command.NewSweepPendingFeedbackHandler(events, enqueuer).Handle(ctx,
+      SweepPendingFeedback{OlderThan: ...})`, where `enqueuer` is the `*ymq.Enqueuer`
+      (it implements `EnqueueFeedbackProcess`). `WorkerRoutes` needs widening for
+      it: `cronEnqueuer` (`internal/service/worker_routes.go` ~22) lacks
+      `EnqueueFeedbackProcess`, `WorkerRoutes` has no `EventRepository` or
+      sweep field, and the test `recordingEnqueuer` needs the method. Pick
+      `OlderThan` above the worst-case queue latency, not only the feedback
+      job's visibility timeout plus its retry window (otherwise a throttled
+      backlog makes every tick add up to 500 duplicate jobs), for example 15
+      minutes, and fire the timer about as often. It needs no tenant: the
+      staging table has none. Add the matching timer trigger to the Terraform
+      module (C3), and extend the DLQ alert note: a pending notification older
+      than the threshold is the symptom.
+    - `cmd/consumer` is not used in serverless mode.
+
+### Plan B9 planning spike
+
+Run on 2026-11-15 against `ydbplatform/local-ydb:26.3.1.23` while planning the
+media port, on the real `000010_media` table. The adapter and the contract
+suite of the plan were applied to the worktree and run; a dry run of the whole
+plan then passed stage by stage (see the plan).
+
+- **No new YQL construct.** Every statement is one B1 to B8 already verified:
+  a keyed `SELECT`, `INSERT` with `CurrentUtcTimestamp()`, `DELETE ... RETURNING
+  id` (not-found on no row, as `YDBTemplates.Delete`), `UPDATE` by primary key,
+  and `ORDER BY created_at DESC, id DESC` over the tenant's key range. Only
+  the `Int32` binding (from `int32`) is new; the `Timestamp` binding
+  (`invitations_ydb.go`) and `Optional<Utf8>` from a `*string` (`jobs_ydb.go`,
+  `campaigns_ydb.go`) already exist. It worked on the first run, and the
+  nullable `Timestamp` and `Utf8` columns scan into `*time.Time` and `*string`.
+- **The suite passes on both backends.** Add/Get/List/Delete, unknown and
+  non-UUID ids, tenant scoping (a second tenant's `Get`, `Delete`,
+  `MarkPublished` and `List` see nothing), newest-first order, `MarkPublished`
+  twice, a PDF with no dimensions, and the uploader id (YDB only, because on
+  Postgres it is a foreign key to `users`). Sabotage: with the `tenant_id`
+  predicate removed from `Get` and from the `MarkPublished` read, the tenant
+  scoping tests fail on YDB.
+- **Race.** Six concurrent `MarkPublished` calls on one asset beside six
+  concurrent `Add`s, three runs: no error, seven rows, the asset published, the
+  list in non-increasing `created_at` order.
+- **Use cases over both repositories** (`PublishAssetsHandler`,
+  `DeleteAssetHandler`, with the in-memory blob store): publishing twice copies
+  once (the second run has the blob store fail on any copy) and returns the
+  same text, which is the V6 retry argument for the three campaign `Update`
+  closures; another tenant's asset is `ErrMediaMissing` and nothing is copied;
+  deleting keeps the public copy by default and removes it with `Unpublish`.
+
+Decisions for Plan B9:
+
+- **One table, `media_assets`, in `000010_media`.** Key `(tenant_id, id)`; no
+  secondary index. Every read is by key or the tenant's range, and a library is
+  hundreds of rows. No CHECK, DEFAULT or foreign key, as B7.
+- **`width` and `height` are `NOT NULL Int32`, `0` for a PDF.** Postgres stores
+  NULL because of `CHECK (> 0)` and reads it back through `COALESCE(.., 0)`;
+  with no CHECKs on YDB the sentinel is the simpler column. `uploaded_by` and
+  `published_at` stay nullable.
+- **`List` orders by `created_at DESC, id DESC` in YQL.** The tie-break makes
+  the order total; Postgres has none. Ceiling recorded.
+- **`MarkPublished` is read, then write, in one `DoTx`** (the pg adapter's
+  `COALESCE(published_at, $2)` plus a rows-affected check). It returns
+  `ErrMediaNotFound` for a missing row.
+- **`Delete` is a single `DELETE ... RETURNING id`.** The handler already
+  removes the public copy and the private object around it, in this order, so a
+  failed object delete leaves an orphan and never a row that points nowhere.
+- **The blob store is unchanged.** Both runtimes use `S3BlobStore`. The media
+  repository makes no S3 call inside its own `DoTx`; the campaign `Update`
+  closures' publish copy is the V6 exception, which `TestPublishAssetsIsRepeatable`
+  covers.
+  `MemoryBlobStore` keeps serving the use-case tests.
+- **User decisions of the media library are untouched.** Deleting an asset
+  keeps its public copy unless `Unpublish` is set; no SVG; library URLs stay on
+  the app origin with a 302 to a presigned URL. Nothing here reaches the HTTP
+  layer.
+- **No cascade to keep.** `uploaded_by REFERENCES users ON DELETE SET NULL` and
+  `tenant_id REFERENCES tenants ON DELETE CASCADE` have no YDB counterpart
+  because no code deletes a user or a tenant (checked: no `DELETE FROM users`,
+  `tenants` or `platform_users` outside tests and migrations). Recorded in
+  "Ceilings".
+- **Callers checked.** The port is used by `UploadAsset` (`Add`),
+  `PublishAssets` (`Get`, `MarkPublished`), `DeleteAsset` (`Get`, `Delete`),
+  `ListAssets` (`List`) and `AssetContentURL` (`Get`), all in
+  `internal/media/app`. `campaign` and `tenant` (branding) reach it only through
+  the `PublishAssets` handler, so the port covers every read and write path.
+  There are no media workers.
+
+Resolved by C3 (merged after this plan):
+
+- `S3BlobStore.Publish` sends `ACL: public-read` on the copy. That is the access
+  model C3 kept: the bucket has no bucket policy, and anonymous read comes only
+  from the per-object ACL. C3 grants the app service account `storage.editor`
+  on the bucket, because `storage.uploader` cannot set that ACL. The B9 worry
+  that the ACL was redundant and might lack a role is therefore resolved.
+  Only C4's smoke test, which publishes once through the real service account,
+  confirms it against Object Storage.
+
+For C4 and the completeness of Plan B:
+
+- **Wire** `mediaadapters.NewYDBAssets(driver)` in place of `NewAssets(pool)` in
+  `buildMedia` (`internal/service/application.go` ~266). The blob store is the
+  existing `NewS3BlobStore` with `cfg.ObjectStorage*`, as in SaaS; the
+  `Region: "auto"` fallback and path-style addressing are inside it, and
+  `NewYDBJobs`' S3 client copies them (B6).
+- **Plan B is complete for every in-scope context.** Every repository constructor
+  the composition root wires has a YDB version: sending (`NewYDBSendingDomains`),
+  auth (`NewYDBUsers`, `NewYDBSessions`, `NewYDBEmailVerifications`), tenant
+  (`NewYDBTenants`, `NewYDBInvitations`, `NewYDBSettings`, `NewYDBBranding`),
+  iam (`NewYDBUsers`, `NewYDBSessions`, `NewYDBRoles`, `NewYDBAPIKeys`,
+  `NewYDBRecoveryCodes`, `NewYDBAudit`), audience (`NewYDBLists`, `Subscribers`,
+  `Memberships`, `Fields`, `Jobs`, `SubscriptionPages`, `PendingSubscriptions`),
+  campaign (`NewYDBCampaigns`, `Templates`, `Recipients`, `Tracking`,
+  `TransactionalMessages`, `RateLimiter`), deliverability (`NewYDBEvents`,
+  `Suppressions`, `Settings`, `Analytics`, `SuppressionChecker`, `AuditLog`) and
+  media (`NewYDBAssets`). The service-level `onboarding` has `newYDBOnboarding`.
+- **What is still pg-, Redis- or River-bound, and is C4's wiring, not a port:**
+  - billing (`billingadapters.*`, the `billing` app and `api/billing_handlers.go`):
+    not ported. `buildCampaign` builds `usageRecorder` and `quotaGate` from
+    billing pg adapters unconditionally (~491); the serverless builder passes
+    `nil` (`NewSendTransactionalHandler` accepts them, as the campaign workers
+    do) and leaves the billing routes unmounted.
+  - `audienceadapters.NewSubmissionThrottle` and `authadapters.NewResendThrottle`
+    take a Redis URL: the serverless builder uses `ydbthrottle.Counter`
+    (see "Throttling"). `campaignadapters.NewRateLimiter` likewise has
+    `NewYDBRateLimiter`.
+  - The River-based workers (`Import`, `Export`, `Optin`, `Start`, `Batch`,
+    `Verify`, `Feedback`, `Analytics`, and `authadapters.NewVerificationWorker`
+    over `UserRepository`) are generic over the ports and take the
+    YDB repositories; `authadapters.NewVerificationCleanupWorker` is not needed
+    (table TTL). `cmd/scheduler`'s `sweepPendingDomains`,
+    `enqueueAnalyticsRefresh` and `enqueueUsageRollup` read pg directly: the
+    `/cron/domain-verify-sweep` and `/cron/analytics-refresh` routes that replace
+    the first two were built in C1 (`internal/service/worker_routes.go`). Only the
+    billing usage-rollup has no route (billing is not wired); B8's
+    `/cron/feedback-sweep` route and its timer remain for C4/C3.
+  - `iamadapters.NewTOTP`, `authadapters.NewPasswordHasher` and
+    `campaignadapters.NewPostboxMessenger` hold no storage, as do
+    `deliverabilityadapters.NewSuppressionApplier`,
+    `campaignadapters.NewUnsubscribeLinker` and
+    `sendingadapters.NewPostboxProvisioner` (generic over ports).
+    `NewNotificationParser` and `NewStreamReader` are used only by `cmd/consumer`
+    and are unused in serverless mode.
+  - `platform/jobs` (River) and `platform/tenantdb` are pg-only by design and
+    stay out of the serverless builder.
 ### Plan C3 planning spike
 
 Run on 2026-11-15 while planning the Terraform module and image publishing.
@@ -1186,6 +1640,51 @@ These are known limits, marked in code with `ponytail:` comments.
 - The `/jobs` dispatcher assumes the trigger's batch size 1. With a larger
   batch, one failed job redelivers the whole batch, including jobs that
   already succeeded.
+- `YDBRecipients.Pending` reads the campaign's recipients from the start of the
+  id order to the end of its window, so batch N of a campaign reads N windows
+  of rows, and `Counts` reads every recipient row of the campaign each time a
+  batch ends. Fine for one organisation's campaigns. The upgrade path is a
+  per-campaign ordinal column to seek on, and counters kept on the campaign row.
+- `YDBTemplates.Delete` scans the tenant's campaigns to clear `template_id`.
+  The upgrade path is a `GLOBAL SYNC` index on `(tenant_id, template_id)`.
+- `YDBCampaigns.All` and `Archived` scan the tenant's campaigns and sort them,
+  reading every campaign body of the tenant. The upgrade path is keyset
+  paging plus an index on `(tenant_id, created_at)` or `(tenant_id,
+  archive_visible, archived_at)`.
+- `YDBRecipients.BulkInsert` returns a count that falls short when a chunk
+  committed and its response was lost, because the retry finds its rows. No
+  caller uses the count.
+- Every `MarkSent` updates `campaign_recipients` and the provider-message-id
+  index. Until a recipient is sent, its `provider_message_id` is NULL, so
+  the index is global and every unsent, failed and skipped recipient of every
+  campaign and tenant shares the NULL key; the primary key suffix of the index
+  entry lets YDB split it.
+- `YDBAnalytics.Refresh` scans every recipient of the tenant (filtering by
+  status, not only the `sent` ones) and every delivery event of the tenant on
+  each run, and `delivery_events` has no index on `campaign_id`. Fine for one
+  organisation's history. The upgrade path is counters kept on the campaign
+  row, or a refresh that reads only events newer than the last one.
+- `Refresh` is one read-write statement over the tenant's recipient and event
+  ranges, so while a campaign is sending, concurrent recipient updates and
+  event inserts may invalidate its locks and the SDK retries until the job
+  deadline (not measured; the dashboard goes stale during sends). The upgrade
+  path is to read the counts in a snapshot read-only transaction, then `UPSERT`
+  from a list parameter.
+- `SweepPendingFeedbackHandler` re-enqueues at most 500 notifications per
+  sweep; the next tick takes the rest. `inbound_feedback_events` rows are never
+  deleted (as on Postgres), and `idx_inbound_status` holds every row, so the
+  `pending` range is a short range of an index that grows with history (status
+  `pending` sorts between `failed` and `unattributed`). The upgrade path is a
+  retention job for processed rows. No production code ever sets `InboundFailed`,
+  so a notification that fails on every attempt is re-enqueued on every tick,
+  and 500 of them would starve newer ones; the DLQ alert is the operator signal.
+- `YDBAssets.List` reads and sorts every asset of the tenant (the port has no
+  paging), and the media library page renders them all. Fine for one
+  organisation's library. The upgrade path is a `GLOBAL SYNC` index on
+  `(tenant_id, created_at)` and keyset paging through the port.
+- `media_assets.uploaded_by` has no `ON DELETE SET NULL` counterpart on YDB:
+  no code deletes users or tenants, so nothing can leave it dangling. A user
+  or tenant delete added later must clear it (or the asset rows) explicitly.
 - API Gateway caps requests and responses at 2.5 MB. Media uploads are held to
   2 MiB (`NVELOPE_MEDIA_MAX_BYTES`), a CSV import is capped by the same limit,
   and a static asset above 2400 KiB fails CI. The upgrade path is presigned
@@ -1218,6 +1717,12 @@ The plan is split into three plans. Each one merges to `main` on its own.
   contract-test harness and the sending context as its pilot, the snooze
   reset from V6, and `ydbthrottle`) and one plan per remaining context, in
   this order: auth, tenant, iam, audience, campaign, deliverability, media.
+  Campaign (B7) also creates the two provider-message-id indexes that
+  deliverability (B8) reads; see "Plan B7 planning spike". Deliverability (B8)
+  also adds the one port method the feedback recovery sweep needs; see "Plan B8
+  planning spike". Media (B9) is the last context: with it, every repository
+  the composition root wires has a YDB version, billing excepted; see "Plan B9
+  planning spike".
   Audience takes two plans: B5 (the core: lists, subscribers, memberships,
   fields) and B6 (import/export jobs, subscription pages, pending
   subscriptions); see "Plan B5 planning spike".

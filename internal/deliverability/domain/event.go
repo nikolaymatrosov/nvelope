@@ -126,8 +126,16 @@ func HydrateDeliveryEvent(id, tenantID, inboundEventID string, kind EventKind,
 	}
 }
 
-// ID returns the database-assigned id.
+// ID returns the database-assigned id, empty until the event is recorded.
 func (e *DeliveryEvent) ID() string { return e.id }
+
+// Recorded returns a copy of the event carrying the row id RecordEvent
+// returned.
+func (e *DeliveryEvent) Recorded(id string) *DeliveryEvent {
+	c := *e
+	c.id = id
+	return &c
+}
 
 // TenantID returns the owning tenant's id.
 func (e *DeliveryEvent) TenantID() string { return e.tenantID }

@@ -32,6 +32,7 @@ func (r *Recipients) BulkInsert(ctx context.Context, tenantID, campaignID string
 
 	var inserted int
 	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		inserted = 0 // a retried run starts from zero (V6)
 		for _, rec := range rs {
 			tag, err := tx.Exec(ctx,
 				`INSERT INTO campaign_recipients (tenant_id, campaign_id, subscriber_id, email)
@@ -140,8 +141,8 @@ func (r *Recipients) MarkFailed(ctx context.Context, tenantID, recipientID, reas
 	})
 }
 
-// Counts returns the campaign's sent, failed, and pending recipient counts.
-func (r *Recipients) Counts(ctx context.Context, tenantID, campaignID string) (sent, failed, pending int, err error) {
+// Counts returns the campaign's recipient counts by status.
+func (r *Recipients) Counts(ctx context.Context, tenantID, campaignID string) (sent, failed, skipped, pending int, err error) {
 	err = tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
 			`SELECT status, count(*) FROM campaign_recipients
@@ -161,13 +162,15 @@ func (r *Recipients) Counts(ctx context.Context, tenantID, campaignID string) (s
 				sent = n
 			case domain.RecipientFailed:
 				failed = n
+			case domain.RecipientSkipped:
+				skipped = n
 			case domain.RecipientPending:
 				pending = n
 			}
 		}
 		return rows.Err()
 	})
-	return sent, failed, pending, err
+	return sent, failed, skipped, pending, err
 }
 
 // scanRecipientRow reads one campaign_recipients row.
