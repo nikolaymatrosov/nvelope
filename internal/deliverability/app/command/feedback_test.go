@@ -25,8 +25,12 @@ func (p fakeParser) Parse([]byte) (domain.InboundNotification, bool, error) {
 // fakeEvents is an in-memory EventRepository for ingestion tests.
 type fakeEvents struct {
 	staged []domain.InboundNotification
-	byKey  map[string]string
-	nextID int
+	// pending is what PendingInbound returns; pendingBefore records the cutoff
+	// it was asked for.
+	pending       []string
+	pendingBefore time.Time
+	byKey         map[string]string
+	nextID        int
 }
 
 func newFakeEvents() *fakeEvents { return &fakeEvents{byKey: map[string]string{}} }
@@ -60,6 +64,11 @@ func (f *fakeEvents) RecordEvent(context.Context, *domain.DeliveryEvent) (bool, 
 
 func (f *fakeEvents) MarkInbound(context.Context, string, domain.InboundStatus) error {
 	return nil
+}
+
+func (f *fakeEvents) PendingInbound(_ context.Context, before time.Time, _ int) ([]string, error) {
+	f.pendingBefore = before
+	return f.pending, nil
 }
 
 // fakeEnqueuer records enqueued feedback-process jobs.
@@ -126,4 +135,20 @@ func TestIngestNotificationPropagatesParseError(t *testing.T) {
 		fakeParser{err: domain.ErrValidationFailed}, newFakeEvents(), &fakeEnqueuer{})
 	err := h.Handle(context.Background(), command.IngestNotification{RawPayload: []byte("not json")})
 	require.ErrorIs(t, err, domain.ErrValidationFailed)
+}
+
+func TestSweepPendingFeedbackEnqueuesEveryPendingNotification(t *testing.T) {
+	t.Parallel()
+	events := newFakeEvents()
+	events.pending = []string{"evt-a", "evt-b"}
+	enqueuer := &fakeEnqueuer{}
+	handler := command.NewSweepPendingFeedbackHandler(events, enqueuer)
+
+	start := time.Now()
+	require.NoError(t, handler.Handle(context.Background(),
+		command.SweepPendingFeedback{OlderThan: 10 * time.Minute}))
+
+	require.Equal(t, []string{"evt-a", "evt-b"}, enqueuer.enqueued)
+	require.WithinDuration(t, start.Add(-10*time.Minute), events.pendingBefore, time.Minute,
+		"the cutoff is now minus OlderThan")
 }

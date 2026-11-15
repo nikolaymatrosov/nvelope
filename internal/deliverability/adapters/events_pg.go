@@ -196,3 +196,20 @@ func (r *Events) MarkInbound(ctx context.Context, eventID string, status domain.
 	}
 	return nil
 }
+
+// PendingInbound returns the ids of staged notifications still pending that
+// were received before receivedBefore, oldest first.
+func (r *Events) PendingInbound(ctx context.Context, receivedBefore time.Time, limit int) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id FROM inbound_feedback_events
+		 WHERE status = 'pending' AND received_at < $1
+		 ORDER BY received_at LIMIT $2`, receivedBefore, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing pending notifications: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("listing pending notifications: %w", err)
+	}
+	return ids, nil
+}

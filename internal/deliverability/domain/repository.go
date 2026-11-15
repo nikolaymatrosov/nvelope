@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // EventRepository persists inbound notifications and the attributed delivery
 // events. The control-plane staging methods run through the pool; the
@@ -30,6 +33,12 @@ type EventRepository interface {
 
 	// MarkInbound sets the staged row's terminal status and processed-at time.
 	MarkInbound(ctx context.Context, eventID string, status InboundStatus) error
+
+	// PendingInbound returns the ids of up to limit staged notifications that
+	// are still pending and were received before receivedBefore, oldest first.
+	// The recovery sweep re-enqueues them: a feedback.process job that was
+	// dead-lettered leaves its notification pending for good.
+	PendingInbound(ctx context.Context, receivedBefore time.Time, limit int) ([]string, error)
 }
 
 // SuppressionRepository persists the tenant's suppression list. Every
