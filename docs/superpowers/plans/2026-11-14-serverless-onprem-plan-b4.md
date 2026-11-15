@@ -3005,6 +3005,7 @@ git commit -m "feat(iam): add the YDB API key and recovery code repositories und
     - Assigning an unknown role: pg returns a wrapped foreign-key error; YDB returns `ErrRoleNotFound`.
     - Assigning another tenant's role id: pg accepts it, because foreign-key checks bypass RLS, although the role then grants nothing. YDB returns `ErrRoleNotFound`.
     - Assigning a role to an unknown user or list: pg returns a foreign-key error; YDB accepts it.
+      - Update: for a list, YDB now returns `ErrListNotFound` (`5fadd55`). An unknown user is still accepted.
     - `TouchLastUsed` with a malformed id: pg returns an invalid-input error, which the app ignores; YDB does nothing.
     - `YDBRoles.All` orders by `name` by bytes, and pg by the database collation, so mixed-case and non-ASCII names order differently.
     - YDB accepts what pg rejects. None of these is reachable through the domain constructors or the app flows:

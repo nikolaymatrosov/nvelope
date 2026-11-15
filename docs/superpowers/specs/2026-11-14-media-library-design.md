@@ -92,7 +92,7 @@ track A deferred.
 `UploadAssetHandler` reads the body into memory; it is already capped at
 `MediaMaxBytes` (10 MiB) by the handler's `MaxBytesReader`. It then:
 
-1. **Detects the type** with `http.DetectContentType`. The client-declared
+1. **Detects the type** from `image.DecodeConfig` format names plus a `%PDF-` prefix check, so the domain does not import `net/http` (`0fdf95c`). The client-declared
    Content-Type is ignored. Allowed: `image/png`, `image/jpeg`, `image/gif`,
    `image/webp`, `application/pdf`. Anything else gives
    `unsupported_media_type`.
@@ -200,8 +200,8 @@ type MediaPublisher interface {
 
 - **`StartCampaignHandler`.** Inside the existing `campaigns.Update` closure,
   publish `BodyHTML` and `BodyText` and store the result. This happens through
-  a domain method allowed only on a draft that is being started, for example
-  `Start(at, bodyHTML, bodyText)`.
+  a domain method allowed only on a draft that is being started, `PublishBody(html, text)`,
+  called right before `Start(now)` in the same `Update` closure.
   - Doing it inside the closure means the body that gets published is the
     locked row, so a concurrent draft edit cannot slip in.
   - Effect: a running or finished campaign's stored body holds public URLs, so

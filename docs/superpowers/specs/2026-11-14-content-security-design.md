@@ -64,7 +64,8 @@ in uploaded photos; decompression bombs once images are decoded.
 - HTTP: a dedicated `PUT /t/{slug}/api/settings/raw-html-sanitization` with
   body `{"level", "accept_risk"}`, registered in the `authz` group and gated
   on `settings:manage`. It is separate from `PUT /settings` because that
-  endpoint replaces every field and checks no permission.
+  endpoint replaces every field; since `50fe519` it is also in the `authz`
+  group and gated on `settings:manage`.
   `GET /settings` returns the level. On change the handler calls
   `recordAudit(ctx, "settings.raw_html_sanitization", tenantID,
   {"from": old, "to": new})`.
@@ -217,7 +218,7 @@ whitespace-free syntax:
   map-order re-expansion.
 - Unknown keys stay literal, as today.
 - The transactional template editor's variable hint documents `{{{key}}}`
-  (add the hint if there is none).
+  (the hint exists, added in `22f708f`).
 
 ### 4. Click and open attribution
 
@@ -265,6 +266,18 @@ WHERE r.id = @recipient_id AND r.campaign_id = @campaign_id
   tenant's own subscribers to a tenant member with `branding:manage`.
 - **Level `off`.** The tenant's own recipients may receive active content.
   Platform surfaces stay contained by §2 and the admin preview sandbox.
+
+## Follow-ups (implemented, `c59536b`)
+
+- **Sentinel nonce.** `SanitizeDocument` builds its merge-tag sentinels with
+  a random per-call nonce (`d38db44`), so a literal sentinel in the input can
+  no longer be restored as a real merge tag and move it into an href.
+- **Send-time URL-scheme guard.** `internal/platform/urlattr` (`ecfa517`) is
+  used by sending `Substitute` and transactional `ApplyHTMLVariables`. It
+  checks each substituted `href`/`src`/`background` value as a whole and
+  empties it unless the scheme is http, https, mailto, tel, relative, or
+  `data:image/*` in `src`, since save-time sanitization sees only the
+  placeholder.
 
 ## Error handling
 

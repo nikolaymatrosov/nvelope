@@ -181,7 +181,7 @@ Each container is built from an existing image. There are no new binaries.
 | `bytea` file payloads (`import_export_jobs.file_bytes`: an import upload of up to 32 MB, an export of any size) | a private Object Storage object `jobs/<tenant_id>/<job_id>` in the media bucket; the row keeps a nullable `file_key` (Plan B6). A YDB cell holds at most 16 MiB ("Plan B6 planning spike"). |
 | `text[]` read back whole (`roles.permissions`, `api_keys.permissions`, `lists.tags`) | a JSON array in a plain `Utf8` column (Plan B4). An empty slice is stored as `[]`, so it reads back as an empty slice, as Postgres reads back `'{}'`. |
 | `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`, audience `subscribers.email`), the column itself carries the unique index. A query that compares such a column with user input lower-cases the input in Go (the segment `email` condition, Plan B5). Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
-| foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A stand-in read may also target another context's table already on YDB (iam per-list role assignments read audience `lists`, Plan B6). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
+| foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A stand-in read may also target another context's table already on YDB (iam per-list role assignments read audience `lists`, commit `5fadd55`, after Plan B5). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
 | `ORDER BY` on a text column | YDB orders `Utf8` by bytes, pg by the database collation, so mixed-case and non-ASCII values order differently. Acceptable for display lists (iam `roles` by `name`). If a later plan needs collation-equal order, sort in Go or store a sort key. |
 | `UPDATE ... WHERE id = $1` on a table whose key is not the id alone (`campaign_recipients`: `(tenant_id, campaign_id, id)`) | `UPDATE t ON SELECT <key columns>, <new values> AS col FROM t VIEW idx WHERE ...` through a `GLOBAL SYNC` index on the id. An id that matches no row updates nothing and is no error, as the Postgres `UPDATE` (Plan B7). |
 | a bulk `INSERT` of many rows | `INSERT INTO t (...) SELECT $const, id, ... FROM AS_TABLE($rows)` with `$rows` as `List<Struct<...>>`, bound with `types.ListValue(types.StructValue(...))` through `Param(...).Any(...)`. The ids are fixed in Go before the transaction (Plan B7). |
@@ -239,8 +239,8 @@ SaaS keeps the Redis implementations.
     `audience.import`, `audience.export`, `campaign.start`, `campaign.batch`.
   - `jobs` (short visibility timeout): everything else that is wired in
     serverless mode.
-- Each queue has a DLQ through a redrive policy with `maxReceiveCount=5`. C3
-  revisits the value (see "Carried to C3 and C4").
+- Each queue has a DLQ through a redrive policy with `maxReceiveCount`. C3
+  set it to 20 on `jobs` and 10 on `jobs-long` (see "Carried to C3 and C4").
 - Client: `aws-sdk-go-v2/service/sqs` against the YMQ endpoint, using static
   access keys from Lockbox. It is pinned to v1.42.27, the release built on the
   `aws-sdk-go-v2` core already in `go.mod` (v1.41.7); `@latest` would upgrade
@@ -880,12 +880,16 @@ Carried to C3 and C4 (final review of Plan C1):
   least the short job timeout plus a margin, and the long queue's is at least
   the long job timeout plus a margin. Each Message Queue trigger's own
   `visibility_timeout` is left unset or set equal to its queue's.
+  **Settled in C3**: `jobs` is 120 s, `jobs-long` is 3900 s, and the trigger's
+  own `visibility_timeout` stays unset.
 - **Retry budget.** `maxReceiveCount=5` with a fixed visibility timeout gives a
   few minutes of retries; River gives 25 attempts with exponential backoff. C3
   decides the short queue's `maxReceiveCount`. C3 also checks in the YC docs
   whether a throttled invocation (container instance limit, HTTP 429) consumes
   a receive count. If it does, a campaign fan-out can dead-letter jobs that
   never ran.
+  **Settled in C3**: `maxReceiveCount` is 20 on `jobs` and 10 on `jobs-long`,
+  because a 429 consumes a receive.
 - **DLQ alerts.** Alert on the depth of both job DLQs and of the Data Streams
   trigger's DLQ.
 - **Feedback recovery.** A dead-lettered `feedback.process` leaves a staged
@@ -901,11 +905,15 @@ Carried to C3 and C4 (final review of Plan C1):
 - **Instance limits.** Size the worker container's instance limit against the
   campaign fan-out, or give `jobs-long` its own container built from the same
   image.
+  **Settled in C3**: instance limits cannot be set per container, so `jobs-long`
+  keeps the one `worker` container and sizing is a quota request.
 - **IAM.** Bind `serverless.containers.invoker` per container, not
   folder-wide. The API Gateway's service account has no binding on `worker`;
   only the triggers' service account and the deploy step invoke it. Anyone who
   can invoke `worker` can start campaigns, send verification and opt-in
   emails, inject bounces that suppress addresses, and run migrations.
+  **Settled in C3**: invoker is bound per container. `gateway` gets it on `api`
+  and `frontend`, the trigger service account on `worker` only.
 - **Config.**
   - The domain-sweep timer fires no more often than `VerifyInterval`, as
     `cmd/scheduler` does today.

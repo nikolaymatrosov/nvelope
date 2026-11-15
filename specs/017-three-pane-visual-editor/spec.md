@@ -4,7 +4,9 @@
 
 **Created**: 2026-05-31
 
-**Status**: Draft
+**Status**: Implemented
+
+**Superseded**: the layout was later replaced by the editor shell, see [editor-shell design](../../docs/superpowers/specs/2026-11-14-editor-shell-design.md) (`ThreePaneEditor` removed, `EditorScreen` replaces it).
 
 **Input**: User description: "I want make visual editor three pane. Side pannels shoul be collapsable. Left pannel shoud show the document structure. Right pane should be params editor so user can easyly fine tune params of the selected block — bg, corner radius, font params etc"
 

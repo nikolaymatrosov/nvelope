@@ -25,10 +25,13 @@ function asset(overrides: Partial<MediaAssetView> = {}): MediaAssetView {
 // Seed the cache so the picker's useQuery resolves synchronously with no
 // network — the query key is queryKeys.media(SLUG) and the queryFn returns the
 // `{ items }` payload. Each story passes the items it wants pre-loaded.
+// staleTime: Infinity keeps the seed fresh: with the default 0 the picker
+// refetches on mount, the request 404s in the test runner, and AsyncState
+// swaps the grid for its error state under the story's clicks.
 function seededDecorator(items: Array<MediaAssetView>) {
   return function Decorator(Story: () => React.ReactElement) {
     const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     })
     client.setQueryData(queryKeys.media(SLUG), { items })
     return <QueryClientProvider client={client}>{Story()}</QueryClientProvider>

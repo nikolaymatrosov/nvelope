@@ -17,9 +17,10 @@ import { PlatformDefaultTheme, renderVisualDoc } from "./index"
 import type { VisualDoc } from "./types"
 
 // Mirror of `frontend/src/server/validate/blocks.test.ts` — the tenant
-// media prefix used by the render fixtures. Real deployments resolve this
-// from `process.env.OBJECT_STORAGE_PUBLIC_BASE_URL`; the test pins a
-// canonical value so the regex assertion is precise.
+// media prefix used by the render fixtures. Real library URLs are
+// `${NVELOPE_BASE_URL}/t/{slug}/api/media/{id}/content`; the renderer passes
+// mediaRef through unchanged, so the test pins a canonical value to keep the
+// regex assertion precise.
 const TENANT_MEDIA_PREFIX = "https://media.test/tenants/abc/"
 const TENANT_MEDIA_REGEX = /^https:\/\/media\.test\/tenants\/abc\/[^"'\s]+$/
 
