@@ -3462,3 +3462,13 @@ git commit -m "test(campaign): run the send pipeline on both backends"
   - build `NewYDBTemplates`, `NewYDBCampaigns`, `NewYDBRecipients`, `NewYDBTracking` and `NewYDBTransactionalMessages` over the `*ydb.Driver`, and pass them where the pg ones go;
   - pass the already-ported `NewYDBRateLimiter` to the batch worker.
 - **Plan B8** reads `idx_campaign_recipients_provider` and `idx_transactional_messages_provider` (created here) and must tolerate a dangling `campaign_recipient_id` (spec "Plan B7 planning spike", "For B8, B9 and C4").
+
+## Review follow-ups
+
+Fixes applied after the final review (the task code blocks above are unchanged):
+
+- `YDBRecipients.BulkInsert` reads the chunk's subscribers in its `DoTx` and fails if one is missing, standing in for the Postgres foreign key.
+- `YDBCampaigns.SaveTargets` reads the targeted lists in its `DoTx` and fails if one is missing, standing in for `campaign_lists.list_id`.
+- The YDB test seeds `newSubscriber` and `newList` now insert real rows.
+- New tests: unknown subscriber on `BulkInsert`, unknown list on `SaveTargets`, tenant B view count, a second campaign keeping its template on template delete, a provider message id recorded under a second tenant.
+- Spec notes corrected: JSON byte-for-byte on YDB, `media.Publish` in the `Update` closures (V6), the global NULL provider key, the stand-in reads under foreign keys.

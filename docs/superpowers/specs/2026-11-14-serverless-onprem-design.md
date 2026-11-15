@@ -560,7 +560,7 @@ The 1,000-row truncation applies to the legacy `ExecuteDataQuery` path and its a
 
 Scanned: 39 UpdateFn closures outside pg adapters (the grep listed 40 lines; `internal/dbtest/ydb.go:117` is `context.WithTimeout`, not a closure site, and `internal/auth/app/command/set_locale.go:43` passes no closure); 129 transaction bodies in pg adapters.
 
-No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier, blob store or Postbox client, sleeps, or uses a channel. The enqueues in `StartCampaign`, `ResumeCampaign` and `StartWorker` run after `Update` returns, and the verifier check in `VerifyWorker` runs before it. `MediaRefValidator.IsTenantMediaRef(ref string) bool` takes no context and is pure, so `ApplyVisualSave` inside the save-visual closures is safe. Plain assignments to outer variables (`updated = s`, `res.CurrentUpdatedAt = ...`) are safe: the last run wins. The pg adapter bodies reference only `tx`, locals and pure helpers (the adapters hold only `pool`); there is no injected port, no HTTP/S3/Postbox call, no enqueue, no channel op, and no `slog`/`log` call inside any transaction body.
+No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier or Postbox client, sleeps, or uses a channel, with one exception: the `media.Publish` calls below, which reach the blob store (S3). The enqueues in `StartCampaign`, `ResumeCampaign` and `StartWorker` run after `Update` returns, and the verifier check in `VerifyWorker` runs before it. `MediaRefValidator.IsTenantMediaRef(ref string) bool` takes no context and is pure, so `ApplyVisualSave` inside the save-visual closures is safe. Plain assignments to outer variables (`updated = s`, `res.CurrentUpdatedAt = ...`) are safe: the last run wins. The pg adapter bodies reference only `tx`, locals and pure helpers (the adapters hold only `pool`); there is no injected port, no HTTP/S3/Postbox call, no enqueue, no channel op, and no `slog`/`log` call inside any transaction body.
 
 | Site (file:line) | Class | What repeats on retry | Fix in Plan B |
 |------------------|-------|-----------------------|---------------|
@@ -570,6 +570,7 @@ No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier,
 | `internal/billing/app/command/charge_invoice.go:259` (billing, not ported) | safe-time-inside | `i.MarkPaid(time.Now())` timestamp advances on retry. | Not ported. |
 | `internal/iam/app/command/sessions.go:152` | safe-time-inside | `s.Revoke(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
 | `internal/campaign/app/command/set_archive_visibility.go:35` | safe-time-inside | `SetArchiveVisible(..., time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
+| `internal/campaign/app/command/campaigns.go:236-247`, `templates.go:105-111`, `save_visual_template.go:88-96` | external-call-idempotent | `media.Publish` copies the tenant's media to a fixed S3 key and skips assets already published, inside the `Update` closure. On YDB a `DoTx` retry re-runs it. | Accept: the publish is idempotent, so a re-run copies nothing new. |
 | `internal/campaign/app/command/campaigns.go:214` | safe-time-inside | `c.Start(time.Now())` timestamp advances on retry. The enqueue is outside the closure. | Accept; keep `EnqueueStart` after `Update` returns. |
 | `internal/campaign/adapters/batch_worker.go:258` | safe-time-inside | `c.Finish(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
 | `internal/audience/adapters/import_worker.go:40` | safe-time-inside | `j.Start(time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
@@ -1035,7 +1036,9 @@ Decisions for Plan B7:
   column. Counts and `max_send_errors` are `Int64` so a Go `int` binds without
   a narrowing conversion. `body_doc` and `theme` are JSON stored and read back
   whole, so plain nullable `Utf8` (Postgres `jsonb` normalizes key order and
-  spacing; the domain's `normalizeRawJSON` already normalizes on hydrate).
+  spacing). `normalizeRawJSON` only trims whitespace and maps `null` to nil, so
+  YDB returns `body_doc`, `theme` and `segment_query` byte-for-byte as written
+  and Postgres its canonical `jsonb` form; no Go code compares the bytes.
 - **Keys.**
   - `templates`, `campaigns`, `links` and the two event tables: `(tenant_id,
     id)`. `templates` has a unique `(tenant_id, name)` index, as Postgres has.
@@ -1060,6 +1063,12 @@ Decisions for Plan B7:
   read in chunks of 1000 inside the adapter. Pending is filtered in Go, so a
   window never shifts as rows are sent.
 - **The Postgres foreign keys.**
+  - Stand-in reads, as `YDBMemberships.Attach` does: `YDBRecipients.BulkInsert`
+    reads the chunk's subscribers in its `DoTx` and fails if one is missing,
+    and `YDBCampaigns.SaveTargets` reads the targeted lists in its `DoTx` and
+    fails if one is missing. A concurrent `Subscribers.Delete` or list delete
+    then conflicts with the insert, so a start job racing a delete cannot mail
+    a deleted subscriber.
   - `YDBLists.Delete` also deletes the campaign's `campaign_lists` rows for the
     list, through `idx_campaign_lists_list`. Without it a campaign would keep
     a target that resolves nothing, or fails.
@@ -1199,9 +1208,10 @@ These are known limits, marked in code with `ponytail:` comments.
   committed and its response was lost, because the retry finds its rows. No
   caller uses the count.
 - Every `MarkSent` updates `campaign_recipients` and the provider-message-id
-  index. Until a recipient is sent, its `provider_message_id` is NULL, so all
-  of a campaign's unsent recipients share one index key; the primary key
-  suffix of the index entry lets YDB split it.
+  index. Until a recipient is sent, its `provider_message_id` is NULL, so
+  the index is global and every unsent, failed and skipped recipient of every
+  campaign and tenant shares the NULL key; the primary key suffix of the index
+  entry lets YDB split it.
 
 ## Implementation phasing
 
