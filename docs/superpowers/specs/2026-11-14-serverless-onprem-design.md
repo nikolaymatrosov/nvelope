@@ -191,7 +191,7 @@ Each container is built from an existing image. There are no new binaries.
 | `INSERT ... ON CONFLICT DO NOTHING` that must report whether it inserted (`StageInbound`, `RecordEvent`) | `SELECT` through the unique index, then `INSERT` when absent, in one `DoTx`. A concurrent identical write aborts one transaction and the SDK retries it, so exactly one writes (Plan B8; `TestEventsStageInboundIsRaceFree`, `TestEventsRecordEventIsRaceFree`). |
 | a per-campaign aggregate that is a correlated `(SELECT count(...) ... WHERE x.campaign_id = c.id)` subquery (`campaign_analytics` refresh) | named subqueries `$name = SELECT campaign_id, COUNT(...) ... GROUP BY campaign_id;` and `LEFT JOIN`s from `campaigns`, written by `UPSERT INTO ... SELECT`. `count(DISTINCT x) FILTER (...)` becomes `COUNT(DISTINCT IF(cond, x))`. The select list must alias each column to its table column name, and a `COALESCE(count, 0ul)` is cast and wrapped: `Unwrap(CAST(COALESCE(n, 0ul) AS Int64))` (Plan B8). |
 | a nullable numeric column the domain reads as `0` for "absent" (`media_assets.width`, `height`: `COALESCE(width, 0)`, NULL for a PDF so that `CHECK (> 0)` holds) | a `NOT NULL Int32` column that stores `0`. With no CHECK constraints, the CHECK is the reason Postgres needed NULL, and the adapter scans into `int32` and converts (Plan B9). |
-| a read-then-write `UPDATE ... SET c = COALESCE(c, $v)` that must report a missing row (`MarkPublished`) | `SELECT` the row in the `DoTx` (no row: not-found), return when the column is already set, else `UPDATE` by primary key (Plan B9; six concurrent calls on one asset commit once). |
+| a read-then-write `UPDATE ... SET c = COALESCE(c, $v)` that must report a missing row (`MarkPublished`) | `SELECT` the row in the `DoTx` (no row: not-found), return when the column is already set, else `UPDATE` by primary key (Plan B9; six concurrent calls on one asset all succeed and leave it published (spike)). |
 | `SECURITY DEFINER` functions (6) | ordinary queries. With no RLS, the privilege bypass they existed for is unnecessary. Billing-only functions are dropped. |
 
 ### Throttling
@@ -585,11 +585,11 @@ No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier 
 | `internal/audience/adapters/export_worker.go:66` | safe-time-inside | `j.Complete(..., time.Now())` timestamp advances on retry. | Accept: timestamp may advance on retry. |
 | `internal/auth/app/command/signup.go:87-99` (the `issueVerification` callback passed to `CreateWithVerification`; `CreateWithSession` takes the same kind of `issueSession` callback) | safe (last write wins) | `token.New()` runs again and the outer `rawToken` is overwritten by the last run, which is the run whose hash is persisted. | None; documented on the port. |
 | `internal/campaign/adapters/recipients_pg.go:49` (`BulkInsert`) | unsafe-mutation (pg body) | `inserted += tag.RowsAffected()` on an outer counter: a retry double-counts rows the first attempt inserted (the rolled-back attempt's count is not undone). | Declare the counter inside the closure and assign it to the outer variable once at the end, or reset `inserted = 0` at closure start. |
-| `internal/audience/adapters/lists_pg.go:165`, `memberships_pg.go:119`, `subscribers_pg.go:205`, `subscribers_pg.go:247`, `subscribers_pg.go:285`, `subscription_pages_pg.go:191`, `internal/billing/adapters/invoices_pg.go:179` (billing, not ported), `internal/campaign/adapters/templates_pg.go:152`, `campaigns_pg.go:201`, `campaigns_pg.go:232`, `campaigns_pg.go:285`, `recipients_pg.go:88`, `internal/deliverability/adapters/suppression_pg.go:118`, `analytics_pg.go:100` (`dash.Recent`), `internal/iam/adapters/audit_pg.go:82`, `roles_pg.go:156`, `apikeys_pg.go:132`, `internal/sending/adapters/domains_pg.go:164`, `domains_pg.go:189`, `internal/media/adapters/assets_pg.go:115` | unsafe-mutation (pg body, read paths) | Each does `append` to a slice declared outside the transaction closure. A retry after a partial read appends the rows again, returning duplicates. | Rewritten in Plan B anyway: build the slice inside the closure and assign it to the outer variable at the end (`result = local`), or reset it (`out = nil`) at closure start. Apply to every YDB read helper that collects rows inside a `DoTx` closure. |
+| `internal/audience/adapters/lists_pg.go:165`, `memberships_pg.go:119`, `subscribers_pg.go:205`, `subscribers_pg.go:247`, `subscribers_pg.go:285`, `subscription_pages_pg.go:191`, `internal/billing/adapters/invoices_pg.go:179` (billing, not ported), `internal/campaign/adapters/templates_pg.go:152`, `campaigns_pg.go:201`, `campaigns_pg.go:232`, `campaigns_pg.go:285`, `recipients_pg.go:88`, `internal/deliverability/adapters/suppression_pg.go:118`, `analytics_pg.go:100` (`dash.Recent`), `internal/iam/adapters/audit_pg.go:82`, `roles_pg.go:156`, `apikeys_pg.go:132`, `internal/sending/adapters/domains_pg.go:164`, `domains_pg.go:189`, `internal/media/adapters/assets_pg.go:147` | unsafe-mutation (pg body, read paths) | Each does `append` to a slice declared outside the transaction closure. A retry after a partial read appends the rows again, returning duplicates. | Rewritten in Plan B anyway: build the slice inside the closure and assign it to the outer variable at the end (`result = local`), or reset it (`out = nil`) at closure start. Apply to every YDB read helper that collects rows inside a `DoTx` closure. |
 
 All other sites are `safe`.
 
-Plan B9 note: `YDBAssets.List` (the YDB counterpart of `assets_pg.go:115`) builds its rows in a local and assigns them at the end. The Postgres adapter is unchanged.
+Plan B9 note: `YDBAssets.List` (the YDB counterpart of `assets_pg.go:147`) builds its rows in a local and assigns them at the end. The Postgres adapter is unchanged.
 
 ### Plan B2 planning spike
 
@@ -1302,11 +1302,11 @@ plan then passed stage by stage (see the plan).
 - **No new YQL construct.** Every statement is one B1 to B8 already verified:
   a keyed `SELECT`, `INSERT` with `CurrentUtcTimestamp()`, `DELETE ... RETURNING
   id` (not-found on no row, as `YDBTemplates.Delete`), `UPDATE` by primary key,
-  and `ORDER BY created_at DESC, id DESC` over the tenant's key range. The new
-  parts are a `Timestamp` parameter bound with `.Timestamp(at)`, an
-  `Optional<Utf8>` bound from a `*string`, and `Int32` parameters bound from
-  `int32`; all three worked on the first run, and the nullable `Timestamp` and
-  `Utf8` columns scan into `*time.Time` and `*string`.
+  and `ORDER BY created_at DESC, id DESC` over the tenant's key range. Only
+  the `Int32` binding (from `int32`) is new; the `Timestamp` binding
+  (`invitations_ydb.go`) and `Optional<Utf8>` from a `*string` (`jobs_ydb.go`,
+  `campaigns_ydb.go`) already exist. It worked on the first run, and the
+  nullable `Timestamp` and `Utf8` columns scan into `*time.Time` and `*string`.
 - **The suite passes on both backends.** Add/Get/List/Delete, unknown and
   non-UUID ids, tenant scoping (a second tenant's `Get`, `Delete`,
   `MarkPublished` and `List` see nothing), newest-first order, `MarkPublished`
@@ -1336,13 +1336,15 @@ Decisions for Plan B9:
 - **`List` orders by `created_at DESC, id DESC` in YQL.** The tie-break makes
   the order total; Postgres has none. Ceiling recorded.
 - **`MarkPublished` is read, then write, in one `DoTx`** (the pg adapter's
-  `COALESCE(published_at, $2)` plus a rows-affected check). It keeps the first
-  timestamp and returns `ErrMediaNotFound` for a missing row.
+  `COALESCE(published_at, $2)` plus a rows-affected check). It returns
+  `ErrMediaNotFound` for a missing row.
 - **`Delete` is a single `DELETE ... RETURNING id`.** The handler already
   removes the public copy and the private object around it, in this order, so a
   failed object delete leaves an orphan and never a row that points nowhere.
-- **The blob store is unchanged.** Both runtimes use `S3BlobStore`. S3 calls
-  stay outside the repository, so there is no S3 call inside a `DoTx` (V6).
+- **The blob store is unchanged.** Both runtimes use `S3BlobStore`. The media
+  repository makes no S3 call inside its own `DoTx`; the campaign `Update`
+  closures' publish copy is the V6 exception, which `TestPublishAssetsIsRepeatable`
+  covers.
   `MemoryBlobStore` keeps serving the use-case tests.
 - **User decisions of the media library are untouched.** Deleting an asset
   keeps its public copy unless `Unpublish` is set; no SVG; library URLs stay on
@@ -1399,13 +1401,22 @@ For C4 and the completeness of Plan B:
     (see "Throttling"). `campaignadapters.NewRateLimiter` likewise has
     `NewYDBRateLimiter`.
   - The River-based workers (`Import`, `Export`, `Optin`, `Start`, `Batch`,
-    `Verify`, `Feedback`, `Analytics`) are generic over the ports and take the
+    `Verify`, `Feedback`, `Analytics`, and `authadapters.NewVerificationWorker`
+    over `UserRepository`) are generic over the ports and take the
     YDB repositories; `authadapters.NewVerificationCleanupWorker` is not needed
     (table TTL). `cmd/scheduler`'s `sweepPendingDomains`,
-    `enqueueAnalyticsRefresh` and `enqueueUsageRollup` read pg directly: in
-    serverless mode the `/cron/*` routes replace them (C1).
+    `enqueueAnalyticsRefresh` and `enqueueUsageRollup` read pg directly: the
+    `/cron/domain-verify-sweep` and `/cron/analytics-refresh` routes that replace
+    the first two were built in C1 (`internal/service/worker_routes.go`). Only the
+    billing usage-rollup has no route (billing is not wired); B8's
+    `/cron/feedback-sweep` route and its timer remain for C4/C3.
   - `iamadapters.NewTOTP`, `authadapters.NewPasswordHasher` and
-    `campaignadapters.NewPostboxMessenger` hold no storage.
+    `campaignadapters.NewPostboxMessenger` hold no storage, as do
+    `deliverabilityadapters.NewSuppressionApplier`,
+    `campaignadapters.NewUnsubscribeLinker` and
+    `sendingadapters.NewPostboxProvisioner` (generic over ports).
+    `NewNotificationParser` and `NewStreamReader` are used only by `cmd/consumer`
+    and are unused in serverless mode.
   - `platform/jobs` (River) and `platform/tenantdb` are pg-only by design and
     stay out of the serverless builder.
 
