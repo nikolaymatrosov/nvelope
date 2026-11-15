@@ -106,7 +106,6 @@ func (s *Server) Handler() http.Handler {
 
 		r.Get("/tenant", s.handleTenantInfo)
 		r.Get("/settings", s.handleGetSettings)
-		r.Put("/settings", s.handleUpdateSettings)
 		r.Post("/invitations", s.handleCreateInvitation)
 		r.Get("/invitations", s.handleListInvitations)
 		r.Delete("/invitations/{id}", s.handleRevokeInvitation)
@@ -130,7 +129,8 @@ func (s *Server) Handler() http.Handler {
 			// appear in both places, or chi panics on the duplicate pattern.
 			s.mountGeneratedTenantAPI(r)
 
-			// Workspace content-safety setting (feature: content security).
+			// Workspace settings: display name/timezone and content safety.
+			r.Put("/settings", s.handleUpdateSettings)
 			r.Put("/settings/raw-html-sanitization", s.handleSetRawHTMLSanitization)
 
 			// Audience — lists, subscribers, and import/export (US1, US3) are
