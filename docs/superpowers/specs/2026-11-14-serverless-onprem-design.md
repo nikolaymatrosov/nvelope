@@ -179,7 +179,7 @@ Each container is built from an existing image. There are no new binaries.
 | `bytea` file payloads (`import_export_jobs.file_bytes`: an import upload of up to 32 MB, an export of any size) | a private Object Storage object `jobs/<tenant_id>/<job_id>` in the media bucket; the row keeps a nullable `file_key` (Plan B6). A YDB cell holds at most 16 MiB ("Plan B6 planning spike"). |
 | `text[]` read back whole (`roles.permissions`, `api_keys.permissions`, `lists.tags`) | a JSON array in a plain `Utf8` column (Plan B4). An empty slice is stored as `[]`, so it reads back as an empty slice, as Postgres reads back `'{}'`. |
 | `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`, audience `subscribers.email`), the column itself carries the unique index. A query that compares such a column with user input lower-cases the input in Go (the segment `email` condition, Plan B5). Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
-| foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
+| foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A stand-in read may also target another context's table already on YDB (iam per-list role assignments read audience `lists`, Plan B6). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
 | `ORDER BY` on a text column | YDB orders `Utf8` by bytes, pg by the database collation, so mixed-case and non-ASCII values order differently. Acceptable for display lists (iam `roles` by `name`). If a later plan needs collation-equal order, sort in Go or store a sort key. |
 | bound parameters (`$1`, `@name`) | `$name` parameters, each declared explicitly with `DECLARE $name AS <Type>;`. String literals that target a `Utf8` column take the `u` suffix (`"pending"u`); a bare `"..."` literal is `String`. Identifiers avoid YQL keywords (e.g. `throttle_key`, not `key`). |
 | segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | its own YQL port, `segment_yql.go` (Plan B5). The attribute key is bound, never part of the path: `JSON_VALUE(s.attributes, "$.keyvalue() ? (@.name == $k).value" PASSING $pN AS k)` for `->>`, the same path in `JSON_EXISTS` for `?`, and `CAST(JSON_VALUE(...) AS Double)` for `::numeric`. A list-membership condition is `s.id IN (SELECT subscriber_id FROM subscriber_lists VIEW ... WHERE ...)`, because YQL has no correlated `EXISTS`. |
@@ -906,8 +906,15 @@ Decisions for Plan B6:
   The bucket is private except `published/*` (media library), so subscriber
   data is never public. The port does not change.
   - The object is written before the row that references it (`AddImport`,
-    `StageResult`), so a row never points at a missing object. When the row
-    write fails, the object is deleted best-effort.
+    `StageResult`), so a row does not point at a missing object. When the row
+    write fails, the object is deleted best-effort. The one exception is an
+    ambiguous insert failure: the commit succeeded but the response was lost,
+    and the delete removes the object of a row that exists. That row is
+    unreachable (`StartImportHandler` returns the error before enqueueing, and
+    the port has no List), and `StagedFile` on it fails loudly.
+  - `import_export_jobs.failures` is a `Utf8` cell, capped at 16 MiB. `UpdateImport`
+    stores at most the first 10000 failures (`ydbMaxStoredFailures`);
+    `failed_count` stays exact. Postgres stores them all.
   - `file_key` is NULL until the job has a file: `StagedFile` then returns
     nil, as Postgres does for a NULL `file_bytes`. A row whose object is gone
     is an error, never an empty file.
@@ -953,6 +960,14 @@ Decisions for Plan B6:
     `NewYDBSubscriptionPages` and `NewYDBPendingSubscriptions`.
   - The `api` and `worker` service accounts need read and write on the media
     bucket. C3's bucket policy keeps anonymous read on `published/*` only.
+  - **C3.** Public read on the media bucket must come only from the bucket
+    policy on `published/*`. Bucket-wide anonymous read (the YC bucket's
+    `anonymous_access_flags.read`) must stay off, because `jobs/` holds
+    subscriber PII. Add a C3 smoke check: an anonymous GET on a `jobs/` key
+    expects 403.
+  - **C4.** The S3 client for `NewYDBJobs` must copy
+    `mediaadapters.NewS3BlobStore`'s options, including the `Region: "auto"`
+    fallback when `cfg.ObjectStorageRegion` is empty.
 
 ## Ceilings
 
@@ -1012,6 +1027,9 @@ These are known limits, marked in code with `ponytail:` comments.
   together with a retention period for job rows. An object whose row insert
   failed and whose best-effort delete also failed stays as an unreferenced
   private object.
+- An import stores at most its first 10000 row failures on YDB, because a YDB
+  cell holds 16 MiB. `failed_count` stays exact. The upgrade path is to keep
+  the full list as an Object Storage object next to the job file.
 - The `/jobs` dispatcher assumes the trigger's batch size 1. With a larger
   batch, one failed job redelivers the whole batch, including jobs that
   already succeeded.

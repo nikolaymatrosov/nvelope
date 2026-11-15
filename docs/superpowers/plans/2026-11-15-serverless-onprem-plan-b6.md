@@ -2829,5 +2829,6 @@ Expected: `No such file or directory`. Every audience suite is a pg+ydb contract
     - The confirmation-token hash is unique per tenant on YDB and globally on pg. A random 256-bit hash makes the difference unobservable.
     - Assigning a role on an unknown list: pg returns a wrapped foreign-key error; YDB returns `ErrListNotFound`.
     - `AddImport` with nil bytes: pg stores NULL and `StagedFile` returns nil; YDB stores an empty object and returns an empty slice. No caller passes nil.
+    - An import stores at most its first 10000 row failures on YDB (a cell holds 16 MiB); `failed_count` stays exact. Postgres stores them all.
     - YDB accepts values the Postgres `CHECK` constraints forbid (`import_export_jobs.kind` and `status`). None is reachable through the domain constructors.
   - **Ceilings.** Listed under the spec's "Ceilings": job files in Object Storage are never deleted, as Postgres keeps `file_bytes`; a failed best-effort delete leaves an unreferenced private object.

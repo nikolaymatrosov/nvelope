@@ -187,6 +187,42 @@ func TestYDBJobsFilesArePrivate(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestYDBJobsCapStoredImportFailures pins the YDB-only cap on stored failures:
+// a YDB cell holds 16 MiB, so only the first 10000 are kept while the count
+// stays exact.
+func TestYDBJobsCapStoredImportFailures(t *testing.T) {
+	t.Parallel()
+	repo := adapters.NewYDBJobs(dbtest.YDBMigrated(t), dbtest.S3Client(t), dbtest.S3Bucket)
+	ctx := context.Background()
+	tenantID := uuid.NewString()
+
+	job, err := domain.NewImportJob(tenantID, requester, "subs.csv", nil)
+	require.NoError(t, err)
+	id, err := repo.AddImport(ctx, tenantID, job, []byte("email\n"))
+	require.NoError(t, err)
+
+	const total = 10001
+	failures := make([]domain.RowFailure, total)
+	for i := range failures {
+		failures[i] = domain.RowFailure{Row: i + 2, Reason: "email is not valid"}
+	}
+	require.NoError(t, repo.UpdateImport(ctx, tenantID, id, func(j *domain.ImportJob) (*domain.ImportJob, error) {
+		if err := j.Start(time.Now()); err != nil {
+			return nil, err
+		}
+		return j, j.Complete(0, 0, total, failures, time.Now())
+	}))
+
+	got, err := repo.GetImport(ctx, tenantID, id)
+	require.NoError(t, err)
+	require.Len(t, got.Failures(), 10000)
+	require.Equal(t, failures[0], got.Failures()[0])
+	summary, err := repo.Summary(ctx, tenantID, id)
+	require.NoError(t, err)
+	require.Len(t, summary.Failures, 10000)
+	require.Equal(t, total, summary.FailedCount)
+}
+
 func TestImportWorker(t *testing.T) {
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, b backend) {

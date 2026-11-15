@@ -36,8 +36,8 @@ const ydbPendingSubscriptionColumns = `id, tenant_id, subscription_page_id, emai
 
 // Upsert creates the pending subscription, or refreshes the existing one for
 // the same (tenant, email, page), and returns the row's id. It is the
-// Postgres ON CONFLICT DO UPDATE: a read through the unique index, then an
-// UPDATE or INSERT in one transaction. Concurrent upserts of one key abort
+// Postgres ON CONFLICT DO UPDATE: a read through the unique index, then one
+// UPSERT under the found id or a fresh one, in one transaction. Concurrent upserts of one key abort
 // each other, and the SDK retries the loser, which then sees the winner's row.
 func (r *YDBPendingSubscriptions) Upsert(ctx context.Context, tenantID string,
 	p *domain.PendingSubscription) (string, error) {

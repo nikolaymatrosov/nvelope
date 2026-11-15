@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -21,8 +22,12 @@ import (
 // serverless runtime. The job record is a YDB row; the staged upload (import)
 // or generated file (export) is a private Object Storage object, because a
 // YDB cell holds at most 16 MiB and an upload may be 32 MB. The object is
-// written before the row that references it, so a row never points at a
-// missing object.
+// written before the row that references it, so a row does not point at a
+// missing object. The one exception is an ambiguous insert failure (the commit
+// succeeded but the response was lost): the best-effort delete then removes
+// the object of a row that exists. That row is unreachable, because
+// StartImportHandler returns the error before enqueueing and the port has no
+// List, and StagedFile on it fails loudly.
 type YDBJobs struct {
 	driver *ydb.Driver
 	files  *s3.Client
@@ -42,6 +47,10 @@ func NewYDBJobs(d *ydb.Driver, files *s3.Client, bucket string) *YDBJobs {
 const ydbJobColumns = `id, kind, requested_by, status, params, file_name,
     created_count, updated_count, failed_count, row_count, failures,
     created_at, started_at, finished_at`
+
+// ydbMaxStoredFailures caps the failures UpdateImport stores. About 60 bytes of
+// JSON each, 10000 stay far under the 16 MiB cell limit.
+const ydbMaxStoredFailures = 10000
 
 // ydbJobFileKey is the object key of a job's file. Import and export jobs
 // never share an id, so one key shape serves both.
@@ -170,7 +179,14 @@ func (r *YDBJobs) UpdateImport(ctx context.Context, tenantID, id string,
 			return err
 		}
 		created, upd, failed := updated.Counts()
-		failures, err := json.Marshal(updated.Failures())
+		// ponytail: failures past ydbMaxStoredFailures are dropped (failed_count
+		// stays exact); to keep them all, store the full list as an Object
+		// Storage object next to the job file.
+		stored := updated.Failures()
+		if len(stored) > ydbMaxStoredFailures {
+			stored = stored[:ydbMaxStoredFailures]
+		}
+		failures, err := json.Marshal(stored)
 		if err != nil {
 			return fmt.Errorf("encoding failures: %w", err)
 		}
@@ -346,8 +362,15 @@ func (r *YDBJobs) getFile(ctx context.Context, key string) ([]byte, error) {
 }
 
 // removeFile deletes an object no row references. It is best-effort: an
-// orphan is a private object that nothing reads.
+// orphan is a private object that nothing reads. It runs detached from ctx,
+// because the row write may have failed on a cancelled ctx.
+//
+// ponytail: job files are never otherwise deleted, and a failed delete leaves
+// an unreferenced private object; add a lifecycle rule on jobs/ plus job-row
+// retention.
 func (r *YDBJobs) removeFile(ctx context.Context, key string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
 	_, _ = r.files.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(r.bucket),
 		Key:    aws.String(key),
