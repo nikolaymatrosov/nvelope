@@ -25,6 +25,7 @@ type backend struct {
 	templates     func(t *testing.T) domain.TemplateRepository
 	campaigns     func(t *testing.T) domain.CampaignRepository
 	recipients    func(t *testing.T) domain.RecipientRepository
+	tracking      func(t *testing.T) domain.TrackingRepository
 	transactional func(t *testing.T) domain.TransactionalMessageRepository
 	// The seeds below create rows owned by other contexts. On Postgres they
 	// are real rows, because the campaign tables carry foreign keys to them.
@@ -37,6 +38,8 @@ type backend struct {
 	// The probes read what no port exposes.
 	providerMessageID  func(t *testing.T, tenantID, recipientID string) string
 	transactionalCount func(t *testing.T, tenantID string) int
+	clickCount         func(t *testing.T, tenantID, linkID string) int
+	viewCount          func(t *testing.T, tenantID, campaignID string) int
 }
 
 var backends = []backend{
@@ -50,6 +53,9 @@ var backends = []backend{
 		},
 		recipients: func(t *testing.T) domain.RecipientRepository {
 			return adapters.NewRecipients(dbtest.AppPool(t))
+		},
+		tracking: func(t *testing.T) domain.TrackingRepository {
+			return adapters.NewTracking(dbtest.AppPool(t))
 		},
 		transactional: func(t *testing.T) domain.TransactionalMessageRepository {
 			return adapters.NewTransactionalMessages(dbtest.AppPool(t))
@@ -70,6 +76,12 @@ var backends = []backend{
 		transactionalCount: func(t *testing.T, tenantID string) int {
 			return pgCount(t, tenantID, "SELECT count(*) FROM transactional_messages", nil)
 		},
+		clickCount: func(t *testing.T, tenantID, linkID string) int {
+			return pgCount(t, tenantID, "SELECT count(*) FROM link_clicks WHERE link_id = $1", linkID)
+		},
+		viewCount: func(t *testing.T, tenantID, campaignID string) int {
+			return pgCount(t, tenantID, "SELECT count(*) FROM campaign_views WHERE campaign_id = $1", campaignID)
+		},
 	},
 	{
 		name: "ydb",
@@ -81,6 +93,9 @@ var backends = []backend{
 		},
 		recipients: func(t *testing.T) domain.RecipientRepository {
 			return adapters.NewYDBRecipients(dbtest.YDBMigrated(t))
+		},
+		tracking: func(t *testing.T) domain.TrackingRepository {
+			return adapters.NewYDBTracking(dbtest.YDBMigrated(t))
 		},
 		transactional: func(t *testing.T) domain.TransactionalMessageRepository {
 			return adapters.NewYDBTransactionalMessages(dbtest.YDBMigrated(t))
@@ -98,6 +113,16 @@ WHERE tenant_id = $tenant_id AND id = $id;`, tenantID, "$id", recipientID)
 		transactionalCount: func(t *testing.T, tenantID string) int {
 			return ydbCount(t, `DECLARE $tenant_id AS Utf8;
 SELECT COUNT(*) FROM transactional_messages WHERE tenant_id = $tenant_id;`, tenantID, "", "")
+		},
+		clickCount: func(t *testing.T, tenantID, linkID string) int {
+			return ydbCount(t, `DECLARE $tenant_id AS Utf8;
+DECLARE $k AS Utf8;
+SELECT COUNT(*) FROM link_clicks WHERE tenant_id = $tenant_id AND link_id = $k;`, tenantID, "$k", linkID)
+		},
+		viewCount: func(t *testing.T, tenantID, campaignID string) int {
+			return ydbCount(t, `DECLARE $tenant_id AS Utf8;
+DECLARE $k AS Utf8;
+SELECT COUNT(*) FROM campaign_views WHERE tenant_id = $tenant_id AND campaign_id = $k;`, tenantID, "$k", campaignID)
 		},
 	},
 }
