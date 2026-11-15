@@ -1,0 +1,37 @@
+name: Release images
+
+# A version tag publishes the images the Terraform module
+# (deploy/terraform/nvelope-serverless) runs: cr.yandex/<registry>/<name>:<tag>.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: Build and push (api · worker · frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # YC_CR_PUSHER_KEY is an authorized key (JSON) of a service account with
+      # container-registry.images.pusher on the registry. YC_REGISTRY_ID is a
+      # repository variable.
+      - name: Log in to Container Registry
+        env:
+          KEY: ${{ secrets.YC_CR_PUSHER_KEY }}
+        run: printf '%s' "$KEY" | docker login --username json_key --password-stdin cr.yandex
+
+      # Serverless Containers run only linux/amd64 images.
+      - name: Build and push
+        env:
+          REGISTRY: cr.yandex/${{ vars.YC_REGISTRY_ID }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          for name in api worker frontend; do
+            docker build --platform linux/amd64 --build-arg VERSION="$TAG" \
+              -f "deploy/docker/$name.Dockerfile" -t "$REGISTRY/$name:$TAG" .
+            docker push "$REGISTRY/$name:$TAG"
+          done
