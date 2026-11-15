@@ -207,12 +207,25 @@ VALUES ($tenant_id, $user_id, $role_id);`,
 
 // AssignListRole grants a user a per-list role, replacing any previous role
 // on that list. It returns domain.ErrRoleNotFound when the tenant has no such
-// role, standing in for the Postgres foreign key. The list is not checked: the
-// lists table belongs to the audience context.
+// role and domain.ErrListNotFound when it has no such list, standing in for
+// the Postgres foreign keys.
 func (r *YDBRoles) AssignListRole(ctx context.Context, tenantID, userID, listID, roleID string) error {
 	return r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
 		if err := ydbRoleExists(ctx, tx, tenantID, roleID); err != nil {
 			return err
+		}
+		// lists belongs to audience. Reading it stands in for the Postgres
+		// foreign key, and makes a concurrent YDBLists.Delete, which removes
+		// the list's assignments, abort one of the two transactions.
+		_, err := tx.QueryRow(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+SELECT id FROM lists
+WHERE tenant_id = $tenant_id AND id = $id;`, ydbTenantAndID(tenantID, listID))
+		if errors.Is(err, query.ErrNoRows) {
+			return domain.ErrListNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("checking list: %w", err)
 		}
 		if err := tx.Exec(ctx, `DECLARE $tenant_id AS Utf8;
 DECLARE $user_id AS Utf8;

@@ -9,6 +9,10 @@ var (
 	// ErrRoleNotFound is returned when no role matches a lookup.
 	ErrRoleNotFound = apperr.NewNotFound("role_not_found", "no such role")
 
+	// ErrListNotFound is returned when a per-list role is assigned on a list
+	// that does not exist.
+	ErrListNotFound = apperr.NewNotFound("list_not_found", "no such list")
+
 	// ErrRoleNameTaken is returned when creating or renaming a role to a name
 	// already used within the tenant.
 	ErrRoleNameTaken = apperr.NewConflict("role_name_taken", "a role with that name already exists")

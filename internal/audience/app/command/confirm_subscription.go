@@ -81,12 +81,13 @@ func (h ConfirmSubscriptionHandler) Handle(ctx context.Context,
 		return ConfirmSubscriptionResult{}, err
 	}
 
-	subscriberID, err := h.resolveID(ctx, cmd.TenantID, pending.Email())
+	// Re-load the upserted subscriber by its exact email to obtain its id.
+	subscriber, err := h.subscribers.GetByEmail(ctx, cmd.TenantID, pending.Email())
 	if err != nil {
 		return ConfirmSubscriptionResult{}, err
 	}
 	for _, listID := range pending.TargetListIDs() {
-		if err := h.confirmMembership(ctx, cmd.TenantID, subscriberID, listID); err != nil {
+		if err := h.confirmMembership(ctx, cmd.TenantID, subscriber.ID(), listID); err != nil {
 			return ConfirmSubscriptionResult{}, err
 		}
 	}
@@ -95,18 +96,6 @@ func (h ConfirmSubscriptionHandler) Handle(ctx context.Context,
 		return ConfirmSubscriptionResult{}, err
 	}
 	return ConfirmSubscriptionResult{}, nil
-}
-
-// resolveID re-loads an upserted subscriber by email to obtain its id.
-func (h ConfirmSubscriptionHandler) resolveID(ctx context.Context, tenantID, email string) (string, error) {
-	subs, _, err := h.subscribers.Search(ctx, tenantID, email, domain.Page{Limit: 1})
-	if err != nil {
-		return "", err
-	}
-	if len(subs) == 0 {
-		return "", domain.ErrSubscriberNotFound
-	}
-	return subs[0].ID(), nil
 }
 
 // confirmMembership attaches the subscriber to a target list as confirmed, or

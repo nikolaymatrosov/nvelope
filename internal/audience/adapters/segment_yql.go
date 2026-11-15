@@ -98,7 +98,7 @@ func (t *ydbSegmentTranslator) field(c domain.FieldCondition) string {
 func (t *ydbSegmentTranslator) attr(c domain.AttrCondition) string {
 	path := fmt.Sprintf(`"$.keyvalue() ? (@.name == $k).value" PASSING %s AS k`, t.param(c.Key))
 	value := "JSON_VALUE(s.attributes, " + path + ")"
-	operand := func() string { return t.param(fmt.Sprintf("%v", c.Value)) }
+	operand := func() string { return t.param(segmentOperand(c.Value)) }
 	switch c.Op {
 	case domain.OpExists:
 		return "JSON_EXISTS(s.attributes, " + path + ")"

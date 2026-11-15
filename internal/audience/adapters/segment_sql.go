@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
@@ -73,6 +74,16 @@ func (t *segmentTranslator) field(c domain.FieldCondition) string {
 	}
 }
 
+// segmentOperand renders an attribute condition's value as the text that
+// Postgres ->> and YDB JSON_VALUE read a stored scalar back as. A JSON number
+// decodes to a float64, which %v would print as 1e+06 for 1000000.
+func segmentOperand(v any) string {
+	if f, ok := v.(float64); ok {
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
+	return fmt.Sprintf("%v", v)
+}
+
 // attr translates a custom-attribute condition over the jsonb column.
 func (t *segmentTranslator) attr(c domain.AttrCondition) string {
 	key := t.placeholder(c.Key)
@@ -80,15 +91,15 @@ func (t *segmentTranslator) attr(c domain.AttrCondition) string {
 	case domain.OpExists:
 		return fmt.Sprintf("s.attributes ? %s", key)
 	case domain.OpEq:
-		return fmt.Sprintf("s.attributes->>%s = %s", key, t.placeholder(fmt.Sprintf("%v", c.Value)))
+		return fmt.Sprintf("s.attributes->>%s = %s", key, t.placeholder(segmentOperand(c.Value)))
 	case domain.OpNeq:
-		return fmt.Sprintf("s.attributes->>%s <> %s", key, t.placeholder(fmt.Sprintf("%v", c.Value)))
+		return fmt.Sprintf("s.attributes->>%s <> %s", key, t.placeholder(segmentOperand(c.Value)))
 	case domain.OpContains:
 		return fmt.Sprintf("s.attributes->>%s ILIKE '%%' || %s || '%%'",
-			key, t.placeholder(fmt.Sprintf("%v", c.Value)))
+			key, t.placeholder(segmentOperand(c.Value)))
 	case domain.OpGt, domain.OpLt, domain.OpGte, domain.OpLte:
 		return fmt.Sprintf("(s.attributes->>%s)::numeric %s (%s)::numeric",
-			key, sqlComparison(c.Op), t.placeholder(fmt.Sprintf("%v", c.Value)))
+			key, sqlComparison(c.Op), t.placeholder(segmentOperand(c.Value)))
 	default:
 		return "true"
 	}

@@ -317,6 +317,28 @@ func prefixColumns(alias string) string {
 	return strings.Join(cols, ", ")
 }
 
+// GetByEmail returns the subscriber with exactly this email, or
+// domain.ErrSubscriberNotFound. The citext column compares case-insensitively.
+func (r *Subscribers) GetByEmail(ctx context.Context, tenantID, email string) (*domain.Subscriber, error) {
+	var out *domain.Subscriber
+	err := tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		s, err := scanSubscriberRow(tx.QueryRow(ctx,
+			"SELECT "+subscriberColumns+" FROM subscribers WHERE email = $1", email))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrSubscriberNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("loading subscriber by email: %w", err)
+		}
+		out = s
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (r *Subscribers) getTx(ctx context.Context, tx pgx.Tx, id string) (*domain.Subscriber, error) {
 	row := tx.QueryRow(ctx, "SELECT "+subscriberColumns+" FROM subscribers WHERE id = $1", id)
 	s, err := scanSubscriberRow(row)

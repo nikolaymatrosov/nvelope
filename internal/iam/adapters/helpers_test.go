@@ -8,6 +8,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+	ydb "github.com/ydb-platform/ydb-go-sdk/v3"
+	"github.com/ydb-platform/ydb-go-sdk/v3/query"
 
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 	"github.com/nikolaymatrosov/nvelope/internal/iam/adapters"
@@ -28,8 +30,9 @@ type backend struct {
 	audit         func(t *testing.T) domain.AuditRepository
 	// newTenant, newPlatformUser and newList return ids of rows other contexts
 	// own. On Postgres the iam tables carry foreign keys to them, so the pg
-	// backend inserts real rows. YDB has no foreign keys and no iam query reads
-	// those tables, so a bare UUID stands in.
+	// backend inserts real rows. YDB has no foreign keys. No iam query reads
+	// tenants or platform_users, so a bare UUID stands in for those; a per-list
+	// role assignment reads lists, so newList inserts a real row there too.
 	newTenant       func(t *testing.T) string
 	newPlatformUser func(t *testing.T) string
 	newList         func(t *testing.T, tenantID string) string
@@ -82,7 +85,7 @@ var backends = []backend{
 		},
 		newTenant:       func(*testing.T) string { return uuid.NewString() },
 		newPlatformUser: func(*testing.T) string { return uuid.NewString() },
-		newList:         func(*testing.T, string) string { return uuid.NewString() },
+		newList:         seedYDBList,
 	},
 }
 
@@ -119,6 +122,26 @@ func seedList(t *testing.T, pool *pgxpool.Pool, tenantID string) string {
 				"INSERT INTO lists (tenant_id, name) VALUES ($1, $2) RETURNING id",
 				tenantID, "L-"+dbtest.RandString()).Scan(&id)
 		}))
+	return id
+}
+
+// seedYDBList inserts a row into the audience context's lists table, which a
+// per-list role assignment reads on YDB in place of the Postgres foreign key.
+// Raw YQL keeps the iam tests from importing another context.
+func seedYDBList(t *testing.T, tenantID string) string {
+	t.Helper()
+	id := uuid.NewString()
+	require.NoError(t, dbtest.YDBMigrated(t).Query().Exec(context.Background(), `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+DECLARE $name AS Utf8;
+INSERT INTO lists (tenant_id, id, name, description, visibility, optin, tags, created_at, updated_at)
+VALUES ($tenant_id, $id, $name, ""u, "private"u, "single"u, "[]"u,
+    CurrentUtcTimestamp(), CurrentUtcTimestamp());`,
+		query.WithParameters(ydb.ParamsBuilder().
+			Param("$tenant_id").Text(tenantID).
+			Param("$id").Text(id).
+			Param("$name").Text("L-"+dbtest.RandString()).
+			Build())))
 	return id
 }
 
