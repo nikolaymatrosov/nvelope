@@ -355,7 +355,7 @@ out of scope, and TTL replaces the cleanup.
   `api/openapi/platform.yaml` when the platform plane migrates (Plan C2).
 - The frontend hides billing screens and the tenant switcher when the flags are
   false. It shows the setup-token field on the signup page when
-  `setupRequired` is true.
+  `setup_required` is true.
 - The signup links on the landing and login pages are hidden once a single-tenant install is set up. No other frontend changes.
 
 ### Terraform module: `deploy/terraform/nvelope-serverless/`
