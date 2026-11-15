@@ -21,9 +21,11 @@ func timeZeroAdapters() time.Time { return time.Unix(0, 0).UTC() }
 // contract test. Every contract test body runs once per backend, so the
 // Postgres and YDB adapters are held to the same behaviour.
 type backend struct {
-	name   string
-	lists  func(t *testing.T) domain.ListRepository
-	fields func(t *testing.T) domain.FieldRepository
+	name        string
+	lists       func(t *testing.T) domain.ListRepository
+	subscribers func(t *testing.T) domain.SubscriberRepository
+	memberships func(t *testing.T) domain.MembershipRepository
+	fields      func(t *testing.T) domain.FieldRepository
 	// newTenant returns the id of a tenant row, which the tenant context
 	// owns. On Postgres the audience tables carry a foreign key to it, so the
 	// pg backend inserts a real row. YDB has no foreign keys and no audience
@@ -37,6 +39,12 @@ var backends = []backend{
 		lists: func(t *testing.T) domain.ListRepository {
 			return adapters.NewLists(dbtest.AppPool(t))
 		},
+		subscribers: func(t *testing.T) domain.SubscriberRepository {
+			return adapters.NewSubscribers(dbtest.AppPool(t))
+		},
+		memberships: func(t *testing.T) domain.MembershipRepository {
+			return adapters.NewMemberships(dbtest.AppPool(t))
+		},
 		fields: func(t *testing.T) domain.FieldRepository {
 			return adapters.NewFields(dbtest.AppPool(t))
 		},
@@ -46,6 +54,12 @@ var backends = []backend{
 		name: "ydb",
 		lists: func(t *testing.T) domain.ListRepository {
 			return adapters.NewYDBLists(dbtest.YDBMigrated(t))
+		},
+		subscribers: func(t *testing.T) domain.SubscriberRepository {
+			return adapters.NewYDBSubscribers(dbtest.YDBMigrated(t))
+		},
+		memberships: func(t *testing.T) domain.MembershipRepository {
+			return adapters.NewYDBMemberships(dbtest.YDBMigrated(t))
 		},
 		fields: func(t *testing.T) domain.FieldRepository {
 			return adapters.NewYDBFields(dbtest.YDBMigrated(t))
