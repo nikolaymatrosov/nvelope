@@ -176,6 +176,7 @@ Each container is built from an existing image. There are no new binaries.
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
 | `jsonb` | `JsonDocument` where YQL queries into the document (audience `subscribers.attributes`, Plan B5: bound with `JSONDocumentFromBytes`, scanned into `string`). JSON that is only stored and read back whole (e.g. `sending_domains.dkim_records`) is a plain `Utf8` column. |
+| `bytea` file payloads (`import_export_jobs.file_bytes`: an import upload of up to 32 MB, an export of any size) | a private Object Storage object `jobs/<tenant_id>/<job_id>` in the media bucket; the row keeps a nullable `file_key` (Plan B6). A YDB cell holds at most 16 MiB ("Plan B6 planning spike"). |
 | `text[]` read back whole (`roles.permissions`, `api_keys.permissions`, `lists.tags`) | a JSON array in a plain `Utf8` column (Plan B4). An empty slice is stored as `[]`, so it reads back as an empty slice, as Postgres reads back `'{}'`. |
 | `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`, audience `subscribers.email`), the column itself carries the unique index. A query that compares such a column with user input lower-cases the input in Go (the segment `email` condition, Plan B5). Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
 | foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
@@ -878,6 +879,81 @@ Carried to C3 and C4 (final review of Plan C1):
   the JSON protocol before C4. If it fails, the fallback is a query-protocol
   `service/sqs` release built on the current core.
 
+### Plan B6 planning spike
+
+Run on 2026-11-15 against `ydbplatform/local-ydb:26.3.1.23` while planning
+the second audience port. A dry run of the whole plan then passed on the real
+migration, with `go test ./...`, `golangci-lint run` and `make lint-arch`
+clean.
+
+- **Cell size.** A nullable `String` cell round-trips 1, 8 and 16 MiB. 32 MiB
+  fails at commit with `BAD_REQUEST`: `Row cell size of 33554432 bytes is
+  larger than the allowed threshold 16777216`. The B5 handover assumed the
+  50 MB row limit (V5); the cell limit is the tighter one. The SDK's gRPC
+  message limit is 64 MB in both directions, so transport is not the limit.
+- **Transaction write buffer.** 32 MB split into four 8 MiB rows writes in one
+  `DoTx` and reads back intact in one streaming query. 64 MB and more fails
+  with `PRECONDITION_FAILED`: `Out of buffer memory. Used 67109248 bytes of
+  67108864 bytes`. One transaction therefore writes less than 64 MiB.
+
+Decisions for Plan B6:
+
+- **Job files live in Object Storage.** `import_export_jobs.file_bytes` holds
+  imports of up to 32 MB (`maxUploadBytes`) and exports of any size, so it
+  cannot be a YDB cell. Chunking it across rows was rejected: one transaction
+  still caps a file below 64 MiB. `YDBJobs` keeps the job row in YDB and the
+  file as a private object `jobs/<tenant_id>/<job_id>` in the media bucket.
+  The bucket is private except `published/*` (media library), so subscriber
+  data is never public. The port does not change.
+  - The object is written before the row that references it (`AddImport`,
+    `StageResult`), so a row never points at a missing object. When the row
+    write fails, the object is deleted best-effort.
+  - `file_key` is NULL until the job has a file: `StagedFile` then returns
+    nil, as Postgres does for a NULL `file_bytes`. A row whose object is gone
+    is an error, never an empty file.
+  - S3 calls run outside `DoTx` (V6).
+  - `dbtest.S3Endpoint` and `dbtest.S3Client` serve the fakecloud S3 container
+    to every package. The media blob-store test moves onto them.
+- **Subscription pages.** `(tenant_id, slug)` is a `GLOBAL UNIQUE SYNC`
+  index. `domain.NewSubscriptionPage` lower-cases the slug, so it matches the
+  Postgres `UNIQUE (tenant_id, slug)`. `target_list_ids` and `fields` are JSON
+  in `Utf8` columns. The `sending_domain_id` foreign key (`ON DELETE
+  RESTRICT`) needs no stand-in: no code deletes a sending domain.
+- **Pending subscriptions.**
+  - `Upsert` (`ON CONFLICT (tenant_id, email, subscription_page_id) DO
+    UPDATE`) reads through a `GLOBAL UNIQUE SYNC` index on those columns, then
+    `UPSERT`s the row under the found or a fresh id, in one `DoTx`. Eight
+    concurrent upserts of one key return one id.
+  - `domain.NewPendingSubscription` lower-cases the email, so the index
+    reproduces `citext`.
+  - The confirmation-token lookup uses a `GLOBAL UNIQUE SYNC` index on
+    `(tenant_id, confirmation_token_hash)`. Postgres makes the hash unique
+    globally; a random 256-bit hash makes the difference unobservable.
+  - No TTL on `expires_at`: a deleted row would answer an expired link with
+    "already confirmed" instead of `ErrConfirmationExpired`.
+  - The `subscription_page_id` foreign key needs no stand-in: the only writer,
+    `SubmitPublicSubscription`, loads the page first, and no code deletes a
+    page.
+- **Workers.** The audience worker tests call `Work(ctx, args)` on both
+  backends. River dispatch stays covered by the `internal/api` tests.
+- **Bugs fixed on both backends** (found in the B5 reviews):
+  - `ConfirmSubscriptionHandler` and `ImportWorker.attachToLists` found the
+    subscriber with `Search`, a substring match, and could act on a newer
+    `malice@example.com` for `alice@example.com`. They now use a new
+    `SubscriberRepository.GetByEmail`.
+  - Both segment translators formatted a number operand with `%v`, so
+    `seats eq 1000000` compared against `1e+06`. `segmentOperand` formats a
+    `float64` with `strconv.FormatFloat(v, 'f', -1, 64)`.
+  - `YDBRoles.AssignListRole` now reads `lists` in its `DoTx` and returns
+    `ErrListNotFound` (new in iam), closing the B5 iam follow-up.
+- **For C3 and C4.**
+  - C4 wires `NewYDBJobs(driver, s3Client, cfg.ObjectStorageBucket)` and
+    builds the client with the options `mediaadapters.NewS3BlobStore` uses
+    (path-style, static keys, `cfg.ObjectStorageRegion`). It also wires
+    `NewYDBSubscriptionPages` and `NewYDBPendingSubscriptions`.
+  - The `api` and `worker` service accounts need read and write on the media
+    bucket. C3's bucket policy keeps anonymous read on `published/*` only.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -931,6 +1007,11 @@ These are known limits, marked in code with `ponytail:` comments.
   or outage), every sweep tick re-arms each pending domain. Those chains all
   survive until the domain verifies or the 72 h window closes. The upgrade path
   is the same worker-side debounce that exempts user-requested polls.
+- Import and export files in Object Storage are never deleted, as Postgres
+  keeps `file_bytes` forever. The upgrade path is a lifecycle rule on `jobs/`
+  together with a retention period for job rows. An object whose row insert
+  failed and whose best-effort delete also failed stays as an unreferenced
+  private object.
 - The `/jobs` dispatcher assumes the trigger's batch size 1. With a larger
   batch, one failed job redelivers the whole batch, including jobs that
   already succeeded.
