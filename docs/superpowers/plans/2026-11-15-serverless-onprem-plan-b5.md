@@ -3196,6 +3196,7 @@ git commit -m "feat(audience): add the YDB subscriber and membership repositorie
     - `import_export_jobs.file_bytes` (`bytea`) is a nullable `String` column. The import upload cap (`maxUploadBytes`, 32 MB, `internal/api/audience_api.go:30`) is under the 50 MB row limit (V5).
     - The River-driven worker tests stay pg-only. A YDB worker test can call `Work(ctx, args)` directly.
   - **Campaign plan.** Postgres cascades a subscriber delete into `campaign_recipients` and a list delete into `campaign_lists`. When those tables land on YDB, either extend `YDBSubscribers.Delete` and `YDBLists.Delete`, or make their readers tolerate a dangling id.
+  - **iam follow-up.** `YDBRoles.AssignListRole` (`internal/iam/adapters/roles_ydb.go:210-212`) does not check the list: B4 accepted that because `lists` was not on YDB yet. Now it is. Postgres rejects an assignment to an unknown list through the `user_list_roles` foreign key; on YDB the assignment succeeds, and so does one that commits after the list's delete. The dangling row keeps its role in use, so `YDBRoles.Delete` returns `ErrRoleInUse` until someone removes the assignment by the dead list id. `AssignListRole` should read `lists` by `(tenant_id, id)` inside its `DoTx` and fail when the list is missing, as `YDBMemberships.Attach` does.
   - **Accepted YDB/pg differences.** No contract test pins these:
     - Attaching an unknown subscriber or list: pg returns a wrapped foreign-key error; YDB returns `ErrSubscriberNotFound` or `ErrListNotFound`.
     - Attaching another tenant's subscriber or list: pg accepts it, because foreign-key checks bypass RLS. YDB returns not-found.
@@ -3203,9 +3204,13 @@ git commit -m "feat(audience): add the YDB subscriber and membership repositorie
     - An attribute `eq`, `neq` or `contains` against an object or array value: pg compares its JSON text; YDB's `JSON_VALUE` is NULL, so it matches nothing.
     - `YDBLists.All` orders by `name` by bytes, and pg by the database collation.
     - `Reorder` with a malformed id: pg returns an invalid-input error; YDB returns `ErrFieldNotFound`.
+    - A segment membership condition with a malformed list id: pg fails the query (invalid uuid input); YDB matches nothing.
+    - `InList` with a malformed list id: pg fails with "commit unexpectedly resulted in rollback" (spec "Plan B5 planning spike"); YDB returns an empty page.
+    - `Search` and `contains`: Postgres `LIKE` / `ILIKE` treat `\` as an escape character; YQL `ILIKE` has no default escape character.
     - YDB accepts values the Postgres `CHECK` constraints forbid (`lists.visibility`, `lists.optin`, `subscribers.state`, `subscriber_lists.subscription_status`, `subscriber_fields.type`, the slug pattern and the display-name length). None is reachable through the domain constructors.
   - **Ceilings.** These are marked `ponytail:` in code and listed under the spec's "Ceilings":
     - a segment's YQL text grows with its condition tree, up to the 10 KB query limit;
     - `YDBLists.Delete` removes every membership of the list in one transaction;
     - `YDBLists.All`, `Search`, `InList` and `RunSegment` page with `COUNT(*)` plus `OFFSET`.
   - **Found while planning, not fixed here.** Two callers find a subscriber's id by email through `Search`, which matches a substring (`%email%`) and returns the newest match: `ConfirmSubscriptionHandler.resolveID` (`internal/audience/app/command/confirm_subscription.go:101`) and `ImportWorker.attachToLists` (`internal/audience/adapters/import_worker.go:97`). For `a@example.com`, a newer `data@example.com` is returned instead, so a double-opt-in confirmation or an import attaches the wrong subscriber. This happens on both backends.
+  - **Found in the final review, not fixed here.** Both segment translators build an attribute operand with `fmt.Sprintf("%v", c.Value)`. A JSON number of 1,000,000 or more decodes to a `float64` and formats as `1e+06`, while Postgres `->>` and YDB `JSON_VALUE` read the stored number back as `1000000`, so `seats eq 1000000` never matches on either backend. `strconv.FormatFloat(v, 'f', -1, 64)` for `float64` operands fixes both.

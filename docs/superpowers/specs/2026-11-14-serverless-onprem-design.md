@@ -743,6 +743,11 @@ Decisions for Plan B5:
     `campaign_lists`. Those tables are not on YDB yet. The campaign plan must
     either extend `YDBSubscribers.Delete` and `YDBLists.Delete`, or make its
     readers tolerate a dangling id.
+  - Still open, an iam follow-up: `YDBRoles.AssignListRole` does not read
+    the list it assigns a role on. With `lists` now on YDB it should, as
+    `YDBMemberships.Attach` does; otherwise an assignment to an unknown or
+    concurrently deleted list leaves a `user_list_roles` row that keeps its
+    role in use.
 - `UpsertByEmail` keeps the existing subscriber's state, as Postgres
   `ON CONFLICT DO UPDATE SET name, attributes` does, so an import never
   re-enables a blocklisted address. A contract test now pins this.

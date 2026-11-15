@@ -23,6 +23,9 @@ type ydbSegmentTranslator struct {
 
 // translateSegmentYQL returns the predicate and its parameters, named $p1,
 // $p2, ... The predicate also reads $tenant_id, which the caller binds.
+// ponytail: the YQL text grows with the condition tree (about 150 bytes and
+// one DECLARE per condition), and YDB rejects a query over 10 KB; bind the
+// operands as one List<Utf8> parameter if segments grow that large.
 func translateSegmentYQL(seg domain.Segment) (string, []ydbSegmentArg) {
 	t := &ydbSegmentTranslator{}
 	clause := t.node(seg.Root())

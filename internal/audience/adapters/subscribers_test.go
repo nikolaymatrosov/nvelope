@@ -167,12 +167,16 @@ func TestSubscribersUpsertByEmailIsRaceFree(t *testing.T) {
 		tenantID := b.newTenant(t)
 
 		const n = 8
+		subs := make([]*domain.Subscriber, n)
+		for i := range n {
+			subs[i] = newSubscriber(t, tenantID, "race@example.com")
+		}
 		var wg sync.WaitGroup
 		results := make([]bool, n)
 		errs := make([]error, n)
 		for i := range n {
 			wg.Go(func() {
-				results[i], errs[i] = repo.UpsertByEmail(ctx, tenantID, newSubscriber(t, tenantID, "race@example.com"))
+				results[i], errs[i] = repo.UpsertByEmail(ctx, tenantID, subs[i])
 			})
 		}
 		wg.Wait()
