@@ -58,6 +58,7 @@ These are deferred on purpose:
 ```
                ┌───────────── API Gateway (custom domain, Certificate Manager) ─────────────┐
  browser ─────►│ 3 Phase 7 visual endpoints, SPA      → container `frontend` (Node BFF)      │
+               │ (a second `bff` gateway serves /t/:slug/api/* for the frontend's BFF → `api`) │
                │ /t/:slug/api/*, /api/platform/*, tracking, unsubscribe, public pages → `api` │
                └──────────────────────────────────────────────────────────────────────────────┘
  api ── Enqueue ──► YMQ `jobs` / `jobs-long` (each + DLQ) ──MQ trigger──► worker POST /jobs
@@ -76,8 +77,9 @@ Each container is built from an existing image. There are no new binaries.
 | `frontend` | `frontend` | — | high | 30 s | SPA + 3 visual endpoints |
 | `worker` | `worker` | `NVELOPE_ROLE=worker` | 1 | up to 1 h | `/jobs`, `/cron/:name`, `/feedback`, `/admin/migrate` |
 
-- All containers are **private**. API Gateway and triggers invoke them with an
-  `invoker` service account that has `serverless.containers.invoker`.
+- All containers are **private**. The `gateway` service account (API Gateway)
+  invokes `api` and `frontend`. The `trigger` service account invokes only
+  `worker`. Both hold `serverless.containers.invoker`.
 - `cmd/worker` in serverless mode starts an HTTP server on `$PORT` instead of a
   River client. The worker-only routes are registered **only** when
   `NVELOPE_ROLE=worker`.

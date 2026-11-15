@@ -1102,7 +1102,7 @@ output "dead_letter_queues" {
 - [ ] **Step 5: Run the checks and a read-only plan**
 
 Run: `cd /Users/nikthespirit/experiments/nvelope-wt/serverless-c3/deploy/terraform/nvelope-serverless && terraform fmt -check -recursive && terraform validate && terraform test`
-Expected: `Success! 5 passed, 0 failed.`
+Expected: `Success! 7 passed, 0 failed.`
 
 Then run a read-only plan against the user's default folder. It creates nothing and writes no state:
 
@@ -1428,17 +1428,18 @@ cd /Users/nikthespirit/experiments/nvelope-wt/serverless-c3/deploy/terraform/nve
   && cd /Users/nikthespirit/experiments/nvelope-wt/serverless-c3 \
   && go vet ./internal/platform/ymq && go test ./internal/platform/ymq -run TestRealYMQRoundTrip -count=1 \
   && ruby -ryaml -e 'ARGV.each { |f| YAML.safe_load(File.read(f)) }' .github/workflows/*.yml \
-  && git diff main --stat
+  && git diff main...HEAD --stat
 ```
 
 Expected:
 - `terraform test` prints `Success! 5 passed, 0 failed.`
 - The probe test prints `ok` (skipped without credentials).
-- `git diff main --stat` lists only:
+- `git diff main...HEAD --stat` lists only:
   - `deploy/terraform/nvelope-serverless/**`;
   - `.github/workflows/ci.yml` and `.github/workflows/release.yml`;
   - `internal/platform/ymq/real_ymq_test.go`;
-  - the spec.
+  - the spec;
+  - this plan file.
 - The report names each step skipped for lack of a go-ahead (Task 6, Task 7 Step 4).
 
 ## Handover to Plan C4
@@ -1467,11 +1468,19 @@ Expected:
   - **State.** Terraform state holds the static keys, the setup token and the TOTP key: keep it in an encrypted remote backend.
   - **The operator** needs `yc` and `serverless.containers.invoker` on `worker` or on the folder.
   - **The domain** must be a subdomain (CNAME). The setup token comes from the `setup_token_command` output.
+  - **Key rotation.** The `app` static key: replace `yandex_iam_service_account_static_access_key.app`, which writes a new Lockbox version, then roll new container revisions. Maintainer note: `YC_CR_PUSHER_KEY` is a long-lived key with no rotation. It could move into a GitHub environment limited to `v*` tags (maintainer decision, not done here).
+  - **Analytics refresh** is hourly, so dashboards lag by up to an hour.
+  - **`provisioned_instances`** applies to both `api` and `frontend`: N needs 2N instances against the default quota.
+  - **One install per dedicated folder**: the module uses folder-wide roles and fixed resource names.
+  - **Postbox events.** The app never sets `ConfigurationSetName` (`internal/platform/postbox/client.go`, CreateEmailIdentity and SendEmail), so in-app sending domains send no events to `feedback_topic`. C4 needs either a config key the module sets from a new input, or a README step attaching the configuration set to every address. `system_sender_domain` must be a verified Postbox address.
 - **Smoke-test checks the docs could not settle:**
   - `Cookie` and `Authorization` pass through API Gateway: a login, then an API-key `POST /t/{slug}/api/tx`;
   - the narrower trigger roles fire: `ymq.reader` instead of folder `editor`, invoker on `worker` only, `yds.admin` on the folder;
   - `batch_cutoff = "0"` is accepted;
   - whether a 429 consumes a receive count;
   - the 2.2 MB SPA chunk loads through the gateway.
+  - `/metrics/` (trailing slash) and its subpaths fall to the frontend catch-all: verify they 404;
+  - an anonymous GET on `jobs/<tenant>/<job>` in the media bucket returns 403.
+- **CI.** The lock file's `h1:` hashes come from the YC mirror and CI has never run. If the first CI `terraform init` fails on a checksum, regenerate the lock for linux_amd64 against the public registry.
 - **Fan-out under the quota.** A campaign fan-out throttled by the container quota burns receives and waits the long visibility timeout (65 min) between tries. C4 (or the campaign Plan B) should stagger `campaign.batch` enqueues with `not_before`/`DelaySeconds`, besides the quota increase.
 - **Feedback recovery** (from the C1 carried list) is still C4's: a sweep that re-enqueues `feedback.process` for staged events left unprocessed.
