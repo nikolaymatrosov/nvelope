@@ -7,18 +7,15 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/riverqueue/river"
-
 	"github.com/nikolaymatrosov/nvelope/internal/auth/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
-// VerificationWorker is the River worker that sends one registration
+// VerificationWorker is the job worker that sends one registration
 // email-verification message. It is durable and retry-capable: a restarted
 // worker re-sends rather than dropping the verification email, and a send
 // failure fails the job so River retries with backoff.
 type VerificationWorker struct {
-	river.WorkerDefaults[jobs.VerificationSendArgs]
 	users         domain.UserRepository
 	mailer        domain.VerificationMailer
 	senderDomain  string
@@ -47,8 +44,8 @@ func NewVerificationWorker(users domain.UserRepository, mailer domain.Verificati
 }
 
 // Work sends one verification email.
-func (w *VerificationWorker) Work(ctx context.Context, job *river.Job[jobs.VerificationSendArgs]) error {
-	user, err := w.users.GetByID(ctx, job.Args.UserID)
+func (w *VerificationWorker) Work(ctx context.Context, args jobs.VerificationSendArgs) error {
+	user, err := w.users.GetByID(ctx, args.UserID)
 	if errors.Is(err, domain.ErrUserNotFound) {
 		return nil // the account is gone — River redelivery is harmless
 	}
@@ -60,7 +57,7 @@ func (w *VerificationWorker) Work(ctx context.Context, job *river.Job[jobs.Verif
 	}
 
 	verifyURL := strings.TrimRight(w.publicBaseURL, "/") + "/verify-email?token=" +
-		url.QueryEscape(job.Args.VerificationToken)
+		url.QueryEscape(args.VerificationToken)
 	lang := user.Locale().String()
 
 	subject, htmlBody, textBody := renderVerificationEmail(lang, user.Name(), verifyURL)

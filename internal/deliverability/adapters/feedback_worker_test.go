@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
@@ -15,10 +14,8 @@ import (
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
-func feedbackJob(inboundEventID string) *river.Job[jobs.FeedbackProcessArgs] {
-	return &river.Job[jobs.FeedbackProcessArgs]{
-		Args: jobs.FeedbackProcessArgs{InboundEventID: inboundEventID},
-	}
+func feedbackJob(inboundEventID string) jobs.FeedbackProcessArgs {
+	return jobs.FeedbackProcessArgs{InboundEventID: inboundEventID}
 }
 
 // newFeedbackWorker builds a feedback worker over a ProcessFeedback handler

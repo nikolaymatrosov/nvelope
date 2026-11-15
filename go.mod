@@ -27,6 +27,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
+	github.com/ydb-platform/ydb-go-genproto v0.0.0-20260311095541-ebbf792c1180
 	github.com/ydb-platform/ydb-go-sdk/v3 v3.136.4
 	github.com/ydb-platform/ydb-go-yc v0.12.3
 	golang.org/x/crypto v0.58.0
@@ -121,7 +122,6 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
 	github.com/yandex-cloud/go-genproto v0.0.0-20240819112322-98a264d392f6 // indirect
-	github.com/ydb-platform/ydb-go-genproto v0.0.0-20260311095541-ebbf792c1180 // indirect
 	github.com/ydb-platform/ydb-go-yc-metadata v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

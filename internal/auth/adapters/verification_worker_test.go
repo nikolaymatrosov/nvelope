@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/auth/adapters"
@@ -40,9 +39,7 @@ func TestVerificationWorkerSendsEmail(t *testing.T) {
 	worker := adapters.NewVerificationWorker(users, mailer,
 		"nvelope.ru", "nvelope", "https://app.example.com")
 
-	require.NoError(t, worker.Work(ctx, &river.Job[jobs.VerificationSendArgs]{
-		Args: jobs.VerificationSendArgs{UserID: created.ID(), VerificationToken: "raw-token-123"},
-	}))
+	require.NoError(t, worker.Work(ctx, jobs.VerificationSendArgs{UserID: created.ID(), VerificationToken: "raw-token-123"}))
 
 	require.Equal(t, 1, mailer.sent)
 	require.Equal(t, addr, mailer.last.To)
@@ -68,9 +65,7 @@ func TestVerificationWorkerSkipsAlreadyVerifiedUser(t *testing.T) {
 	worker := adapters.NewVerificationWorker(users, mailer,
 		"nvelope.ru", "nvelope", "https://app.example.com")
 
-	require.NoError(t, worker.Work(ctx, &river.Job[jobs.VerificationSendArgs]{
-		Args: jobs.VerificationSendArgs{UserID: created.ID(), VerificationToken: "raw"},
-	}))
+	require.NoError(t, worker.Work(ctx, jobs.VerificationSendArgs{UserID: created.ID(), VerificationToken: "raw"}))
 	require.Equal(t, 0, mailer.sent, "an already-verified account is not emailed")
 }
 
@@ -84,11 +79,9 @@ func TestVerificationWorkerIgnoresMissingUser(t *testing.T) {
 		"nvelope.ru", "nvelope", "https://app.example.com")
 
 	// A deleted account must not fail a River redelivery.
-	require.NoError(t, worker.Work(context.Background(), &river.Job[jobs.VerificationSendArgs]{
-		Args: jobs.VerificationSendArgs{
-			UserID:            "00000000-0000-0000-0000-000000000000",
-			VerificationToken: "raw",
-		},
+	require.NoError(t, worker.Work(context.Background(), jobs.VerificationSendArgs{
+		UserID:            "00000000-0000-0000-0000-000000000000",
+		VerificationToken: "raw",
 	}))
 	require.Equal(t, 0, mailer.sent)
 }

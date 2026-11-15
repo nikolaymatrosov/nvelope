@@ -4,17 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/riverqueue/river"
-
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
 
-// ImportWorker is the River worker that processes a bulk subscriber import: it
+// ImportWorker is the job worker that processes a bulk subscriber import: it
 // streams the staged CSV, upserts subscribers by email, attaches them to the
 // target lists, skips invalid rows, and records the counts on the job.
 type ImportWorker struct {
-	river.WorkerDefaults[jobs.ImportArgs]
 	jobs        domain.JobRepository
 	subscribers domain.SubscriberRepository
 	memberships domain.MembershipRepository
@@ -30,8 +27,8 @@ func NewImportWorker(jobRepo domain.JobRepository, subscribers domain.Subscriber
 }
 
 // Work runs one import job.
-func (w *ImportWorker) Work(ctx context.Context, job *river.Job[jobs.ImportArgs]) error {
-	tenantID, jobID := job.Args.TenantID, job.Args.JobID
+func (w *ImportWorker) Work(ctx context.Context, args jobs.ImportArgs) error {
+	tenantID, jobID := args.TenantID, args.JobID
 
 	importJob, err := w.jobs.GetImport(ctx, tenantID, jobID)
 	if err != nil {

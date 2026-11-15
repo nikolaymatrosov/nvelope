@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/riverqueue/river"
-
 	"github.com/nikolaymatrosov/nvelope/internal/audience/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/jobs"
 )
@@ -15,11 +13,10 @@ import (
 // an export.
 const exportPageSize = 500
 
-// ExportWorker is the River worker that processes a bulk subscriber export: it
+// ExportWorker is the job worker that processes a bulk subscriber export: it
 // gathers the selected subscribers, encodes them as CSV, and stages the result
 // on the job for download.
 type ExportWorker struct {
-	river.WorkerDefaults[jobs.ExportArgs]
 	jobs        domain.JobRepository
 	subscribers domain.SubscriberRepository
 }
@@ -34,8 +31,8 @@ func NewExportWorker(jobRepo domain.JobRepository,
 }
 
 // Work runs one export job.
-func (w *ExportWorker) Work(ctx context.Context, job *river.Job[jobs.ExportArgs]) error {
-	tenantID, jobID := job.Args.TenantID, job.Args.JobID
+func (w *ExportWorker) Work(ctx context.Context, args jobs.ExportArgs) error {
+	tenantID, jobID := args.TenantID, args.JobID
 
 	exportJob, err := w.jobs.GetExport(ctx, tenantID, jobID)
 	if err != nil {

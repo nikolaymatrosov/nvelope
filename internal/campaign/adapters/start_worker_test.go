@@ -7,7 +7,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
 	billingadapters "github.com/nikolaymatrosov/nvelope/internal/billing/adapters"
@@ -97,9 +96,7 @@ func TestStartWorkerBlocksOverQuotaCampaign(t *testing.T) {
 	enqueuer := &collectingEnqueuer{}
 	start := adapters.NewStartWorker(campaigns, adapters.NewRecipients(pool),
 		adapters.NewTracking(pool), source, enqueuer, quota, 500)
-	require.NoError(t, start.Work(ctx, &river.Job[jobs.CampaignStartArgs]{
-		Args: jobs.CampaignStartArgs{TenantID: tenantID, CampaignID: campaignID},
-	}))
+	require.NoError(t, start.Work(ctx, jobs.CampaignStartArgs{TenantID: tenantID, CampaignID: campaignID}))
 
 	// The whole campaign is rejected — never partially sent.
 	got, err := campaigns.Get(ctx, tenantID, campaignID)
@@ -123,9 +120,7 @@ func TestStartWorkerAllowsMeterModeCampaign(t *testing.T) {
 	enqueuer := &collectingEnqueuer{}
 	start := adapters.NewStartWorker(campaigns, adapters.NewRecipients(pool),
 		adapters.NewTracking(pool), source, enqueuer, quota, 500)
-	require.NoError(t, start.Work(ctx, &river.Job[jobs.CampaignStartArgs]{
-		Args: jobs.CampaignStartArgs{TenantID: tenantID, CampaignID: campaignID},
-	}))
+	require.NoError(t, start.Work(ctx, jobs.CampaignStartArgs{TenantID: tenantID, CampaignID: campaignID}))
 
 	got, err := campaigns.Get(ctx, tenantID, campaignID)
 	require.NoError(t, err)
