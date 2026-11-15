@@ -118,14 +118,38 @@ resource "yandex_serverless_container" "api" {
   depends_on = [terraform_data.migrate]
 }
 
+resource "yandex_serverless_container" "frontend" {
+  name              = "nvelope-frontend"
+  memory            = 512
+  cores             = 1
+  concurrency       = 16
+  execution_timeout = "30s"
+  image {
+    url = "${local.image}/frontend:${var.image_tag}"
+    environment = {
+      NVELOPE_BASE_URL = "https://${var.domain}"
+      # The BFF forwards each visual save to Go on the same path the public
+      # gateway routes to frontend, so it goes through its own gateway.
+      NV_GO_API_URL = "https://${yandex_api_gateway.bff.domain}"
+    }
+  }
+  dynamic "provision_policy" {
+    for_each = var.provisioned_instances > 0 ? [1] : []
+    content {
+      min_instances = var.provisioned_instances
+    }
+  }
+}
+
 # Every container is private. Anyone who can invoke worker can start campaigns,
 # send emails, inject bounces and run migrations, so only the triggers (and the
 # operator's deploy step) may invoke it. The gateway may invoke only api and
 # frontend.
 resource "yandex_serverless_container_iam_member" "invoker" {
   for_each = {
-    api    = { container = yandex_serverless_container.api.id, sa = "gateway" }
-    worker = { container = yandex_serverless_container.worker.id, sa = "trigger" }
+    api      = { container = yandex_serverless_container.api.id, sa = "gateway" }
+    frontend = { container = yandex_serverless_container.frontend.id, sa = "gateway" }
+    worker   = { container = yandex_serverless_container.worker.id, sa = "trigger" }
   }
   container_id = each.value.container
   role         = "serverless.containers.invoker"

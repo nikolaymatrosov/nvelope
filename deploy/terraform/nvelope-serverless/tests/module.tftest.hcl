@@ -71,3 +71,40 @@ run "containers" {
     error_message = "only the trigger account may invoke worker"
   }
 }
+
+run "gateways" {
+  command = plan
+
+  assert {
+    condition     = local.public_routes["/api/platform/{path+}"] == "api" && local.public_routes["/t/{slug}/api/{path+}"] == "api"
+    error_message = "the platform and tenant APIs must route to api"
+  }
+  assert {
+    condition     = local.public_routes["/t/{slug}/api/campaigns/{id}/visual"] == "frontend"
+    error_message = "visual saves must route to the BFF"
+  }
+  assert {
+    condition     = [for p in local.route_parameters["/t/{slug}/api/{path+}"] : p.name] == ["slug", "path"]
+    error_message = "greedy and plain path parameters must both be declared"
+  }
+  assert {
+    condition     = !strcontains(yandex_api_gateway.public.spec, "/metrics")
+    error_message = "/metrics must not be public"
+  }
+  assert {
+    condition     = yandex_serverless_container_iam_member.invoker["frontend"].member == "serviceAccount:ajegateway"
+    error_message = "the gateway invokes frontend"
+  }
+  assert {
+    condition     = length(yandex_serverless_container.frontend.secrets) == 0 && yandex_serverless_container.frontend.service_account_id == null
+    error_message = "the frontend gets no secrets and no cloud identity"
+  }
+}
+
+run "exactly_one_certificate_source" {
+  command = plan
+  variables {
+    certificate_id = null
+  }
+  expect_failures = [yandex_api_gateway.public]
+}
