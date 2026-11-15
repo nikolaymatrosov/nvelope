@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
@@ -114,6 +115,14 @@ func TestCampaignsSaveAndReadTargets(t *testing.T) {
 		// and the failed save leaves the previous targets in place.
 		require.Error(t, repo.SaveTargets(ctx, tenantID, id,
 			[]domain.Target{{ListID: listID}, {ListID: listID}}))
+		targets, err = repo.Targets(ctx, tenantID, id)
+		require.NoError(t, err)
+		require.Len(t, targets, 1)
+
+		// A list that does not exist is rejected, as the foreign key does on
+		// Postgres, and the previous targets stay.
+		require.Error(t, repo.SaveTargets(ctx, tenantID, id,
+			[]domain.Target{{ListID: listID}, {ListID: uuid.NewString()}}))
 		targets, err = repo.Targets(ctx, tenantID, id)
 		require.NoError(t, err)
 		require.Len(t, targets, 1)

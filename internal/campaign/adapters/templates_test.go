@@ -116,7 +116,12 @@ func TestTemplatesDeleteUnlinksCampaigns(t *testing.T) {
 		require.NoError(t, err)
 		campaignID, err := campaigns.Add(ctx, tenantID, c)
 		require.NoError(t, err)
-		other, err := campaigns.Add(ctx, tenantID, newCampaign(t, tenantID, "Plain", domainID))
+		tpl2ID, err := templates.Add(ctx, tenantID, newTemplate(t, tenantID, "T2"))
+		require.NoError(t, err)
+		o, err := domain.NewCampaign(tenantID, "Other", "Subject", "<p>hi</p>", "Hi",
+			"Acme", "news", domainID, tpl2ID, 100)
+		require.NoError(t, err)
+		other, err := campaigns.Add(ctx, tenantID, o)
 		require.NoError(t, err)
 
 		got, err := campaigns.Get(ctx, tenantID, campaignID)
@@ -129,8 +134,9 @@ func TestTemplatesDeleteUnlinksCampaigns(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got.TemplateID(), "the campaign is unlinked")
 		require.Equal(t, "From template", got.Name(), "and keeps its content")
-		_, err = campaigns.Get(ctx, tenantID, other)
+		got, err = campaigns.Get(ctx, tenantID, other)
 		require.NoError(t, err)
+		require.Equal(t, tpl2ID, got.TemplateID(), "a campaign on another template keeps its link")
 	})
 }
 

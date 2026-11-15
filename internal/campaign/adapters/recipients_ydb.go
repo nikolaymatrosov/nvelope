@@ -68,16 +68,27 @@ func (r *YDBRecipients) BulkInsert(ctx context.Context, tenantID, campaignID str
 }
 
 // insertChunk inserts the recipients of chunk whose email the campaign does
-// not have yet, and returns how many it inserted.
+// not have yet, and returns how many it inserted. Postgres rejects a recipient
+// whose subscriber does not exist (a foreign key), so a start job racing a
+// subscriber delete cannot mail the deleted subscriber. YDB has no foreign
+// keys: the transaction reads the chunk's subscribers first and fails if one
+// is missing, and a concurrent Subscribers.Delete of one of them conflicts
+// with that read and the insert.
 func (r *YDBRecipients) insertChunk(ctx context.Context, tenantID, campaignID string,
 	chunk []*domain.Recipient) (int, error) {
 
 	// Ids are fixed before the transaction, so a retry writes the same rows.
 	ids := make([]string, len(chunk))
 	emails := make([]types.Value, len(chunk))
+	subSeen := map[string]bool{}
+	var subs []types.Value
 	for i, rec := range chunk {
 		ids[i] = uuid.NewString()
 		emails[i] = types.TextValue(rec.Email())
+		if !subSeen[rec.SubscriberID()] {
+			subSeen[rec.SubscriberID()] = true
+			subs = append(subs, types.TextValue(rec.SubscriberID()))
+		}
 	}
 	idOpt := query.WithParameters(ydb.ParamsBuilder().
 		Param("$tenant_id").Text(tenantID).
@@ -87,6 +98,33 @@ func (r *YDBRecipients) insertChunk(ctx context.Context, tenantID, campaignID st
 
 	var inserted int
 	err := r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
+		subRS, err := tx.QueryResultSet(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $subscriber_ids AS List<Utf8>;
+SELECT id FROM subscribers WHERE tenant_id = $tenant_id AND id IN $subscriber_ids;`,
+			query.WithParameters(ydb.ParamsBuilder().
+				Param("$tenant_id").Text(tenantID).
+				Param("$subscriber_ids").Any(types.ListValue(subs...)).
+				Build()))
+		if err != nil {
+			return fmt.Errorf("reading recipient subscribers: %w", err)
+		}
+		found := map[string]bool{}
+		for row, err := range subRS.Rows(ctx) {
+			if err != nil {
+				return fmt.Errorf("reading recipient subscribers: %w", err)
+			}
+			var id string
+			if err := row.Scan(&id); err != nil {
+				return fmt.Errorf("scanning recipient subscriber: %w", err)
+			}
+			found[id] = true
+		}
+		for _, rec := range chunk {
+			if !found[rec.SubscriberID()] {
+				return fmt.Errorf("recipient subscriber %s not found", rec.SubscriberID())
+			}
+		}
+
 		rs, err := tx.QueryResultSet(ctx, `DECLARE $tenant_id AS Utf8;
 DECLARE $campaign_id AS Utf8;
 DECLARE $emails AS List<Utf8>;

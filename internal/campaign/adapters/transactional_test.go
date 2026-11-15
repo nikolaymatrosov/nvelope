@@ -19,9 +19,12 @@ func TestTransactionalMessagesRecordRoundTrips(t *testing.T) {
 		require.NoError(t, repo.Record(ctx, tenantID, "", pm, "user@acme.com"))
 		require.Equal(t, 1, b.transactionalCount(t, tenantID))
 
-		// A provider message id is recorded once, across tenants.
+		// A provider message id is recorded once, within and across tenants.
 		require.Error(t, repo.Record(ctx, tenantID, "", pm, "again@acme.com"))
 		require.Equal(t, 1, b.transactionalCount(t, tenantID))
+		other := b.newTenant(t)
+		require.Error(t, repo.Record(ctx, other, "", pm, "again@acme.com"))
+		require.Zero(t, b.transactionalCount(t, other))
 	})
 }
 

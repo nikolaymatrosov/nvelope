@@ -2,6 +2,7 @@ package adapters_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -102,8 +103,26 @@ var backends = []backend{
 		},
 		newTenant:        func(*testing.T) string { return uuid.NewString() },
 		newSendingDomain: func(*testing.T, string) string { return uuid.NewString() },
-		newList:          func(*testing.T, string) string { return uuid.NewString() },
-		newSubscriber:    func(*testing.T, string, string) string { return uuid.NewString() },
+		newList: func(t *testing.T, tenantID string) string {
+			id := uuid.NewString()
+			ydbExec(t, `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+DECLARE $name AS Utf8;
+INSERT INTO lists (tenant_id, id, name, description, visibility, optin, tags, created_at, updated_at)
+VALUES ($tenant_id, $id, $name, ""u, "private"u, "single"u, "[]"u, CurrentUtcTimestamp(), CurrentUtcTimestamp());`,
+				tenantID, id, "L-"+dbtest.RandString())
+			return id
+		},
+		newSubscriber: func(t *testing.T, tenantID, email string) string {
+			id := uuid.NewString()
+			ydbExec(t, `DECLARE $tenant_id AS Utf8;
+DECLARE $id AS Utf8;
+DECLARE $name AS Utf8;
+INSERT INTO subscribers (tenant_id, id, email, name, state, attributes, created_at, updated_at)
+VALUES ($tenant_id, $id, $name, "Sub"u, "enabled"u, JsonDocument("{}"), CurrentUtcTimestamp(), CurrentUtcTimestamp());`,
+				tenantID, id, strings.ToLower(email))
+			return id
+		},
 		providerMessageID: func(t *testing.T, tenantID, recipientID string) string {
 			return ydbScalar(t, `DECLARE $tenant_id AS Utf8;
 DECLARE $id AS Utf8;
@@ -171,6 +190,17 @@ func ydbParams(tenantID, name, value string) query.ExecuteOption {
 		b = b.Param(name).Text(value)
 	}
 	return query.WithParameters(b.Build())
+}
+
+// ydbExec inserts one row: $id is the row id and $name its name or email.
+func ydbExec(t *testing.T, q, tenantID, id, name string) {
+	t.Helper()
+	require.NoError(t, dbtest.YDBMigrated(t).Query().Exec(context.Background(), q,
+		query.WithParameters(ydb.ParamsBuilder().
+			Param("$tenant_id").Text(tenantID).
+			Param("$id").Text(id).
+			Param("$name").Text(name).
+			Build())))
 }
 
 // ydbScalar reads one nullable text value, "" for NULL.

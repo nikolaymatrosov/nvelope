@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
@@ -57,6 +58,28 @@ func TestRecipientsBulkInsertDedupesByEmail(t *testing.T) {
 		inserted, err = recipients.BulkInsert(ctx, tenantID, other, rs[:1])
 		require.NoError(t, err)
 		require.Equal(t, 1, inserted)
+	})
+}
+
+// TestRecipientsBulkInsertRejectsUnknownSubscriber pins the Postgres foreign
+// key on subscriber_id, which the YDB adapter stands in for with a read.
+func TestRecipientsBulkInsertRejectsUnknownSubscriber(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		recipients := b.recipients(t)
+		ctx := context.Background()
+		tenantID := b.newTenant(t)
+		campaignID := newCampaignID(t, b, tenantID)
+
+		known := b.newSubscriber(t, tenantID, "k@acme.com")
+		_, err := recipients.BulkInsert(ctx, tenantID, campaignID, []*domain.Recipient{
+			domain.NewRecipient(tenantID, campaignID, known, "k@acme.com"),
+			domain.NewRecipient(tenantID, campaignID, uuid.NewString(), "ghost@acme.com"),
+		})
+		require.Error(t, err)
+
+		sent, failed, pending, err := recipients.Counts(ctx, tenantID, campaignID)
+		require.NoError(t, err)
+		require.Equal(t, []int{0, 0, 0}, []int{sent, failed, pending}, "nothing was written")
 	})
 }
 

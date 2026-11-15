@@ -164,6 +164,7 @@ func TestTrackingCrossTenantIsolation(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrLinkNotFound)
 		require.NoError(t, repo.RecordView(ctx, tenantB, campaignA, recipientA))
 		require.Zero(t, b.viewCount(t, tenantA, campaignA))
+		require.Zero(t, b.viewCount(t, tenantB, campaignA))
 	})
 }
 

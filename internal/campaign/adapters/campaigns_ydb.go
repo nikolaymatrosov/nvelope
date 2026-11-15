@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	ydb "github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/query"
+	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 )
@@ -214,7 +215,10 @@ LIMIT $limit OFFSET $offset;`, ydbTenantAndPage(tenantID, page.Limit, page.Offse
 
 // SaveTargets replaces a campaign's targeted lists and segments. Every target
 // gets a fresh UUID, and a list targeted twice collides on the unique index,
-// as it does on Postgres.
+// as it does on Postgres. Postgres also rejects a target list that does not
+// exist (campaign_lists.list_id foreign key); here the transaction reads the
+// targeted lists and fails if one is missing, which a concurrent list delete
+// then conflicts with.
 func (r *YDBCampaigns) SaveTargets(ctx context.Context, tenantID, campaignID string,
 	targets []domain.Target) error {
 
@@ -222,7 +226,45 @@ func (r *YDBCampaigns) SaveTargets(ctx context.Context, tenantID, campaignID str
 	for i := range ids {
 		ids[i] = uuid.NewString()
 	}
+	listSeen := map[string]bool{}
+	var listIDs []string
+	var listVals []types.Value
+	for _, t := range targets {
+		if t.ListID != "" && !listSeen[t.ListID] {
+			listSeen[t.ListID] = true
+			listIDs = append(listIDs, t.ListID)
+			listVals = append(listVals, types.TextValue(t.ListID))
+		}
+	}
 	return r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
+		if len(listIDs) > 0 {
+			rs, err := tx.QueryResultSet(ctx, `DECLARE $tenant_id AS Utf8;
+DECLARE $list_ids AS List<Utf8>;
+SELECT id FROM lists WHERE tenant_id = $tenant_id AND id IN $list_ids;`,
+				query.WithParameters(ydb.ParamsBuilder().
+					Param("$tenant_id").Text(tenantID).
+					Param("$list_ids").Any(types.ListValue(listVals...)).
+					Build()))
+			if err != nil {
+				return fmt.Errorf("reading target lists: %w", err)
+			}
+			found := map[string]bool{}
+			for row, err := range rs.Rows(ctx) {
+				if err != nil {
+					return fmt.Errorf("reading target lists: %w", err)
+				}
+				var id string
+				if err := row.Scan(&id); err != nil {
+					return fmt.Errorf("scanning target list: %w", err)
+				}
+				found[id] = true
+			}
+			for _, id := range listIDs {
+				if !found[id] {
+					return fmt.Errorf("campaign target list %s not found", id)
+				}
+			}
+		}
 		if err := tx.Exec(ctx, `DECLARE $tenant_id AS Utf8;
 DECLARE $campaign_id AS Utf8;
 DELETE FROM campaign_lists WHERE tenant_id = $tenant_id AND campaign_id = $campaign_id;`,
