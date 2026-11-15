@@ -190,6 +190,8 @@ Each container is built from an existing image. There are no new binaries.
 | `SECURITY DEFINER` lookup of the tenant that owns a provider message id (`feedback_tenant_for_message`) | two reads, `campaign_recipients VIEW idx_campaign_recipients_provider` and then `transactional_messages VIEW idx_transactional_messages_provider`, each with `LIMIT 1`. The index entry carries `tenant_id` (Plan B8; the indexes are Plan B7's). |
 | `INSERT ... ON CONFLICT DO NOTHING` that must report whether it inserted (`StageInbound`, `RecordEvent`) | `SELECT` through the unique index, then `INSERT` when absent, in one `DoTx`. A concurrent identical write aborts one transaction and the SDK retries it, so exactly one writes (Plan B8; `TestEventsStageInboundIsRaceFree`, `TestEventsRecordEventIsRaceFree`). |
 | a per-campaign aggregate that is a correlated `(SELECT count(...) ... WHERE x.campaign_id = c.id)` subquery (`campaign_analytics` refresh) | named subqueries `$name = SELECT campaign_id, COUNT(...) ... GROUP BY campaign_id;` and `LEFT JOIN`s from `campaigns`, written by `UPSERT INTO ... SELECT`. `count(DISTINCT x) FILTER (...)` becomes `COUNT(DISTINCT IF(cond, x))`. The select list must alias each column to its table column name, and a `COALESCE(count, 0ul)` is cast and wrapped: `Unwrap(CAST(COALESCE(n, 0ul) AS Int64))` (Plan B8). |
+| a nullable numeric column the domain reads as `0` for "absent" (`media_assets.width`, `height`: `COALESCE(width, 0)`, NULL for a PDF so that `CHECK (> 0)` holds) | a `NOT NULL Int32` column that stores `0`. With no CHECK constraints, the CHECK is the reason Postgres needed NULL, and the adapter scans into `int32` and converts (Plan B9). |
+| a read-then-write `UPDATE ... SET c = COALESCE(c, $v)` that must report a missing row (`MarkPublished`) | `SELECT` the row in the `DoTx` (no row: not-found), return when the column is already set, else `UPDATE` by primary key (Plan B9; six concurrent calls on one asset commit once). |
 | `SECURITY DEFINER` functions (6) | ordinary queries. With no RLS, the privilege bypass they existed for is unnecessary. Billing-only functions are dropped. |
 
 ### Throttling
@@ -586,6 +588,8 @@ No closure passed to a repository `Update*` calls an enqueuer, mailer, verifier 
 | `internal/audience/adapters/lists_pg.go:165`, `memberships_pg.go:119`, `subscribers_pg.go:205`, `subscribers_pg.go:247`, `subscribers_pg.go:285`, `subscription_pages_pg.go:191`, `internal/billing/adapters/invoices_pg.go:179` (billing, not ported), `internal/campaign/adapters/templates_pg.go:152`, `campaigns_pg.go:201`, `campaigns_pg.go:232`, `campaigns_pg.go:285`, `recipients_pg.go:88`, `internal/deliverability/adapters/suppression_pg.go:118`, `analytics_pg.go:100` (`dash.Recent`), `internal/iam/adapters/audit_pg.go:82`, `roles_pg.go:156`, `apikeys_pg.go:132`, `internal/sending/adapters/domains_pg.go:164`, `domains_pg.go:189`, `internal/media/adapters/assets_pg.go:115` | unsafe-mutation (pg body, read paths) | Each does `append` to a slice declared outside the transaction closure. A retry after a partial read appends the rows again, returning duplicates. | Rewritten in Plan B anyway: build the slice inside the closure and assign it to the outer variable at the end (`result = local`), or reset it (`out = nil`) at closure start. Apply to every YDB read helper that collects rows inside a `DoTx` closure. |
 
 All other sites are `safe`.
+
+Plan B9 note: `YDBAssets.List` (the YDB counterpart of `assets_pg.go:115`) builds its rows in a local and assigns them at the end. The Postgres adapter is unchanged.
 
 ### Plan B2 planning spike
 
@@ -1288,6 +1292,123 @@ Decisions for Plan B8:
       than the threshold is the symptom.
     - `cmd/consumer` is not used in serverless mode.
 
+### Plan B9 planning spike
+
+Run on 2026-11-15 against `ydbplatform/local-ydb:26.3.1.23` while planning the
+media port, on the real `000010_media` table. The adapter and the contract
+suite of the plan were applied to the worktree and run; a dry run of the whole
+plan then passed stage by stage (see the plan).
+
+- **No new YQL construct.** Every statement is one B1 to B8 already verified:
+  a keyed `SELECT`, `INSERT` with `CurrentUtcTimestamp()`, `DELETE ... RETURNING
+  id` (not-found on no row, as `YDBTemplates.Delete`), `UPDATE` by primary key,
+  and `ORDER BY created_at DESC, id DESC` over the tenant's key range. The new
+  parts are a `Timestamp` parameter bound with `.Timestamp(at)`, an
+  `Optional<Utf8>` bound from a `*string`, and `Int32` parameters bound from
+  `int32`; all three worked on the first run, and the nullable `Timestamp` and
+  `Utf8` columns scan into `*time.Time` and `*string`.
+- **The suite passes on both backends.** Add/Get/List/Delete, unknown and
+  non-UUID ids, tenant scoping (a second tenant's `Get`, `Delete`,
+  `MarkPublished` and `List` see nothing), newest-first order, `MarkPublished`
+  twice, a PDF with no dimensions, and the uploader id (YDB only, because on
+  Postgres it is a foreign key to `users`). Sabotage: with the `tenant_id`
+  predicate removed from `Get` and from the `MarkPublished` read, the tenant
+  scoping tests fail on YDB.
+- **Race.** Six concurrent `MarkPublished` calls on one asset beside six
+  concurrent `Add`s, three runs: no error, seven rows, the asset published, the
+  list in non-increasing `created_at` order.
+- **Use cases over both repositories** (`PublishAssetsHandler`,
+  `DeleteAssetHandler`, with the in-memory blob store): publishing twice copies
+  once (the second run has the blob store fail on any copy) and returns the
+  same text, which is the V6 retry argument for the three campaign `Update`
+  closures; another tenant's asset is `ErrMediaMissing` and nothing is copied;
+  deleting keeps the public copy by default and removes it with `Unpublish`.
+
+Decisions for Plan B9:
+
+- **One table, `media_assets`, in `000010_media`.** Key `(tenant_id, id)`; no
+  secondary index. Every read is by key or the tenant's range, and a library is
+  hundreds of rows. No CHECK, DEFAULT or foreign key, as B7.
+- **`width` and `height` are `NOT NULL Int32`, `0` for a PDF.** Postgres stores
+  NULL because of `CHECK (> 0)` and reads it back through `COALESCE(.., 0)`;
+  with no CHECKs on YDB the sentinel is the simpler column. `uploaded_by` and
+  `published_at` stay nullable.
+- **`List` orders by `created_at DESC, id DESC` in YQL.** The tie-break makes
+  the order total; Postgres has none. Ceiling recorded.
+- **`MarkPublished` is read, then write, in one `DoTx`** (the pg adapter's
+  `COALESCE(published_at, $2)` plus a rows-affected check). It keeps the first
+  timestamp and returns `ErrMediaNotFound` for a missing row.
+- **`Delete` is a single `DELETE ... RETURNING id`.** The handler already
+  removes the public copy and the private object around it, in this order, so a
+  failed object delete leaves an orphan and never a row that points nowhere.
+- **The blob store is unchanged.** Both runtimes use `S3BlobStore`. S3 calls
+  stay outside the repository, so there is no S3 call inside a `DoTx` (V6).
+  `MemoryBlobStore` keeps serving the use-case tests.
+- **User decisions of the media library are untouched.** Deleting an asset
+  keeps its public copy unless `Unpublish` is set; no SVG; library URLs stay on
+  the app origin with a 302 to a presigned URL. Nothing here reaches the HTTP
+  layer.
+- **No cascade to keep.** `uploaded_by REFERENCES users ON DELETE SET NULL` and
+  `tenant_id REFERENCES tenants ON DELETE CASCADE` have no YDB counterpart
+  because no code deletes a user or a tenant (checked: no `DELETE FROM users`,
+  `tenants` or `platform_users` outside tests and migrations). Recorded in
+  "Ceilings".
+- **Callers checked.** The port is used by `UploadAsset` (`Add`),
+  `PublishAssets` (`Get`, `MarkPublished`), `DeleteAsset` (`Get`, `Delete`),
+  `ListAssets` (`List`) and `AssetContentURL` (`Get`), all in
+  `internal/media/app`. `campaign` and `tenant` (branding) reach it only through
+  the `PublishAssets` handler, so the port covers every read and write path.
+  There are no media workers.
+
+Found, not fixed:
+
+- `S3BlobStore.Publish` sends `ACL: public-read` on the copy. C3's design
+  grants anonymous read through a bucket policy on `published/*` alone. The ACL
+  is redundant there, and on Yandex Object Storage setting an object ACL may need
+  a role the `api` and `worker` service accounts do not have. Not verifiable
+  without a real bucket; fakecloud accepts it. The Postgres runtime has used it
+  since the media library. C3's smoke check should upload through the real
+  service account and publish once, and C4 should drop the ACL if that fails.
+
+For C4 and the completeness of Plan B:
+
+- **Wire** `mediaadapters.NewYDBAssets(driver)` in place of `NewAssets(pool)` in
+  `buildMedia` (`internal/service/application.go` ~266). The blob store is the
+  existing `NewS3BlobStore` with `cfg.ObjectStorage*`, as in SaaS; the
+  `Region: "auto"` fallback and path-style addressing are inside it, and
+  `NewYDBJobs`' S3 client copies them (B6).
+- **Plan B is complete for every in-scope context.** Every repository constructor
+  the composition root wires has a YDB version: sending (`NewYDBSendingDomains`),
+  auth (`NewYDBUsers`, `NewYDBSessions`, `NewYDBEmailVerifications`), tenant
+  (`NewYDBTenants`, `NewYDBInvitations`, `NewYDBSettings`, `NewYDBBranding`),
+  iam (`NewYDBUsers`, `NewYDBSessions`, `NewYDBRoles`, `NewYDBAPIKeys`,
+  `NewYDBRecoveryCodes`, `NewYDBAudit`), audience (`NewYDBLists`, `Subscribers`,
+  `Memberships`, `Fields`, `Jobs`, `SubscriptionPages`, `PendingSubscriptions`),
+  campaign (`NewYDBCampaigns`, `Templates`, `Recipients`, `Tracking`,
+  `TransactionalMessages`, `RateLimiter`), deliverability (`NewYDBEvents`,
+  `Suppressions`, `Settings`, `Analytics`, `SuppressionChecker`, `AuditLog`) and
+  media (`NewYDBAssets`). The service-level `onboarding` has `newYDBOnboarding`.
+- **What is still pg-, Redis- or River-bound, and is C4's wiring, not a port:**
+  - billing (`billingadapters.*`, the `billing` app and `api/billing_handlers.go`):
+    not ported. `buildCampaign` builds `usageRecorder` and `quotaGate` from
+    billing pg adapters unconditionally (~491); the serverless builder passes
+    `nil` (`NewSendTransactionalHandler` accepts them, as the campaign workers
+    do) and leaves the billing routes unmounted.
+  - `audienceadapters.NewSubmissionThrottle` and `authadapters.NewResendThrottle`
+    take a Redis URL: the serverless builder uses `ydbthrottle.Counter`
+    (see "Throttling"). `campaignadapters.NewRateLimiter` likewise has
+    `NewYDBRateLimiter`.
+  - The River-based workers (`Import`, `Export`, `Optin`, `Start`, `Batch`,
+    `Verify`, `Feedback`, `Analytics`) are generic over the ports and take the
+    YDB repositories; `authadapters.NewVerificationCleanupWorker` is not needed
+    (table TTL). `cmd/scheduler`'s `sweepPendingDomains`,
+    `enqueueAnalyticsRefresh` and `enqueueUsageRollup` read pg directly: in
+    serverless mode the `/cron/*` routes replace them (C1).
+  - `iamadapters.NewTOTP`, `authadapters.NewPasswordHasher` and
+    `campaignadapters.NewPostboxMessenger` hold no storage.
+  - `platform/jobs` (River) and `platform/tenantdb` are pg-only by design and
+    stay out of the serverless builder.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -1390,6 +1511,13 @@ These are known limits, marked in code with `ponytail:` comments.
   retention job for processed rows. No production code ever sets `InboundFailed`,
   so a notification that fails on every attempt is re-enqueued on every tick,
   and 500 of them would starve newer ones; the DLQ alert is the operator signal.
+- `YDBAssets.List` reads and sorts every asset of the tenant (the port has no
+  paging), and the media library page renders them all. Fine for one
+  organisation's library. The upgrade path is a `GLOBAL SYNC` index on
+  `(tenant_id, created_at)` and keyset paging through the port.
+- `media_assets.uploaded_by` has no `ON DELETE SET NULL` counterpart on YDB:
+  no code deletes users or tenants, so nothing can leave it dangling. A user
+  or tenant delete added later must clear it (or the asset rows) explicitly.
 
 ## Implementation phasing
 
@@ -1405,6 +1533,8 @@ The plan is split into three plans. Each one merges to `main` on its own.
   Campaign (B7) also creates the two provider-message-id indexes that
   deliverability (B8) reads; see "Plan B7 planning spike". Deliverability (B8)
   also adds the one port method the feedback recovery sweep needs; see "Plan B8
+  planning spike". Media (B9) is the last context: with it, every repository
+  the composition root wires has a YDB version, billing excepted; see "Plan B9
   planning spike".
   Audience takes two plans: B5 (the core: lists, subscribers, memberships,
   fields) and B6 (import/export jobs, subscription pages, pending
