@@ -1107,6 +1107,13 @@ Decisions for Plan B7:
 - **A V6 fix on Postgres.** `Recipients.BulkInsert`'s `inserted` counter is
   reset at the start of its closure (the V6 table lists it). No other Postgres
   adapter changes.
+- **Found, not fixed (both backends).** `StartWorker.Work` sets a campaign's
+  `recipient_count` and fans out batches from `sent + failed + pending`, which
+  leaves out `skipped` recipients, while the `Pending` window spans every row.
+  A campaign resumed after some recipients were skipped can fan out too few
+  batches, leave its last recipients unselected, and never finish. The fix is in
+  the start worker (count every row, for example by having `Counts` return
+  skipped too), which this plan does not change.
 - **For B8, B9 and C4.**
   - **B8.** Attribution resolves a provider message id with no tenant bound:
     read `campaign_recipients VIEW idx_campaign_recipients_provider` and
