@@ -10,7 +10,6 @@ import (
 	"image/png"
 	"io"
 	"math"
-	"net/http"
 	"path"
 	"slices"
 	"strings"
@@ -56,10 +55,13 @@ var codecs = map[string]codec{
 // Outlook desktop cannot show WebP. GIF and PDF are stored as-is. Anything
 // else, SVG included, is ErrUnsupportedMediaType.
 func ProcessUpload(data []byte) (Processed, error) {
-	ct := http.DetectContentType(data)
-	if ct == "application/pdf" {
-		return Processed{Data: data, ContentType: ct}, nil
+	if bytes.HasPrefix(data, []byte("%PDF-")) {
+		return Processed{Data: data, ContentType: "application/pdf"}, nil
 	}
+	// image.DecodeConfig names the format from the registered decoders' magic
+	// bytes; codecs is the allowlist. Unrecognized data yields "image/".
+	_, format, _ := image.DecodeConfig(bytes.NewReader(data))
+	ct := "image/" + format
 	c, ok := codecs[ct]
 	if !ok {
 		return Processed{}, ErrUnsupportedMediaType
