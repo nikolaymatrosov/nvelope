@@ -96,9 +96,9 @@ func (e *collectingEnqueuer) EnqueueBatch(_ context.Context, _, _ string, offset
 // pipelineFixture holds the wiring of one send-pipeline test.
 type pipelineFixture struct {
 	tenantID, campaignID string
-	campaigns            *adapters.Campaigns
-	recipients           *adapters.Recipients
-	tracking             *adapters.Tracking
+	campaigns            domain.CampaignRepository
+	recipients           domain.RecipientRepository
+	tracking             domain.TrackingRepository
 	messenger            *fakeMessenger
 	limiter              *ratelimit.Limiter
 	source               fakeSource
@@ -107,17 +107,16 @@ type pipelineFixture struct {
 
 // newPipelineFixture seeds a running campaign targeting recipientCount
 // subscribers and returns the wired pipeline.
-func newPipelineFixture(t *testing.T, recipientCount, maxSendErrors int,
+func newPipelineFixture(t *testing.T, b backend, recipientCount, maxSendErrors int,
 	perTenant, global ratelimit.Limit) *pipelineFixture {
 	t.Helper()
-	pool := dbtest.AppPool(t)
 	redisURL := dbtest.RedisURL(t)
 	dbtest.FlushRedis(t, redisURL)
 	ctx := context.Background()
 
-	tenantID := seedTenant(t, pool)
-	domainID := seedSendingDomain(t, pool, tenantID, "mail.acme.com")
-	campaigns := adapters.NewCampaigns(pool)
+	tenantID := b.newTenant(t)
+	domainID := b.newSendingDomain(t, tenantID)
+	campaigns := b.campaigns(t)
 
 	c, err := domain.NewCampaign(tenantID, "Pipeline", "Subject",
 		`<p>Hi <a href="https://acme.com/x">link</a></p>`, "Hi", "Acme", "news",
@@ -126,7 +125,7 @@ func newPipelineFixture(t *testing.T, recipientCount, maxSendErrors int,
 	campaignID, err := campaigns.Add(ctx, tenantID, c)
 	require.NoError(t, err)
 
-	listID := seedList(t, pool, tenantID, "L")
+	listID := b.newList(t, tenantID)
 	require.NoError(t, campaigns.SaveTargets(ctx, tenantID, campaignID,
 		[]domain.Target{{ListID: listID}}))
 	require.NoError(t, campaigns.Update(ctx, tenantID, campaignID,
@@ -138,7 +137,7 @@ func newPipelineFixture(t *testing.T, recipientCount, maxSendErrors int,
 	for i := 0; i < recipientCount; i++ {
 		email := dbtest.RandString() + "@acme.com"
 		members = append(members, domain.AudienceMember{
-			SubscriberID: seedSubscriber(t, pool, tenantID, email),
+			SubscriberID: b.newSubscriber(t, tenantID, email),
 			Email:        email,
 		})
 	}
@@ -150,8 +149,8 @@ func newPipelineFixture(t *testing.T, recipientCount, maxSendErrors int,
 	return &pipelineFixture{
 		tenantID: tenantID, campaignID: campaignID,
 		campaigns:  campaigns,
-		recipients: adapters.NewRecipients(pool),
-		tracking:   adapters.NewTracking(pool),
+		recipients: b.recipients(t),
+		tracking:   b.tracking(t),
 		messenger:  newFakeMessenger(),
 		limiter:    limiter,
 		source:     fakeSource{members: members},
@@ -191,45 +190,48 @@ func (f *pipelineFixture) run(t *testing.T, batchSize int, perTenant ratelimit.L
 }
 
 func TestSendPipelineDeliversEveryRecipientOnce(t *testing.T) {
-	t.Parallel()
-	limit := ratelimit.Limit{Max: 1000, Window: time.Second}
-	f := newPipelineFixture(t, 12, 100, limit, limit)
-	f.run(t, 5, limit)
+	eachBackend(t, func(t *testing.T, b backend) {
+		limit := ratelimit.Limit{Max: 1000, Window: time.Second}
+		f := newPipelineFixture(t, b, 12, 100, limit, limit)
+		f.run(t, 5, limit)
 
-	require.Equal(t, 12, f.messenger.total(), "every recipient received exactly one message")
-	for _, m := range f.source.members {
-		require.Equal(t, 1, f.messenger.count(m.Email))
-	}
+		require.Equal(t, 12, f.messenger.total(), "every recipient received exactly one message")
+		for _, m := range f.source.members {
+			require.Equal(t, 1, f.messenger.count(m.Email))
+		}
 
-	c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
-	require.NoError(t, err)
-	require.Equal(t, domain.CampaignFinished, c.Status(), "the campaign finishes once all are sent")
-	require.Equal(t, 12, c.SentCount())
+		c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CampaignFinished, c.Status(), "the campaign finishes once all are sent")
+		require.Equal(t, 12, c.SentCount())
+	})
 }
 
 func TestSendPipelineRateLimitPacing(t *testing.T) {
-	t.Parallel()
-	// A tiny per-tenant window forces the batch worker to snooze and resume.
-	limit := ratelimit.Limit{Max: 3, Window: 200 * time.Millisecond}
-	global := ratelimit.Limit{Max: 1000, Window: time.Second}
-	f := newPipelineFixture(t, 9, 100, limit, global)
-	f.run(t, 9, limit)
+	eachBackend(t, func(t *testing.T, b backend) {
+		// A tiny per-tenant window forces the batch worker to snooze and resume.
+		limit := ratelimit.Limit{Max: 3, Window: 200 * time.Millisecond}
+		global := ratelimit.Limit{Max: 1000, Window: time.Second}
+		f := newPipelineFixture(t, b, 9, 100, limit, global)
+		f.run(t, 9, limit)
 
-	require.Equal(t, 9, f.messenger.total(), "pacing drops no recipient and duplicates none")
-	c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
-	require.NoError(t, err)
-	require.Equal(t, domain.CampaignFinished, c.Status())
+		require.Equal(t, 9, f.messenger.total(), "pacing drops no recipient and duplicates none")
+		c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CampaignFinished, c.Status())
+	})
 }
 
 func TestSendPipelineAutoPausesPastErrorThreshold(t *testing.T) {
-	t.Parallel()
-	limit := ratelimit.Limit{Max: 1000, Window: time.Second}
-	f := newPipelineFixture(t, 10, 3, limit, limit)
-	f.messenger.failAll = true
-	f.run(t, 10, limit)
+	eachBackend(t, func(t *testing.T, b backend) {
+		limit := ratelimit.Limit{Max: 1000, Window: time.Second}
+		f := newPipelineFixture(t, b, 10, 3, limit, limit)
+		f.messenger.failAll = true
+		f.run(t, 10, limit)
 
-	c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
-	require.NoError(t, err)
-	require.Equal(t, domain.CampaignPaused, c.Status(),
-		"accumulated failures past max_send_errors auto-pause the campaign")
+		c, err := f.campaigns.Get(context.Background(), f.tenantID, f.campaignID)
+		require.NoError(t, err)
+		require.Equal(t, domain.CampaignPaused, c.Status(),
+			"accumulated failures past max_send_errors auto-pause the campaign")
+	})
 }
