@@ -414,7 +414,7 @@ func TestSubscribersRunSegmentOperators(t *testing.T) {
 		alice := addSubscriberNamed(t, repo, tenantID, "alice@example.com", "Алиса Петрова",
 			map[string]any{"plan": "pro", "n": 42, "s42": "42", "vip": true, "a.b": "dot"})
 		bob := addSubscriberNamed(t, repo, tenantID, "bob@example.com", "Bob",
-			map[string]any{"plan": "free", "n": 7})
+			map[string]any{"plan": "free", "n": 7, "seats": 1000000})
 		carol := addSubscriberNamed(t, repo, tenantID, "carol@example.com", "Carol", nil)
 		require.NoError(t, repo.Update(ctx, tenantID, carol, func(s *domain.Subscriber) (*domain.Subscriber, error) {
 			s.Blocklist()
@@ -459,6 +459,8 @@ func TestSubscribersRunSegmentOperators(t *testing.T) {
 			{"attr gt on a numeric string", attr("s42", domain.OpGt, "10"), []string{a}},
 			{"attr eq on a number", attr("n", domain.OpEq, float64(42)), []string{a}},
 			{"attr eq on a boolean", attr("vip", domain.OpEq, true), []string{a}},
+			{"attr eq on a number of a million", attr("seats", domain.OpEq, float64(1000000)), []string{o}},
+			{"attr gte on a number of a million", attr("seats", domain.OpGte, float64(1000000)), []string{o}},
 			{"attr key with a dot is literal", attr("a.b", domain.OpEq, "dot"), []string{a}},
 			{"member any status", member(""), []string{a, o}},
 			{"member with status", member(string(domain.SubscriptionConfirmed)), []string{a}},
