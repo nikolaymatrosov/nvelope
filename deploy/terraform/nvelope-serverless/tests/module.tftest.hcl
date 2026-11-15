@@ -108,3 +108,20 @@ run "exactly_one_certificate_source" {
   }
   expect_failures = [yandex_api_gateway.public]
 }
+
+run "triggers" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for t in yandex_function_trigger.jobs : t.message_queue[0].batch_size == "1" && t.container[0].path == "/jobs"])
+    error_message = "the job triggers deliver one message per /jobs call"
+  }
+  assert {
+    condition     = yandex_function_trigger.cron["domain-verify-sweep"].timer[0].cron_expression == "0/15 * * * ? *" && yandex_serverless_container.worker.image[0].environment["NVELOPE_SENDING_DOMAIN_VERIFY_INTERVAL"] == "15m"
+    error_message = "the domain sweep fires once per verify interval"
+  }
+  assert {
+    condition     = yandex_function_trigger.feedback.container[0].path == "/feedback" && length(yandex_function_trigger.feedback.dlq) == 1
+    error_message = "feedback goes to /feedback, with a dead-letter queue"
+  }
+}
