@@ -4,14 +4,131 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+	ydb "github.com/ydb-platform/ydb-go-sdk/v3"
+	"github.com/ydb-platform/ydb-go-sdk/v3/query"
 
+	"github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 	"github.com/nikolaymatrosov/nvelope/internal/dbtest"
 	"github.com/nikolaymatrosov/nvelope/internal/platform/tenantdb"
 )
+
+// backend is one storage implementation of the campaign repositories under
+// contract test. Every contract test body runs once per backend, so the
+// Postgres and YDB adapters are held to the same behaviour.
+type backend struct {
+	name          string
+	templates     func(t *testing.T) domain.TemplateRepository
+	campaigns     func(t *testing.T) domain.CampaignRepository
+	transactional func(t *testing.T) domain.TransactionalMessageRepository
+	// The seeds below create rows owned by other contexts. On Postgres they
+	// are real rows, because the campaign tables carry foreign keys to them.
+	// YDB has no foreign keys and no campaign query reads these tables, so a
+	// bare UUID stands in.
+	newTenant        func(t *testing.T) string
+	newSendingDomain func(t *testing.T, tenantID string) string
+	newList          func(t *testing.T, tenantID string) string
+	newSubscriber    func(t *testing.T, tenantID, email string) string
+	// The probes read what no port exposes.
+	transactionalCount func(t *testing.T, tenantID string) int
+}
+
+var backends = []backend{
+	{
+		name: "pg",
+		templates: func(t *testing.T) domain.TemplateRepository {
+			return adapters.NewTemplates(dbtest.AppPool(t))
+		},
+		campaigns: func(t *testing.T) domain.CampaignRepository {
+			return adapters.NewCampaigns(dbtest.AppPool(t))
+		},
+		transactional: func(t *testing.T) domain.TransactionalMessageRepository {
+			return adapters.NewTransactionalMessages(dbtest.AppPool(t))
+		},
+		newTenant: func(t *testing.T) string { return seedTenant(t, dbtest.AppPool(t)) },
+		newSendingDomain: func(t *testing.T, tenantID string) string {
+			return seedSendingDomain(t, dbtest.AppPool(t), tenantID, "mail."+dbtest.RandString()+".com")
+		},
+		newList: func(t *testing.T, tenantID string) string {
+			return seedList(t, dbtest.AppPool(t), tenantID, "L-"+dbtest.RandString())
+		},
+		newSubscriber: func(t *testing.T, tenantID, email string) string {
+			return seedSubscriber(t, dbtest.AppPool(t), tenantID, email)
+		},
+		transactionalCount: func(t *testing.T, tenantID string) int {
+			return pgCount(t, tenantID, "SELECT count(*) FROM transactional_messages", nil)
+		},
+	},
+	{
+		name: "ydb",
+		templates: func(t *testing.T) domain.TemplateRepository {
+			return adapters.NewYDBTemplates(dbtest.YDBMigrated(t))
+		},
+		campaigns: func(t *testing.T) domain.CampaignRepository {
+			return adapters.NewYDBCampaigns(dbtest.YDBMigrated(t))
+		},
+		transactional: func(t *testing.T) domain.TransactionalMessageRepository {
+			return adapters.NewYDBTransactionalMessages(dbtest.YDBMigrated(t))
+		},
+		newTenant:        func(*testing.T) string { return uuid.NewString() },
+		newSendingDomain: func(*testing.T, string) string { return uuid.NewString() },
+		newList:          func(*testing.T, string) string { return uuid.NewString() },
+		newSubscriber:    func(*testing.T, string, string) string { return uuid.NewString() },
+		transactionalCount: func(t *testing.T, tenantID string) int {
+			return ydbCount(t, `DECLARE $tenant_id AS Utf8;
+SELECT COUNT(*) FROM transactional_messages WHERE tenant_id = $tenant_id;`, tenantID, "", "")
+		},
+	},
+}
+
+// eachBackend runs body once per backend, as parallel subtests named after it.
+func eachBackend(t *testing.T, body func(t *testing.T, b backend)) {
+	t.Helper()
+	for _, b := range backends {
+		t.Run(b.name, func(t *testing.T) {
+			t.Parallel()
+			body(t, b)
+		})
+	}
+}
+
+// pgCount reads one count inside the tenant-bound transaction. A nil arg runs
+// the statement with no argument.
+func pgCount(t *testing.T, tenantID, sql string, arg any) int {
+	t.Helper()
+	var n int
+	require.NoError(t, tenantdb.WithTenant(context.Background(), dbtest.AppPool(t), tenantID,
+		func(ctx context.Context, tx pgx.Tx) error {
+			if arg == nil {
+				return tx.QueryRow(ctx, sql).Scan(&n)
+			}
+			return tx.QueryRow(ctx, sql, arg).Scan(&n)
+		}))
+	return n
+}
+
+// ydbParams binds $tenant_id and, when name is set, one more Utf8 parameter.
+func ydbParams(tenantID, name, value string) query.ExecuteOption {
+	b := ydb.ParamsBuilder().Param("$tenant_id").Text(tenantID)
+	if name != "" {
+		b = b.Param(name).Text(value)
+	}
+	return query.WithParameters(b.Build())
+}
+
+// ydbCount reads one COUNT(*).
+func ydbCount(t *testing.T, q, tenantID, name, value string) int {
+	t.Helper()
+	row, err := dbtest.YDBMigrated(t).Query().QueryRow(context.Background(), q, ydbParams(tenantID, name, value))
+	require.NoError(t, err)
+	var n uint64
+	require.NoError(t, row.Scan(&n))
+	return int(n)
+}
 
 // seedTenant inserts a tenant row directly and returns its id.
 func seedTenant(t *testing.T, pool *pgxpool.Pool) string {
@@ -64,6 +181,22 @@ func seedList(t *testing.T, pool *pgxpool.Pool, tenantID, name string) string {
 	return id
 }
 
+// newCampaign builds a draft campaign for the given tenant.
+func newCampaign(t *testing.T, tenantID, name, sendingDomainID string) *domain.Campaign {
+	t.Helper()
+	c, err := domain.NewCampaign(tenantID, name, "Subject", `<p>hi</p>`, "Hi",
+		"Acme", "news", sendingDomainID, "", 100)
+	require.NoError(t, err)
+	return c
+}
+
+func newTemplate(t *testing.T, tenantID, name string) *domain.Template {
+	t.Helper()
+	tpl, err := domain.NewTemplate(tenantID, name, domain.KindCampaign, "Subject", "<p>b</p>", "")
+	require.NoError(t, err)
+	return tpl
+}
+
 // withRecipientProviderMessageID reads a campaign recipient's persisted
 // provider_message_id inside the tenant-bound transaction.
 func withRecipientProviderMessageID(t *testing.T, pool *pgxpool.Pool, tenantID, recipientID string,
@@ -76,13 +209,4 @@ func withRecipientProviderMessageID(t *testing.T, pool *pgxpool.Pool, tenantID, 
 				"SELECT coalesce(provider_message_id, '') FROM campaign_recipients WHERE id = $1",
 				recipientID).Scan(dst)
 		})
-}
-
-// newCampaign builds a draft campaign for the given tenant.
-func newCampaign(t *testing.T, tenantID, name, sendingDomainID string) *domain.Campaign {
-	t.Helper()
-	c, err := domain.NewCampaign(tenantID, name, "Subject", `<p>hi</p>`, "Hi",
-		"Acme", "news", sendingDomainID, "", 100)
-	require.NoError(t, err)
-	return c
 }
