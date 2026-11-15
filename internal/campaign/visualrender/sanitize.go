@@ -1,6 +1,7 @@
 package visualrender
 
 import (
+	"crypto/rand"
 	"regexp"
 	"strconv"
 	"strings"
@@ -159,8 +160,8 @@ func SanitizeDocument(bodyHTML string) (sanitized string, warnings []domain.Rend
 	if bodyHTML == "" {
 		return "", nil
 	}
-	protected, tags := protectMergeTags(bodyHTML)
-	out := restoreMergeTags(documentPolicy.Sanitize(protected), tags)
+	protected, restore := protectMergeTags(bodyHTML)
+	out := restore.Replace(documentPolicy.Sanitize(protected))
 	// bluemonday drops the doctype, and without one the archive renders in
 	// quirks mode. The match excludes '<' and '>', so it cannot carry markup.
 	if m := doctypeRE.FindStringSubmatch(bodyHTML); m != nil {
@@ -192,31 +193,21 @@ var (
 // brackets, '&' or '='), so restoring a match cannot re-inject markup.
 var mergeTagRE = regexp.MustCompile(`\{\{\{[A-Za-z0-9_.-]+\}\}\}|\{\{[ \t]*[A-Za-z0-9_.-]+[ \t]*\}\}`)
 
-var mergeSentinelRE = regexp.MustCompile(`nvelope-merge-tag-(\d+)-x`)
-
-// protectMergeTags swaps each placeholder for an inert index sentinel that is
-// a valid relative URL. bluemonday rejects URLs with whitespace or braces, so
-// an unprotected href="{{ campaign.unsubscribe_url }}" would be dropped.
-func protectMergeTags(in string) (string, []string) {
-	var tags []string
+// protectMergeTags swaps each placeholder for an inert sentinel that is a
+// valid relative URL. bluemonday rejects URLs with whitespace or braces, so an
+// unprotected href="{{ campaign.unsubscribe_url }}" would be dropped. The
+// returned replacer puts the placeholders back. Each sentinel carries a fresh
+// random nonce, so a sentinel-looking string already in the input matches
+// none of them and cannot pick up a tag from elsewhere in the document.
+func protectMergeTags(in string) (string, *strings.Replacer) {
+	prefix := "nvelope-merge-tag-" + rand.Text() + "-"
+	var pairs []string
 	out := mergeTagRE.ReplaceAllStringFunc(in, func(m string) string {
-		tags = append(tags, m)
-		return "nvelope-merge-tag-" + strconv.Itoa(len(tags)-1) + "-x"
+		sentinel := prefix + strconv.Itoa(len(pairs)/2) + "-x"
+		pairs = append(pairs, sentinel, m)
+		return sentinel
 	})
-	return out, tags
-}
-
-// restoreMergeTags puts the remembered placeholders back. Only text captured
-// by mergeTagRE is ever substituted, never anything decoded from the sentinel,
-// so a sentinel already present in the input cannot smuggle content in.
-func restoreMergeTags(in string, tags []string) string {
-	return mergeSentinelRE.ReplaceAllStringFunc(in, func(m string) string {
-		i, err := strconv.Atoi(mergeSentinelRE.FindStringSubmatch(m)[1])
-		if err != nil || i >= len(tags) {
-			return m
-		}
-		return tags[i]
-	})
+	return out, strings.NewReplacer(pairs...)
 }
 
 // documentStripped reports whether the input held a construct the document

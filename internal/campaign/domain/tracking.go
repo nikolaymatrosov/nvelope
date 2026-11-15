@@ -5,6 +5,8 @@ import (
 	stdhtml "html"
 	"regexp"
 	"strings"
+
+	"github.com/nikolaymatrosov/nvelope/internal/platform/urlattr"
 )
 
 // hrefPattern matches an href attribute pointing at an http(s) URL.
@@ -26,8 +28,15 @@ func ApplyVariables(text string, vars map[string]string) string {
 // ApplyHTMLVariables substitutes placeholders in an HTML part: {{key}} is
 // HTML-escaped and {{{key}}} is inserted raw. rawUsed reports whether any
 // raw placeholder was substituted, so the caller can sanitize the result.
+// A value that turns a URL attribute into a disallowed scheme empties the
+// attribute.
 func ApplyHTMLVariables(html string, vars map[string]string) (out string, rawUsed bool) {
-	return applyVariables(html, vars, true)
+	out = urlattr.Substitute(html, func(s string) string {
+		o, raw := applyVariables(s, vars, true)
+		rawUsed = rawUsed || raw
+		return o
+	})
+	return out, rawUsed
 }
 
 func applyVariables(in string, vars map[string]string, escapeHTML bool) (string, bool) {

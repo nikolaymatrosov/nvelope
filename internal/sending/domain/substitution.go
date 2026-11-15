@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/nikolaymatrosov/nvelope/internal/platform/urlattr"
 )
 
 // SubscriberView is the data the send-time substitutor needs to resolve
@@ -46,10 +48,13 @@ var placeholderRE = regexp.MustCompile(`\{\{\s*(subscriber|campaign)\.([a-z][a-z
 // sanitized. text gets the raw value. Unknown slugs are left as the literal
 // placeholder; validation already rejected such documents at save time (per
 // FR-016c), and silently leaving them at send avoids a per-recipient hard
-// fail when a custom field has been deleted between save and send.
+// fail when a custom field has been deleted between save and send. A value
+// that turns a URL attribute into a disallowed scheme empties the attribute.
 func Substitute(html, text string, sub SubscriberView, ctx CampaignContext) (string, string) {
-	return replacePlaceholders(html, sub, ctx, stdhtml.EscapeString),
-		replacePlaceholders(text, sub, ctx, nil)
+	html = urlattr.Substitute(html, func(s string) string {
+		return replacePlaceholders(s, sub, ctx, stdhtml.EscapeString)
+	})
+	return html, replacePlaceholders(text, sub, ctx, nil)
 }
 
 // SubstituteSubject resolves placeholders in a subject line. Values are

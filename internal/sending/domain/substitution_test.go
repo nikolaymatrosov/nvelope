@@ -129,3 +129,40 @@ func TestSubstitute_PreservesNonPlaceholderText(t *testing.T) {
 	html, _ := domain.Substitute(`literal { and {{not-a-tag}} stays`, "", sub(), ctx())
 	require.Equal(t, `literal { and {{not-a-tag}} stays`, html)
 }
+
+func TestSubstitute_DropsUnsafeSchemeFromURLAttribute(t *testing.T) {
+	t.Parallel()
+	s := sub()
+	s.Attributes["site"] = "javascript:alert(1)"
+	s.Attributes["half"] = "java"
+	s.Attributes["rest"] = "script:alert(1)"
+	html, text := domain.Substitute(
+		`<a href="{{ subscriber.site }}">a</a>`+
+			`<a href='{{ subscriber.half }}{{ subscriber.rest }}'>b</a>`+
+			`<img src="{{ subscriber.site }}">`+
+			`<p>{{ subscriber.site }}</p>`,
+		"{{ subscriber.site }}", s, ctx())
+	require.Equal(t, `<a href="">a</a><a href=''>b</a><img src="">`+
+		`<p>javascript:alert(1)</p>`, html)
+	require.Equal(t, "javascript:alert(1)", text, "the text part has no URLs to guard")
+}
+
+func TestSubstitute_KeepsSafeURLAttribute(t *testing.T) {
+	t.Parallel()
+	s := sub()
+	s.Attributes["site"] = "https://alice.example/?a=1&b=2"
+	s.Attributes["path"] = "profile/alice"
+	html, _ := domain.Substitute(
+		`<a href="{{ subscriber.site }}">a</a><a href="{{ subscriber.path }}">b</a>`+
+			`<a href="{{ campaign.unsubscribe_url }}">u</a><a href="mailto:{{ subscriber.email }}">m</a>`,
+		"", s, ctx())
+	require.Equal(t, `<a href="https://alice.example/?a=1&amp;b=2">a</a><a href="profile/alice">b</a>`+
+		`<a href="https://t.example/u/abc">u</a><a href="mailto:alice@example.com">m</a>`, html)
+}
+
+func TestSubstitute_LeavesAuthorURLsWithoutPlaceholders(t *testing.T) {
+	t.Parallel()
+	// The author's own links were sanitized (or the risk accepted) at save.
+	html, _ := domain.Substitute(`<a href="javascript:void(0)">x</a>`, "", sub(), ctx())
+	require.Equal(t, `<a href="javascript:void(0)">x</a>`, html)
+}

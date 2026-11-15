@@ -37,6 +37,9 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermSettingsManage); !ok {
+		return
+	}
 	var req struct {
 		DisplayName string `json:"display_name"`
 		Timezone    string `json:"timezone"`

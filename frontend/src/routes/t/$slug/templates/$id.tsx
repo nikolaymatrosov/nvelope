@@ -96,7 +96,12 @@ function EditTemplateCard({
   canManage: boolean
 }) {
   const queryClient = useQueryClient()
-  const { t } = useTranslation(["templates", "common", "visualEditor"])
+  const { t } = useTranslation([
+    "templates",
+    "common",
+    "visualEditor",
+    "transactional",
+  ])
 
   // Mode is mutable so the operator can opt out of the visual editor on a
   // visual row (T093 / FR-029). Transactional templates never enter
@@ -285,6 +290,15 @@ function EditTemplateCard({
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                     />
+                    {template.kind === "transactional" && (
+                      <p className="text-sm text-muted-foreground">
+                        {t("transactional:endpoint.variablesNotePrefix")}
+                        <code>{"{{key}}"}</code>
+                        {t("transactional:endpoint.variablesNoteEscaped")}
+                        <code>{"{{{key}}}"}</code>
+                        {t("transactional:endpoint.variablesNoteRaw")}
+                      </p>
+                    )}
                   </div>
                 )}
               </form.Field>

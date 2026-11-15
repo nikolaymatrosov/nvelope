@@ -83,3 +83,11 @@ func TestRenderTrackedMatchesDecodedURL(t *testing.T) {
 		"c", "r", map[string]string{"https://a.test/?x=1&y=2": "link-1"})
 	require.Contains(t, out, `href="https://t.test/l/link-1?s=r"`)
 }
+
+func TestApplyHTMLVariablesDropsUnsafeSchemeFromURLAttribute(t *testing.T) {
+	t.Parallel()
+	vars := map[string]string{"url": "javascript:alert(1)", "qr": "data:image/png;base64,AAAA"}
+	out, _ := domain.ApplyHTMLVariables(
+		`<a href="{{url}}">x</a><img src="{{qr}}"><a href="{{qr}}">y</a>`, vars)
+	require.Equal(t, `<a href="">x</a><img src="data:image/png;base64,AAAA"><a href="">y</a>`, out)
+}

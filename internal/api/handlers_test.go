@@ -237,6 +237,7 @@ func TestGetAndUpdateSettings(t *testing.T) {
 	ts := newTestServer(t)
 	ts.signup()
 	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
 
 	status, body := ts.request(http.MethodGet, "/t/"+slug+"/api/settings", nil)
 	require.Equal(t, http.StatusOK, status)
@@ -257,12 +258,33 @@ func TestUpdateSettingsRejectsEmptyDisplayName(t *testing.T) {
 	ts := newTestServer(t)
 	ts.signup()
 	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
 
 	status, body := ts.request(http.MethodPut, "/t/"+slug+"/api/settings", map[string]string{
 		"display_name": "  ", "timezone": "UTC",
 	})
 	require.Equal(t, http.StatusUnprocessableEntity, status)
 	require.Equal(t, "validation_failed", body["code"])
+}
+
+func TestUpdateSettingsRequiresSettingsManage(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.signup()
+	slug := ts.createTenant()
+	ts.enterWorkspace(slug)
+	base := "/t/" + slug + "/api"
+
+	member, _ := ts.addMember(slug)
+	ts.enterWorkspaceOn(member, slug)
+
+	status, _ := ts.do(member, http.MethodPut, base+"/settings",
+		map[string]string{"display_name": "Hijacked", "timezone": "UTC"})
+	require.Equal(t, http.StatusForbidden, status, "no settings:manage permission")
+
+	status, body := ts.request(http.MethodGet, base+"/settings", nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "Workspace", body["settings"].(map[string]any)["display_name"])
 }
 
 func TestTenantRoutesRequireAuthentication(t *testing.T) {
