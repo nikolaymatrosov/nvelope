@@ -15,6 +15,8 @@ import (
 	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+
+	tenantdomain "github.com/nikolaymatrosov/nvelope/internal/tenant/domain"
 )
 
 const envPrefix = "NVELOPE_"
@@ -560,6 +562,8 @@ func (c Config) Validate() error {
 	case RuntimeServerless:
 		if c.TenantSlug == "" {
 			errs = append(errs, errors.New("NVELOPE_TENANT_SLUG is required when NVELOPE_RUNTIME is serverless"))
+		} else if _, err := tenantdomain.NewSlug(c.TenantSlug); err != nil {
+			errs = append(errs, fmt.Errorf("NVELOPE_TENANT_SLUG is invalid: %w", err))
 		}
 		if len(c.SetupToken) < minSetupTokenLen {
 			errs = append(errs, fmt.Errorf(

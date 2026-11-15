@@ -288,6 +288,17 @@ func TestLoadServerlessRuntime(t *testing.T) {
 	require.Equal(t, testSetupToken, cfg.SetupToken)
 }
 
+func TestLoadServerlessRejectsReservedSlug(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("NVELOPE_RUNTIME", "serverless")
+	t.Setenv("NVELOPE_TENANT_SLUG", "admin")
+	t.Setenv("NVELOPE_SETUP_TOKEN", testSetupToken)
+
+	_, err := Load("")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NVELOPE_TENANT_SLUG")
+}
+
 func TestLoadServerlessRequiresSlugAndToken(t *testing.T) {
 	setBaseEnv(t)
 	t.Setenv("NVELOPE_RUNTIME", "serverless")

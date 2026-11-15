@@ -620,7 +620,7 @@ git commit -m "feat(auth): add first-run setup that creates a verified, signed-i
     - `403 setup_token_invalid`;
     - `403 setup_complete`;
     - `409 email_taken`;
-    - `400` on invalid input.
+    - `422 validation_failed` on invalid input (as SaaS signup); only malformed JSON is `400`.
   - `POST /api/platform/tenants` in single-tenant mode: the slug is always `NVELOPE_TENANT_SLUG`. `409 slug_taken` once the workspace exists.
 
 - [ ] **Step 1: Add the config hook to the test server**
@@ -1349,4 +1349,5 @@ git commit -m "docs: record the plan C2 bootstrap decisions in the serverless sp
 
 - C4's serverless composition root wires `authcommand.NewSetUpHandler(ydbUsers, hasher, cfg.SetupToken, cfg.SessionTTL)` into `authapp.Commands.SetUp`. `YDBUsers.CreateWithSession` already persists the verification state.
 - `NVELOPE_RUNTIME=serverless` currently still requires the SaaS keys (`NVELOPE_REDIS_URL`, Postbox, the feedback stream). C4 relaxes `Config.Validate` for the serverless runtime.
-- C3 sets three variables. `NVELOPE_RUNTIME=serverless` and `NVELOPE_TENANT_SLUG` go on `api` and `worker`. `NVELOPE_SETUP_TOKEN` goes on `api` only, from Lockbox, a `random_password` of at least 32 characters. The API Gateway routes `/api/platform/*`, including the public `/api/platform/config`, to `api`.
+- C3 sets three variables. `NVELOPE_RUNTIME=serverless` and `NVELOPE_TENANT_SLUG` go on `api` and `worker`. `NVELOPE_SETUP_TOKEN`, from Lockbox, a `random_password` of at least 32 characters, is required by `config.Validate` for every binary when `NVELOPE_RUNTIME=serverless`, so C3 sets it on `api` and `worker`; C4 may scope the check to `cmd/api` if it wants the worker to stop receiving the secret. The API Gateway routes `/api/platform/*`, including the public `/api/platform/config`, to `api`.
+- Billing links remain reachable in-app from `campaigns/$id.tsx` and `transactional/index.tsx` (only on billing errors or a docs note). C4 decides whether to hide them when billing is unwired.

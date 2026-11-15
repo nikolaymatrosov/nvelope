@@ -9,7 +9,8 @@ import (
 // that depends on it; the pgx implementation lives in the adapters layer.
 type UserRepository interface {
 	// Create inserts a new user with an already-hashed password and returns the
-	// persisted user with its database-assigned id. It returns ErrEmailTaken
+	// persisted user with its database-assigned id. The account is inserted
+	// unverified: only CreateWithSession persists the verification state of u. It returns ErrEmailTaken
 	// when the email is already registered.
 	Create(ctx context.Context, u *User, passwordHash string) (*User, error)
 	// CreateWithSession atomically inserts a new user and issues an initial
@@ -24,7 +25,8 @@ type UserRepository interface {
 	// result is persisted.
 	CreateWithSession(ctx context.Context, u *User, passwordHash string,
 		issueSession func(userID string) (s *Session, tokenHash string, err error)) (*User, error)
-	// CreateWithVerification atomically inserts a new user and its first
+	// CreateWithVerification atomically inserts a new unverified user (only
+	// CreateWithSession persists the verification state of u) and its first
 	// email-verification challenge. issueVerification is called with the new
 	// user's id and returns the challenge to persist together with its token
 	// hash. The whole operation is one transaction, so a failure leaves neither
