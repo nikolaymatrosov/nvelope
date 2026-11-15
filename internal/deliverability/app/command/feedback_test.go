@@ -36,7 +36,7 @@ type fakeEvents struct {
 	inbound  domain.InboundNotification
 	tenantID string
 	attr     *domain.Attribution
-	recorded bool
+	eventID  string // the delivery_events row id RecordEvent returns
 	marked   []domain.InboundStatus
 }
 
@@ -68,8 +68,8 @@ func (f *fakeEvents) Attribute(context.Context, string, string) (domain.Attribut
 	return *f.attr, true, nil
 }
 
-func (f *fakeEvents) RecordEvent(context.Context, *domain.DeliveryEvent) (bool, error) {
-	return f.recorded, nil
+func (f *fakeEvents) RecordEvent(context.Context, *domain.DeliveryEvent) (string, error) {
+	return f.eventID, nil
 }
 
 func (f *fakeEvents) MarkInbound(_ context.Context, _ string, st domain.InboundStatus) error {
@@ -165,15 +165,19 @@ func TestSweepPendingFeedbackEnqueuesEveryPendingNotification(t *testing.T) {
 }
 
 // fakeSuppressor counts Apply calls.
-type fakeSuppressor struct{ applied int }
+type fakeSuppressor struct {
+	applied   int
+	sourceIDs []string
+}
 
-func (s *fakeSuppressor) Apply(context.Context, *domain.DeliveryEvent) error {
+func (s *fakeSuppressor) Apply(_ context.Context, e *domain.DeliveryEvent) error {
 	s.applied++
+	s.sourceIDs = append(s.sourceIDs, e.ID())
 	return nil
 }
 
-// A retry after RecordEvent committed but Apply failed sees the event as
-// already recorded; suppression must still be applied.
+// A retry after RecordEvent committed but Apply failed gets the id of the row
+// the earlier attempt recorded; suppression must still be applied, naming it.
 func TestProcessFeedbackAppliesSuppressionForAnAlreadyRecordedEvent(t *testing.T) {
 	t.Parallel()
 	n := bounceNotification(t)
@@ -182,12 +186,13 @@ func TestProcessFeedbackAppliesSuppressionForAnAlreadyRecordedEvent(t *testing.T
 	events.inbound = n
 	events.tenantID = "tenant-1"
 	events.attr = &domain.Attribution{CampaignID: "camp-1", CampaignRecipientID: "rcpt-1"}
-	events.recorded = false // already recorded by the earlier attempt
+	events.eventID = "dev-1" // recorded by the earlier attempt
 	sup := &fakeSuppressor{}
 	h := command.NewProcessFeedbackHandler(events, sup, nil)
 
 	require.NoError(t, h.Handle(context.Background(),
 		command.ProcessFeedback{InboundEventID: "evt-1"}))
 	require.Equal(t, 1, sup.applied)
+	require.Equal(t, []string{"dev-1"}, sup.sourceIDs)
 	require.Equal(t, []domain.InboundStatus{domain.InboundAttributed}, events.marked)
 }

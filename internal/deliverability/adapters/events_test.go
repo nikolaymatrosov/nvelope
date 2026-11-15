@@ -165,13 +165,13 @@ func TestEventsRecordEventIsIdempotent(t *testing.T) {
 			domain.Attribution{CampaignID: campaignID, CampaignRecipientID: recipientID})
 		require.NoError(t, err)
 
-		recorded, err := repo.RecordEvent(ctx, event)
+		id, err := repo.RecordEvent(ctx, event)
 		require.NoError(t, err)
-		require.True(t, recorded)
+		require.NotEmpty(t, id)
 
-		recorded, err = repo.RecordEvent(ctx, event)
+		again, err := repo.RecordEvent(ctx, event)
 		require.NoError(t, err)
-		require.False(t, recorded, "a second record for the same inbound event is a no-op")
+		require.Equal(t, id, again, "a second record for the same inbound event returns the first row")
 		require.Equal(t, 1, b.eventCount(t, tenantID))
 	})
 }
@@ -191,24 +191,27 @@ func TestEventsRecordEventIsRaceFree(t *testing.T) {
 			"rcpt@acme.com", pm, time.Now(), attr)
 		require.NoError(t, err)
 
-		var recorded atomic.Int32
+		var mu sync.Mutex
+		ids := map[string]int{}
 		var failed atomic.Int32
 		var wg sync.WaitGroup
 		for range 6 {
 			wg.Go(func() {
-				ok, err := repo.RecordEvent(context.Background(), event)
-				switch {
-				case err != nil:
+				id, err := repo.RecordEvent(context.Background(), event)
+				if err != nil {
 					failed.Add(1)
-				case ok:
-					recorded.Add(1)
+					return
 				}
+				mu.Lock()
+				ids[id]++
+				mu.Unlock()
 			})
 		}
 		wg.Wait()
 
 		require.Zero(t, failed.Load())
-		require.EqualValues(t, 1, recorded.Load())
+		require.Len(t, ids, 1, "every concurrent record returns the one row's id")
+		require.NotContains(t, ids, "")
 		require.Equal(t, 1, b.eventCount(t, tenantID))
 	})
 }
@@ -229,9 +232,9 @@ func TestEventsDeliveryEventsCrossTenantIsolation(t *testing.T) {
 			"rcpt@acme.com", pm, time.Now(),
 			domain.Attribution{CampaignID: campaignID, CampaignRecipientID: recipientID})
 		require.NoError(t, err)
-		recorded, err := repo.RecordEvent(ctx, event)
+		id, err := repo.RecordEvent(ctx, event)
 		require.NoError(t, err)
-		require.True(t, recorded)
+		require.NotEmpty(t, id)
 
 		require.Equal(t, 1, b.eventCount(t, tenantA))
 		require.Equal(t, 0, b.eventCount(t, tenantB))

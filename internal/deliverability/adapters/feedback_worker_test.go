@@ -124,5 +124,6 @@ func TestFeedbackWorkerAppliesSuppressionOnBounce(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, page, 1, "a hard bounce suppresses the recipient")
 		require.Equal(t, domain.ReasonHardBounce, page[0].Reason())
+		require.NotEmpty(t, page[0].SourceEventID(), "the entry names the delivery event behind it")
 	})
 }

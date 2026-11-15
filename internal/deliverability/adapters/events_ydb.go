@@ -181,13 +181,13 @@ WHERE provider_message_id = $pm AND tenant_id = $tenant_id LIMIT 1;`, params)
 
 // RecordEvent inserts the attributed delivery event, idempotent on the inbound
 // event id: the transaction reads the id through idx_delivery_events_inbound
-// and inserts only when it is absent. recorded reports whether a row was
-// written.
-func (r *YDBEvents) RecordEvent(ctx context.Context, e *domain.DeliveryEvent) (bool, error) {
-	id := uuid.NewString()
-	var recorded bool
+// and inserts only when it is absent. It returns the row id, new or already
+// recorded.
+func (r *YDBEvents) RecordEvent(ctx context.Context, e *domain.DeliveryEvent) (string, error) {
+	newID := uuid.NewString()
+	var id string
 	err := r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
-		_, err := tx.QueryRow(ctx, `DECLARE $tenant_id AS Utf8;
+		row, err := tx.QueryRow(ctx, `DECLARE $tenant_id AS Utf8;
 DECLARE $inbound_event_id AS Utf8;
 SELECT id FROM delivery_events VIEW idx_delivery_events_inbound
 WHERE tenant_id = $tenant_id AND inbound_event_id = $inbound_event_id;`,
@@ -196,7 +196,9 @@ WHERE tenant_id = $tenant_id AND inbound_event_id = $inbound_event_id;`,
 				Param("$inbound_event_id").Text(e.InboundEventID()).
 				Build()))
 		if err == nil {
-			recorded = false
+			if err := row.Scan(&id); err != nil {
+				return fmt.Errorf("scanning delivery event id: %w", err)
+			}
 			return nil
 		}
 		if !errors.Is(err, query.ErrNoRows) {
@@ -220,7 +222,7 @@ VALUES ($tenant_id, $id, $inbound_event_id, $event_kind, $recipient_email, $camp
         CurrentUtcTimestamp());`,
 			query.WithParameters(ydb.ParamsBuilder().
 				Param("$tenant_id").Text(e.TenantID()).
-				Param("$id").Text(id).
+				Param("$id").Text(newID).
 				Param("$inbound_event_id").Text(e.InboundEventID()).
 				Param("$event_kind").Text(string(e.Kind())).
 				Param("$recipient_email").Text(e.RecipientEmail()).
@@ -232,13 +234,13 @@ VALUES ($tenant_id, $id, $inbound_event_id, $event_kind, $recipient_email, $camp
 				Build())); err != nil {
 			return fmt.Errorf("recording delivery event: %w", err)
 		}
-		recorded = true
+		id = newID
 		return nil
 	})
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return recorded, nil
+	return id, nil
 }
 
 // MarkInbound sets the staged row's terminal status and processed-at time.

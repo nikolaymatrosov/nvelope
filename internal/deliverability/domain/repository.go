@@ -27,9 +27,9 @@ type EventRepository interface {
 	Attribute(ctx context.Context, tenantID, providerMessageID string) (Attribution, bool, error)
 
 	// RecordEvent inserts the attributed delivery event inside the tenant
-	// transaction. A row already present for the inbound event is a no-op;
-	// recorded reports whether a new row was written.
-	RecordEvent(ctx context.Context, e *DeliveryEvent) (recorded bool, err error)
+	// transaction and returns its row id. A row already present for the
+	// inbound event is not written again; its id is returned.
+	RecordEvent(ctx context.Context, e *DeliveryEvent) (id string, err error)
 
 	// MarkInbound sets the staged row's terminal status and processed-at time.
 	MarkInbound(ctx context.Context, eventID string, status InboundStatus) error

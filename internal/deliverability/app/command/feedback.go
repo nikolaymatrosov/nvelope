@@ -138,10 +138,11 @@ func (h ProcessFeedbackHandler) Handle(ctx context.Context, cmd ProcessFeedback)
 		return err
 	}
 
-	_, err = h.events.RecordEvent(ctx, event)
+	id, err := h.events.RecordEvent(ctx, event)
 	if err != nil {
 		return err
 	}
+	event = event.Recorded(id)
 	// Suppression runs even when the event was already recorded: a retry after
 	// RecordEvent committed but Apply failed must still suppress. Upsert is a
 	// no-op for an already suppressed address, and IsProcessed stops finished

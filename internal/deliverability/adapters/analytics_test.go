@@ -27,9 +27,9 @@ func recordEvent(t *testing.T, b backend, tenantID, pm string, kind domain.Event
 	require.True(t, ok)
 	ev, err := domain.NewDeliveryEvent(tenantID, inboundID, kind, email, pm, time.Now(), attr)
 	require.NoError(t, err)
-	recorded, err := events.RecordEvent(ctx, ev)
+	id, err := events.RecordEvent(ctx, ev)
 	require.NoError(t, err)
-	require.True(t, recorded)
+	require.NotEmpty(t, id)
 }
 
 func TestAnalyticsRefreshComputesCounts(t *testing.T) {
