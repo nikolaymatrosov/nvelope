@@ -96,3 +96,35 @@ func TestSendPipelineResumesAfterWorkerCrash(t *testing.T) {
 		require.Equal(t, 10, c.SentCount())
 	})
 }
+
+// TestStartWorkerResumeCoversSkippedRecipients pins that a re-run start job
+// (Resume enqueues one) fans out batches over every recipient row, skipped
+// ones included. Pending windows span every row in id order, so counting only
+// sent, failed and pending rows drops the last window, whose recipients are
+// then never sent and the campaign never finishes.
+func TestStartWorkerResumeCoversSkippedRecipients(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		limit := ratelimit.Limit{Max: 1000, Window: time.Second}
+		f := newPipelineFixture(t, b, 3, 100, limit, limit)
+		ctx := context.Background()
+		args := jobs.CampaignStartArgs{TenantID: f.tenantID, CampaignID: f.campaignID}
+		start := adapters.NewStartWorker(f.campaigns, f.recipients, f.tracking,
+			f.source, f.enqueuer, nil, 2)
+		require.NoError(t, start.Work(ctx, args))
+
+		first, err := f.recipients.Pending(ctx, f.tenantID, f.campaignID, 0, 2)
+		require.NoError(t, err)
+		require.Len(t, first, 2)
+		for _, r := range first {
+			require.NoError(t, f.recipients.MarkSkipped(ctx, f.tenantID, r.ID(), "hard_bounce"))
+		}
+
+		f.enqueuer.batches = nil
+		require.NoError(t, start.Work(ctx, args))
+		require.Equal(t, [][2]int{{0, 2}, {2, 2}}, f.enqueuer.batches,
+			"the re-run start still reaches the window of the last pending recipient")
+		c, err := f.campaigns.Get(ctx, f.tenantID, f.campaignID)
+		require.NoError(t, err)
+		require.Equal(t, 3, c.RecipientCount())
+	})
+}

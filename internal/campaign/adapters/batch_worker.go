@@ -250,7 +250,7 @@ func (w *BatchWorker) sendOne(ctx context.Context, tenantID string, campaign *do
 // auto-pauses past the error threshold, and finishes the campaign when no
 // recipients remain.
 func (w *BatchWorker) syncProgress(ctx context.Context, tenantID, campaignID string) error {
-	sent, failed, pending, err := w.recipients.Counts(ctx, tenantID, campaignID)
+	sent, failed, _, pending, err := w.recipients.Counts(ctx, tenantID, campaignID)
 	if err != nil {
 		return err
 	}

@@ -303,9 +303,9 @@ WHERE tenant_id = $tenant_id AND id = $id;`, query.WithParameters(ydb.ParamsBuil
 	return nil
 }
 
-// Counts returns the campaign's sent, failed, and pending recipient counts.
+// Counts returns the campaign's recipient counts by status.
 // ponytail: it reads every recipient row of the campaign on each call.
-func (r *YDBRecipients) Counts(ctx context.Context, tenantID, campaignID string) (sent, failed, pending int, err error) {
+func (r *YDBRecipients) Counts(ctx context.Context, tenantID, campaignID string) (sent, failed, skipped, pending int, err error) {
 	err = r.driver.Query().DoTx(ctx, func(ctx context.Context, tx query.TxActor) error {
 		rs, err := tx.QueryResultSet(ctx, `DECLARE $tenant_id AS Utf8;
 DECLARE $campaign_id AS Utf8;
@@ -319,7 +319,7 @@ GROUP BY status;`, query.WithParameters(ydb.ParamsBuilder().
 			return fmt.Errorf("counting recipients: %w", err)
 		}
 		// Assigned at the end of a complete read: a retry starts from zero.
-		var s, f, p int
+		var s, f, k, p int
 		for row, err := range rs.Rows(ctx) {
 			if err != nil {
 				return fmt.Errorf("counting recipients: %w", err)
@@ -334,12 +334,14 @@ GROUP BY status;`, query.WithParameters(ydb.ParamsBuilder().
 				s = int(n)
 			case domain.RecipientFailed:
 				f = int(n)
+			case domain.RecipientSkipped:
+				k = int(n)
 			case domain.RecipientPending:
 				p = int(n)
 			}
 		}
-		sent, failed, pending = s, f, p
+		sent, failed, skipped, pending = s, f, k, p
 		return nil
 	})
-	return sent, failed, pending, err
+	return sent, failed, skipped, pending, err
 }

@@ -77,7 +77,7 @@ func TestRecipientsBulkInsertRejectsUnknownSubscriber(t *testing.T) {
 		})
 		require.Error(t, err)
 
-		sent, failed, pending, err := recipients.Counts(ctx, tenantID, campaignID)
+		sent, failed, _, pending, err := recipients.Counts(ctx, tenantID, campaignID)
 		require.NoError(t, err)
 		require.Equal(t, []int{0, 0, 0}, []int{sent, failed, pending}, "nothing was written")
 	})
@@ -104,7 +104,7 @@ func TestRecipientsBulkInsertSpansChunks(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, n, inserted)
 
-		sent, failed, pending, err := recipients.Counts(ctx, tenantID, campaignID)
+		sent, failed, _, pending, err := recipients.Counts(ctx, tenantID, campaignID)
 		require.NoError(t, err)
 		require.Equal(t, []int{0, 0, n}, []int{sent, failed, pending})
 
@@ -151,7 +151,7 @@ func TestRecipientsBulkInsertIsRaceFree(t *testing.T) {
 			total += counts[w]
 		}
 		require.Equal(t, emails, total, "each email is inserted by exactly one call")
-		_, _, pending, err := recipients.Counts(ctx, tenantID, campaignID)
+		_, _, _, pending, err := recipients.Counts(ctx, tenantID, campaignID)
 		require.NoError(t, err)
 		require.Equal(t, emails, pending)
 	})
@@ -181,7 +181,7 @@ func TestRecipientsPendingAndProgress(t *testing.T) {
 		require.NoError(t, recipients.MarkSent(ctx, tenantID, pending[0].ID(), "pm-abc", time.Now()))
 		require.NoError(t, recipients.MarkFailed(ctx, tenantID, pending[1].ID(), "bounced"))
 
-		sent, failed, stillPending, err := recipients.Counts(ctx, tenantID, campaignID)
+		sent, failed, _, stillPending, err := recipients.Counts(ctx, tenantID, campaignID)
 		require.NoError(t, err)
 		require.Equal(t, 1, sent)
 		require.Equal(t, 1, failed)
@@ -265,10 +265,11 @@ func TestRecipientsMarkSkipped(t *testing.T) {
 
 		require.NoError(t, recipients.MarkSkipped(ctx, tenantID, pending[0].ID(), "hard_bounce"))
 
-		// A skipped recipient is neither sent, failed, nor pending.
-		sent, failed, stillPending, err := recipients.Counts(ctx, tenantID, campaignID)
+		// A skipped recipient is counted as skipped: neither sent, failed, nor pending.
+		sent, failed, skipped, stillPending, err := recipients.Counts(ctx, tenantID, campaignID)
 		require.NoError(t, err)
 		require.Equal(t, 0, sent+failed+stillPending)
+		require.Equal(t, 1, skipped)
 
 		remaining, err := recipients.Pending(ctx, tenantID, campaignID, 0, 10)
 		require.NoError(t, err)
@@ -298,10 +299,10 @@ func TestRecipientsCrossTenantIsolation(t *testing.T) {
 		require.Empty(t, pending)
 
 		require.NoError(t, recipients.MarkFailed(ctx, tenantB, own[0].ID(), "not yours"))
-		sent, failed, stillPending, err := recipients.Counts(ctx, tenantB, campaignA)
+		sent, failed, _, stillPending, err := recipients.Counts(ctx, tenantB, campaignA)
 		require.NoError(t, err)
 		require.Equal(t, 0, sent+failed+stillPending)
-		_, failed, stillPending, err = recipients.Counts(ctx, tenantA, campaignA)
+		_, failed, _, stillPending, err = recipients.Counts(ctx, tenantA, campaignA)
 		require.NoError(t, err)
 		require.Equal(t, []int{0, 1}, []int{failed, stillPending}, "tenant A's recipient is untouched")
 	})

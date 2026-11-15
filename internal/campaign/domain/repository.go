@@ -86,8 +86,9 @@ type RecipientRepository interface {
 	// MarkSkipped records a recipient skipped by the pre-send suppression
 	// check, with the suppression reason.
 	MarkSkipped(ctx context.Context, tenantID, recipientID, reason string) error
-	// Counts returns the campaign's sent, failed, and pending recipient counts.
-	Counts(ctx context.Context, tenantID, campaignID string) (sent, failed, pending int, err error)
+	// Counts returns the campaign's recipient counts by status; their sum is
+	// every recipient row of the campaign.
+	Counts(ctx context.Context, tenantID, campaignID string) (sent, failed, skipped, pending int, err error)
 }
 
 // TrackingRepository persists tracked links and the open/click events. Every

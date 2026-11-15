@@ -102,11 +102,13 @@ func (w *StartWorker) Work(ctx context.Context, args jobs.CampaignStartArgs) err
 		}
 	}
 
-	sent, failed, pending, err := w.recipients.Counts(ctx, tenantID, campaignID)
+	// Every row counts, skipped ones too: the batch windows span all rows in
+	// id order, so a short total would leave the last window unsent.
+	sent, failed, skipped, pending, err := w.recipients.Counts(ctx, tenantID, campaignID)
 	if err != nil {
 		return err
 	}
-	total := sent + failed + pending
+	total := sent + failed + skipped + pending
 	if err := w.campaigns.Update(ctx, tenantID, campaignID,
 		func(c *domain.Campaign) (*domain.Campaign, error) {
 			c.SetRecipientCount(total)
