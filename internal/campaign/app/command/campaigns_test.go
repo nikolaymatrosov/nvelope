@@ -75,7 +75,7 @@ func TestStartCampaignSucceeds(t *testing.T) {
 	enq := &fakeCampaignEnqueuer{}
 	id := addDraftCampaign(t, campaigns, "dom-1", []domain.Target{{ListID: "list-1"}})
 
-	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq)
+	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq, &fakeMediaPublisher{})
 	require.NoError(t, h.Handle(context.Background(), command.StartCampaign{
 		TenantID: "tenant-1", CampaignID: id,
 	}))
@@ -89,7 +89,7 @@ func TestStartCampaignRequiresVerifiedDomain(t *testing.T) {
 	enq := &fakeCampaignEnqueuer{}
 	id := addDraftCampaign(t, campaigns, "dom-1", []domain.Target{{ListID: "list-1"}})
 
-	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: false}, enq)
+	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: false}, enq, &fakeMediaPublisher{})
 	err := h.Handle(context.Background(), command.StartCampaign{TenantID: "tenant-1", CampaignID: id})
 	require.ErrorIs(t, err, domain.ErrSendingDomainRequired)
 	require.Empty(t, enq.starts)
@@ -101,7 +101,7 @@ func TestStartCampaignRequiresDomain(t *testing.T) {
 	enq := &fakeCampaignEnqueuer{}
 	id := addDraftCampaign(t, campaigns, "", []domain.Target{{ListID: "list-1"}})
 
-	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq)
+	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq, &fakeMediaPublisher{})
 	err := h.Handle(context.Background(), command.StartCampaign{TenantID: "tenant-1", CampaignID: id})
 	require.ErrorIs(t, err, domain.ErrSendingDomainRequired)
 }
@@ -112,7 +112,7 @@ func TestStartCampaignRequiresTargets(t *testing.T) {
 	enq := &fakeCampaignEnqueuer{}
 	id := addDraftCampaign(t, campaigns, "dom-1", nil)
 
-	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq)
+	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq, &fakeMediaPublisher{})
 	err := h.Handle(context.Background(), command.StartCampaign{TenantID: "tenant-1", CampaignID: id})
 	require.ErrorIs(t, err, domain.ErrCampaignNoRecipients)
 }
@@ -123,7 +123,7 @@ func TestStartCampaignRejectsNonDraft(t *testing.T) {
 	enq := &fakeCampaignEnqueuer{}
 	id := addDraftCampaign(t, campaigns, "dom-1", []domain.Target{{ListID: "list-1"}})
 
-	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq)
+	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq, &fakeMediaPublisher{})
 	require.NoError(t, h.Handle(context.Background(), command.StartCampaign{
 		TenantID: "tenant-1", CampaignID: id,
 	}))
@@ -163,7 +163,7 @@ func TestUpdateCampaignDraftOnly(t *testing.T) {
 
 	// Start it, then editing must be rejected.
 	require.NoError(t, command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true},
-		&fakeCampaignEnqueuer{}).Handle(context.Background(),
+		&fakeCampaignEnqueuer{}, &fakeMediaPublisher{}).Handle(context.Background(),
 		command.StartCampaign{TenantID: "tenant-1", CampaignID: id}))
 
 	_, err = h.Handle(context.Background(), command.UpdateCampaign{
@@ -237,4 +237,42 @@ func TestCreateCampaignRejectsOversizeBodyBeforePolicy(t *testing.T) {
 		TenantID: "tenant-1", Name: "Big", BodyHTML: strings.Repeat("a", domain.MaxBodyBytes+1),
 	})
 	require.ErrorIs(t, err, domain.ErrBodyTooLarge)
+}
+
+func TestStartCampaignPublishesMedia(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	enq := &fakeCampaignEnqueuer{}
+	c, err := domain.NewCampaign("tenant-1", "C", "Subj", `<img src="LIB">`, "see LIB",
+		"Acme", "news", "dom-1", "", 100)
+	require.NoError(t, err)
+	id, err := campaigns.Add(context.Background(), "tenant-1", c)
+	require.NoError(t, err)
+	campaigns.targets[id] = []domain.Target{{ListID: "list-1"}}
+
+	media := &fakeMediaPublisher{from: "LIB", to: "PUB"}
+	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq, media)
+	require.NoError(t, h.Handle(context.Background(), command.StartCampaign{
+		TenantID: "tenant-1", CampaignID: id,
+	}))
+
+	stored := campaigns.byID[id]
+	require.Equal(t, `<img src="PUB">`, stored.BodyHTML())
+	require.Equal(t, "see PUB", stored.BodyText())
+	require.Equal(t, domain.CampaignRunning, stored.Status())
+}
+
+func TestStartCampaignWithMissingMediaStaysDraft(t *testing.T) {
+	t.Parallel()
+	campaigns := newFakeCampaignRepo()
+	enq := &fakeCampaignEnqueuer{}
+	id := addDraftCampaign(t, campaigns, "dom-1", []domain.Target{{ListID: "list-1"}})
+	missing := errors.New("media missing")
+
+	h := command.NewStartCampaignHandler(campaigns, fakeDomainLookup{verified: true}, enq,
+		&fakeMediaPublisher{err: missing})
+	err := h.Handle(context.Background(), command.StartCampaign{TenantID: "tenant-1", CampaignID: id})
+	require.ErrorIs(t, err, missing)
+	require.Equal(t, domain.CampaignDraft, campaigns.byID[id].Status())
+	require.Empty(t, enq.starts)
 }

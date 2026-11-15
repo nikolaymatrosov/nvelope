@@ -15,8 +15,8 @@ import type { VisualDoc } from "../render/types"
 
 export type ValidateContext = {
   knownSlugs: Set<string>
-  // mediaUrlPrefix is the tenant's media-library base URL — read from
-  // process.env.OBJECT_STORAGE_PUBLIC_BASE_URL in the Nitro routes.
+  // mediaUrlPrefix is the tenant's library URL prefix — built with
+  // mediaLibraryPrefix(process.env.NVELOPE_BASE_URL, slug) in the Nitro routes.
   mediaUrlPrefix: string
 }
 

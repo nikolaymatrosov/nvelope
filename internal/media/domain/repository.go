@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // MediaRepository persists media-asset metadata. It is declared here, by the
 // domain that depends on it; the pgx implementation lives in the adapters
@@ -15,4 +18,7 @@ type MediaRepository interface {
 	List(ctx context.Context, tenantID string) ([]*MediaAsset, error)
 	// Delete removes the metadata row, returning ErrMediaNotFound when absent.
 	Delete(ctx context.Context, tenantID, id string) error
+	// MarkPublished records that the asset's public copy exists. Marking an
+	// already-published asset keeps the first timestamp.
+	MarkPublished(ctx context.Context, tenantID, id string, at time.Time) error
 }

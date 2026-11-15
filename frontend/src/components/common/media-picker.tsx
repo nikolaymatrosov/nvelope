@@ -78,7 +78,7 @@ export function MediaPicker({ slug, open, onOpenChange, onPick }: MediaPickerPro
                       <div className="grid aspect-square place-items-center overflow-hidden rounded bg-muted">
                         {isImageContentType(asset.content_type) ? (
                           <img
-                            src={asset.public_url}
+                            src={asset.preview_url}
                             alt={asset.filename}
                             className="size-full object-contain"
                             loading="lazy"

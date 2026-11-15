@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"strings"
 
 	"github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
 )
@@ -169,4 +170,27 @@ type fakeRawHTMLPolicy struct {
 
 func (p fakeRawHTMLPolicy) SanitizesRawHTML(context.Context, string) (bool, error) {
 	return p.sanitize, p.err
+}
+
+// fakeMediaPublisher rewrites from → to in every text, standing in for the
+// media context's publish-on-send. A zero value passes texts through.
+type fakeMediaPublisher struct {
+	from, to string
+	err      error
+	calls    int
+}
+
+func (p *fakeMediaPublisher) Publish(_ context.Context, _ string, texts ...string) ([]string, error) {
+	p.calls++
+	if p.err != nil {
+		return nil, p.err
+	}
+	out := make([]string, len(texts))
+	for i, t := range texts {
+		out[i] = t
+		if p.from != "" {
+			out[i] = strings.ReplaceAll(t, p.from, p.to)
+		}
+	}
+	return out, nil
 }

@@ -44,6 +44,7 @@ export const ImageBlock = Node.create({
       mediaRef: { default: "" },
       alt: { default: "" },
       href: { default: "" },
+      width: { default: null },
       style: blockStyleAttributeSpec,
     }
   },
@@ -58,6 +59,7 @@ export const ImageBlock = Node.create({
         class: "ve-image",
         src: node.attrs.mediaRef || "",
         alt: node.attrs.alt || "",
+        ...(node.attrs.width ? { width: String(node.attrs.width) } : {}),
       }),
     ]
   },
@@ -206,7 +208,7 @@ function renderMissing(
   wrapper.appendChild(placeholder)
 }
 
-// applyImageBlockPick replaces the mediaRef + alt on the image node at the
+// applyImageBlockPick replaces the mediaRef, alt and width on the image node at the
 // supplied position. Mirrors `applyRawHTMLEdit` so the parent component can
 // update attrs in-place after the MediaPicker resolves a chosen asset
 // without re-emitting the entire doc shape.
@@ -215,6 +217,7 @@ export function applyImageBlockPick(
   pos: number,
   mediaRef: string,
   alt: string,
+  width: number | null,
 ): boolean {
   return editor.commands.command(({ tr, dispatch }) => {
     if (!dispatch) return true
@@ -224,7 +227,7 @@ export function applyImageBlockPick(
     }
     const node = transaction.doc.nodeAt(pos)
     if (!node || node.type.name !== "image") return false
-    transaction.setNodeMarkup(pos, null, { ...node.attrs, mediaRef, alt })
+    transaction.setNodeMarkup(pos, null, { ...node.attrs, mediaRef, alt, width })
     return true
   })
 }

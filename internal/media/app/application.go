@@ -16,11 +16,13 @@ type Application struct {
 
 // Commands gathers the media context's state-changing handlers.
 type Commands struct {
-	UploadAsset decorator.ResultCommandHandler[command.UploadAsset, command.UploadAssetResult]
-	DeleteAsset decorator.CommandHandler[command.DeleteAsset]
+	UploadAsset   decorator.ResultCommandHandler[command.UploadAsset, command.UploadAssetResult]
+	DeleteAsset   decorator.ResultCommandHandler[command.DeleteAsset, command.DeleteAssetResult]
+	PublishAssets decorator.ResultCommandHandler[command.PublishAssets, command.PublishAssetsResult]
 }
 
 // Queries gathers the media context's read-only handlers.
 type Queries struct {
-	ListAssets decorator.QueryHandler[query.ListAssets, []query.AssetView]
+	ListAssets      decorator.QueryHandler[query.ListAssets, []query.AssetView]
+	AssetContentURL decorator.QueryHandler[query.AssetContentURL, string]
 }

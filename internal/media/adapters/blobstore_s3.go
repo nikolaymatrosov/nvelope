@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -30,6 +31,7 @@ type S3Config struct {
 // MinIO without DNS-style virtual-hosted buckets.
 type S3BlobStore struct {
 	client        *s3.Client
+	presign       *s3.PresignClient
 	bucket        string
 	publicBaseURL string
 }
@@ -55,12 +57,13 @@ func NewS3BlobStore(cfg S3Config) (*S3BlobStore, error) {
 	})
 	return &S3BlobStore{
 		client:        client,
+		presign:       s3.NewPresignClient(client),
 		bucket:        cfg.Bucket,
 		publicBaseURL: strings.TrimRight(cfg.PublicBaseURL, "/"),
 	}, nil
 }
 
-// Put writes body to key. It uses the SDK's PutObject so a partial transfer is
+// Put writes body to key as a private object. It uses the SDK's PutObject so a partial transfer is
 // not exposed as a complete object (the SDK only commits the upload after the
 // full body has been received).
 func (s *S3BlobStore) Put(ctx context.Context, key, contentType string,
@@ -71,7 +74,6 @@ func (s *S3BlobStore) Put(ctx context.Context, key, contentType string,
 		Body:          body,
 		ContentType:   aws.String(contentType),
 		ContentLength: aws.Int64(contentLength),
-		ACL:           types.ObjectCannedACLPublicRead,
 	})
 	if err != nil {
 		return fmt.Errorf("putting %s: %w", key, err)
@@ -99,14 +101,52 @@ func (s *S3BlobStore) Delete(ctx context.Context, key string) error {
 	return fmt.Errorf("deleting %s: %w", key, err)
 }
 
-// PublicURL returns the stable, publicly fetchable URL for key. The key is
-// URL-escaped per segment so a filename with spaces or unicode round-trips.
-func (s *S3BlobStore) PublicURL(key string) string {
+// escapeKey URL-escapes each key segment so a filename with spaces or
+// unicode round-trips in URLs and CopySource headers.
+func escapeKey(key string) string {
 	parts := strings.Split(key, "/")
 	for i, p := range parts {
 		parts[i] = url.PathEscape(p)
 	}
-	return s.publicBaseURL + "/" + strings.Join(parts, "/")
+	return strings.Join(parts, "/")
+}
+
+// PublicURL returns the public URL of a published key.
+func (s *S3BlobStore) PublicURL(key string) string {
+	return s.publicBaseURL + "/" + escapeKey(key)
+}
+
+// Publish copies srcKey to dstKey server-side with a public-read ACL and the
+// given serving headers. REPLACE makes the copy carry contentType and
+// disposition rather than the source's metadata.
+func (s *S3BlobStore) Publish(ctx context.Context, srcKey, dstKey, contentType, disposition string) error {
+	_, err := s.client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:             aws.String(s.bucket),
+		Key:                aws.String(dstKey),
+		CopySource:         aws.String(s.bucket + "/" + escapeKey(srcKey)),
+		MetadataDirective:  types.MetadataDirectiveReplace,
+		ContentType:        aws.String(contentType),
+		ContentDisposition: aws.String(disposition),
+		ACL:                types.ObjectCannedACLPublicRead,
+	})
+	if err != nil {
+		return fmt.Errorf("publishing %s: %w", srcKey, err)
+	}
+	return nil
+}
+
+// PresignGet returns a SigV4-presigned GET for key, valid for ttl.
+func (s *S3BlobStore) PresignGet(ctx context.Context, key string, ttl time.Duration,
+	disposition string) (string, error) {
+	req, err := s.presign.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket:                     aws.String(s.bucket),
+		Key:                        aws.String(key),
+		ResponseContentDisposition: aws.String(disposition),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", fmt.Errorf("presigning %s: %w", key, err)
+	}
+	return req.URL, nil
 }
 
 // BuildKey returns the object key for a tenant's asset. The shape — tenant
@@ -115,4 +155,9 @@ func (s *S3BlobStore) PublicURL(key string) string {
 // reach another tenant's object is to already possess its full key.
 func (s *S3BlobStore) BuildKey(tenantID, id, filename string) string {
 	return "media/" + tenantID + "/" + id + "/" + filename
+}
+
+// PublishedKey returns the key of an asset's public copy.
+func (s *S3BlobStore) PublishedKey(tenantID, id, filename string) string {
+	return "published/" + tenantID + "/" + id + "/" + filename
 }

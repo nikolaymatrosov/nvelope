@@ -30,18 +30,21 @@ func NewAssets(pool *pgxpool.Pool) *Assets {
 }
 
 const assetColumns = "id, tenant_id, filename, content_type, size_bytes, " +
-	"storage_key, public_url, COALESCE(uploaded_by::text, ''), created_at"
+	"COALESCE(width, 0), COALESCE(height, 0), storage_key, " +
+	"COALESCE(uploaded_by::text, ''), published_at, created_at"
 
 func scanAssetRow(row pgx.Row) (*domain.MediaAsset, error) {
-	var id, tenantID, filename, contentType, storageKey, publicURL, uploadedBy string
+	var id, tenantID, filename, contentType, storageKey, uploadedBy string
 	var sizeBytes int64
+	var width, height int
+	var publishedAt *time.Time
 	var createdAt time.Time
 	if err := row.Scan(&id, &tenantID, &filename, &contentType, &sizeBytes,
-		&storageKey, &publicURL, &uploadedBy, &createdAt); err != nil {
+		&width, &height, &storageKey, &uploadedBy, &publishedAt, &createdAt); err != nil {
 		return nil, err
 	}
 	return domain.HydrateMediaAsset(id, tenantID, filename, contentType, sizeBytes,
-		storageKey, publicURL, uploadedBy, createdAt), nil
+		width, height, storageKey, uploadedBy, publishedAt, createdAt), nil
 }
 
 // Add persists a new media-asset row. The id is set by the caller so it can
@@ -55,17 +58,18 @@ func (r *Assets) Add(ctx context.Context, a *domain.MediaAsset) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO media_assets
 			   (id, tenant_id, filename, content_type, size_bytes,
-			    storage_key, public_url, uploaded_by)
+			    width, height, storage_key, uploaded_by)
 			 VALUES (@id, @tenant_id, @filename, @content_type, @size_bytes,
-			         @storage_key, @public_url, @uploaded_by)`,
+			         @width, @height, @storage_key, @uploaded_by)`,
 			pgx.NamedArgs{
 				"id":           a.ID(),
 				"tenant_id":    a.TenantID(),
 				"filename":     a.Filename(),
 				"content_type": a.ContentType(),
 				"size_bytes":   a.SizeBytes(),
+				"width":        nullIfZero(a.Width()),
+				"height":       nullIfZero(a.Height()),
 				"storage_key":  a.StorageKey(),
-				"public_url":   a.PublicURL(),
 				"uploaded_by":  uploadedBy,
 			})
 		if err != nil {
@@ -73,6 +77,34 @@ func (r *Assets) Add(ctx context.Context, a *domain.MediaAsset) error {
 		}
 		return nil
 	})
+}
+
+// MarkPublished records that the asset's public copy exists, keeping the
+// first timestamp when it is already set.
+func (r *Assets) MarkPublished(ctx context.Context, tenantID, id string, at time.Time) error {
+	return tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx,
+			"UPDATE media_assets SET published_at = COALESCE(published_at, $2) WHERE id = $1", id, at)
+		if db.IsInvalidInput(err) {
+			return domain.ErrMediaNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("marking media asset published: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return domain.ErrMediaNotFound
+		}
+		return nil
+	})
+}
+
+// nullIfZero stores a missing dimension (PDF) as NULL so the CHECK (> 0)
+// constraints hold.
+func nullIfZero(n int) any {
+	if n == 0 {
+		return nil
+	}
+	return n
 }
 
 // Get returns the asset by id.

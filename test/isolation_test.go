@@ -391,9 +391,9 @@ func TestMediaCrossTenantIsolation(t *testing.T) {
 		require.NoError(t, boundTx(ctx, pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 			return tx.QueryRow(ctx,
 				`INSERT INTO media_assets
-				   (tenant_id, filename, content_type, size_bytes, storage_key, public_url)
-				 VALUES ($1, $2, 'image/png', 42, $3, $4)
-				 RETURNING id`, tenantID, filename, key, "https://media.test/"+key).Scan(&id)
+				   (tenant_id, filename, content_type, size_bytes, storage_key)
+				 VALUES ($1, $2, 'image/png', 42, $3)
+				 RETURNING id`, tenantID, filename, key).Scan(&id)
 		}))
 		return id
 	}

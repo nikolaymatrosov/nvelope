@@ -265,9 +265,19 @@ function CodeBlockView({ block }: { block: CodeBlockNode; theme: Theme }) {
 function ImageView({ block }: { block: ImageBlock; theme: Theme }) {
   // Image style applies to the <img> box itself (border radius / border). The
   // textAlign field, when set, positions the image within a wrapping block.
+  // A width becomes the HTML attribute Outlook desktop honours (it ignores
+  // CSS max-width); max-width/height:auto keep it fluid elsewhere.
   const style = block.attrs.style
   const { textAlign, ...boxStyle } = mapBlockStyle(style)
-  const img = <REImg src={block.attrs.mediaRef} alt={block.attrs.alt} style={boxStyle} />
+  const width = block.attrs.width ?? undefined
+  const img = (
+    <REImg
+      src={block.attrs.mediaRef}
+      alt={block.attrs.alt}
+      width={width}
+      style={width ? { ...boxStyle, maxWidth: "100%", height: "auto" } : boxStyle}
+    />
+  )
   const linked = block.attrs.href ? <RELink href={block.attrs.href}>{img}</RELink> : img
   if (textAlign) {
     return <div style={{ textAlign }}>{linked}</div>

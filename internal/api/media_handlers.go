@@ -18,7 +18,7 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items, err := s.media.Queries.ListAssets.Handle(r.Context(),
-		mediaquery.ListAssets{TenantID: ws.ID})
+		mediaquery.ListAssets{TenantID: ws.ID, TenantSlug: ws.Slug})
 	if err != nil {
 		s.fail(w, r, "list media", err)
 		return
@@ -51,38 +51,68 @@ func (s *Server) handleUploadMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = file.Close() }()
 
-	contentType := header.Header.Get("Content-Type")
 	result, err := s.media.Commands.UploadAsset.Handle(r.Context(), mediacommand.UploadAsset{
-		TenantID:    ws.ID,
-		Filename:    header.Filename,
-		ContentType: contentType,
-		SizeBytes:   header.Size,
-		Body:        file,
-		UploadedBy:  principal.ActorID(),
+		TenantID:   ws.ID,
+		TenantSlug: ws.Slug,
+		Filename:   header.Filename,
+		Body:       file,
+		UploadedBy: principal.ActorID(),
 	})
 	if err != nil {
 		s.fail(w, r, "upload media", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":         result.AssetID,
-		"public_url": result.PublicURL,
-		"filename":   header.Filename,
+		"id":       result.AssetID,
+		"url":      result.URL,
+		"filename": result.Filename,
+		"width":    result.Width,
+		"height":   result.Height,
 	})
 }
 
-// handleDeleteMedia removes an asset's metadata row and its bytes.
+// handleMediaContent redirects a member to a short-lived presigned read of
+// one library asset. Library URLs in drafts point here, so the editor
+// canvas, the media picker, and a browser tab show private assets without
+// making them public.
+func (s *Server) handleMediaContent(w http.ResponseWriter, r *http.Request) {
+	ws := tenantFromContext(r.Context())
+	if _, ok := s.requirePermission(w, r, iamdomain.PermMediaGet); !ok {
+		return
+	}
+	target, err := s.media.Queries.AssetContentURL.Handle(r.Context(), mediaquery.AssetContentURL{
+		TenantID: ws.ID, AssetID: chi.URLParam(r, "id"),
+	})
+	if err != nil {
+		s.fail(w, r, "media content", err)
+		return
+	}
+	// Cached for 10 minutes, under the 15-minute signature (ContentURLTTL).
+	w.Header().Set("Cache-Control", "private, max-age=600")
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// handleDeleteMedia removes an asset's metadata row and private object. With
+// ?unpublish=true it also takes down the public copy (audited), which breaks
+// the image in sent emails and the archive.
 func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
 	ws := tenantFromContext(r.Context())
 	if _, ok := s.requirePermission(w, r, iamdomain.PermMediaManage); !ok {
 		return
 	}
-	if err := s.media.Commands.DeleteAsset.Handle(r.Context(), mediacommand.DeleteAsset{
-		TenantID: ws.ID,
-		AssetID:  chi.URLParam(r, "id"),
-	}); err != nil {
+	assetID := chi.URLParam(r, "id")
+	res, err := s.media.Commands.DeleteAsset.Handle(r.Context(), mediacommand.DeleteAsset{
+		TenantID:  ws.ID,
+		AssetID:   assetID,
+		Unpublish: r.URL.Query().Get("unpublish") == "true",
+	})
+	if err != nil {
 		s.fail(w, r, "delete media", err)
 		return
+	}
+	if res.Unpublished {
+		s.recordAudit(r.Context(), "media.unpublished", assetID,
+			map[string]any{"filename": res.Filename})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -37,7 +37,9 @@
   },
   "deleteDialog": {
     "title": "Delete this asset?",
-    "description": "It will be removed from the library. Campaigns that reference its URL will lose the asset.",
+    "description": "It will be removed from the library. Sent emails and the archive keep their published copy; drafts that use it will need a new file.",
+    "unpublishLabel": "Also remove the published copy",
+    "unpublishWarning": "The file disappears from emails already sent and from the archive. Use this for takedown requests.",
     "confirm": "Delete"
   },
   "detail": {
@@ -45,6 +47,7 @@
     "notFoundDescription": "This asset may have been deleted, or the URL may be wrong.",
     "uploadedMeta": "{{type}} · {{size}} · uploaded {{date}}",
     "previewTitle": "Preview",
-    "stableUrlTitle": "Stable URL"
+    "stableUrlTitle": "Library URL",
+    "published": "Published"
   }
 }

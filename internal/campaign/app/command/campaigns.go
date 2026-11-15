@@ -191,20 +191,22 @@ type StartCampaignHandler struct {
 	campaigns domain.CampaignRepository
 	domains   domain.SendingDomainLookup
 	enqueuer  CampaignEnqueuer
+	media     MediaPublisher
 }
 
 // NewStartCampaignHandler builds the handler, failing fast on a nil dependency.
 func NewStartCampaignHandler(campaigns domain.CampaignRepository,
-	domains domain.SendingDomainLookup, enqueuer CampaignEnqueuer) StartCampaignHandler {
-	if campaigns == nil || domains == nil || enqueuer == nil {
+	domains domain.SendingDomainLookup, enqueuer CampaignEnqueuer,
+	media MediaPublisher) StartCampaignHandler {
+	if campaigns == nil || domains == nil || enqueuer == nil || media == nil {
 		panic("nil dependency")
 	}
-	return StartCampaignHandler{campaigns: campaigns, domains: domains, enqueuer: enqueuer}
+	return StartCampaignHandler{campaigns: campaigns, domains: domains, enqueuer: enqueuer, media: media}
 }
 
 // Handle validates the campaign's start preconditions — a draft campaign, a
-// verified sending domain, at least one target — then transitions it to
-// running and enqueues the send.
+// verified sending domain, at least one target — then publishes the media its
+// body references, transitions it to running, and enqueues the send.
 func (h StartCampaignHandler) Handle(ctx context.Context, cmd StartCampaign) error {
 	c, err := h.campaigns.Get(ctx, cmd.TenantID, cmd.CampaignID)
 	if err != nil {
@@ -233,6 +235,17 @@ func (h StartCampaignHandler) Handle(ctx context.Context, cmd StartCampaign) err
 	}
 	if err := h.campaigns.Update(ctx, cmd.TenantID, cmd.CampaignID,
 		func(c *domain.Campaign) (*domain.Campaign, error) {
+			// Publish the body that is locked here, so a concurrent draft edit
+			// cannot slip in between publishing and starting.
+			// ponytail: S3 copies run inside this transaction (a few hundred ms
+			// per start); split into publish-then-verify if starts ever contend.
+			published, err := h.media.Publish(ctx, cmd.TenantID, c.BodyHTML(), c.BodyText())
+			if err != nil {
+				return nil, err
+			}
+			if err := c.PublishBody(published[0], published[1]); err != nil {
+				return nil, err
+			}
 			return c, c.Start(time.Now())
 		}); err != nil {
 		return err

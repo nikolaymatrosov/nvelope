@@ -18,6 +18,7 @@ import type { ApiResult } from "@/lib/api"
 import type { EditorView } from "@tiptap/pm/view"
 import type { MediaUploadResult } from "@/lib/api-types"
 import { ApiError, api } from "@/lib/api"
+import { imageDisplayWidth } from "@/lib/media-urls"
 import {
   ALLOWED_MEDIA_CONTENT_TYPES,
   DEFAULT_MEDIA_MAX_BYTES,
@@ -164,6 +165,7 @@ export function makeImageDropPasteHandler(opts: {
     view: EditorView,
     pendingRef: string,
     mediaRef: string,
+    width: number | null,
   ): boolean {
     const pos = findPlaceholderPos(view, pendingRef)
     if (pos === null) return false
@@ -173,6 +175,7 @@ export function makeImageDropPasteHandler(opts: {
       view.state.tr.setNodeMarkup(pos, null, {
         ...node.attrs,
         mediaRef,
+        width,
       }),
     )
     return true
@@ -200,7 +203,7 @@ export function makeImageDropPasteHandler(opts: {
     const pendingRef = insertPlaceholder(view, file, pos)
     try {
       const res = await opts.upload(opts.slug, file)
-      if (!replacePlaceholder(view, pendingRef, res.data.public_url)) {
+      if (!replacePlaceholder(view, pendingRef, res.data.url, imageDisplayWidth(res.data.width))) {
         // The editor was unmounted or the node deleted before the upload
         // resolved — nothing to do.
         return

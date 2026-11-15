@@ -627,7 +627,16 @@ export type MediaAssetView = {
   filename: string
   content_type: string
   size_bytes: number
-  public_url: string
+  // url is the library URL content embeds. Only workspace members can open
+  // it (the API redirects to a short-lived presigned read); sending
+  // rewrites it to a public copy.
+  url: string
+  // preview_url is a presigned read valid for an hour — for thumbnails and
+  // the sandboxed preview iframe, which carries no session cookie.
+  preview_url: string
+  width?: number
+  height?: number
+  published: boolean
   uploaded_by?: string
   created_at: string
 }
@@ -635,8 +644,10 @@ export type MediaAssetView = {
 // Result returned by POST /media — narrower than the full view.
 export type MediaUploadResult = {
   id: string
-  public_url: string
+  url: string
   filename: string
+  width?: number
+  height?: number
 }
 
 // Mirror of the backend's `media.domain.allowedContentTypes` allowlist. The
@@ -646,7 +657,6 @@ export const ALLOWED_MEDIA_CONTENT_TYPES: Array<string> = [
   "image/jpeg",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
   "application/pdf",
 ]
 
@@ -746,7 +756,7 @@ export type CodeBlock = {
 }
 export type ImageBlock = {
   type: "image"
-  attrs: { mediaRef: string; alt: string; href: string; style?: BlockStyle }
+  attrs: { mediaRef: string; alt: string; href: string; width?: number | null; style?: BlockStyle }
 }
 export type ButtonBlock = {
   type: "button"

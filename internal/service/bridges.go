@@ -11,6 +11,8 @@ import (
 	campaignadapters "github.com/nikolaymatrosov/nvelope/internal/campaign/adapters"
 	campaigncommand "github.com/nikolaymatrosov/nvelope/internal/campaign/app/command"
 	campaigndomain "github.com/nikolaymatrosov/nvelope/internal/campaign/domain"
+	mediacommand "github.com/nikolaymatrosov/nvelope/internal/media/app/command"
+	"github.com/nikolaymatrosov/nvelope/internal/platform/decorator"
 	sendingdomain "github.com/nikolaymatrosov/nvelope/internal/sending/domain"
 	tenantdomain "github.com/nikolaymatrosov/nvelope/internal/tenant/domain"
 )
@@ -332,4 +334,25 @@ func (p *rawHTMLPolicy) SanitizesRawHTML(ctx context.Context, tenantID string) (
 		return false, err
 	}
 	return s.RawHTMLSanitization() != tenantdomain.RawHTMLOff, nil
+}
+
+// mediaPublisher adapts the media context's PublishAssets command to the
+// MediaPublisher ports the campaign and tenant contexts declare.
+type mediaPublisher struct {
+	publish decorator.ResultCommandHandler[mediacommand.PublishAssets, mediacommand.PublishAssetsResult]
+}
+
+// NewMediaPublisher builds the bridge over the media context's publish command.
+func NewMediaPublisher(publish decorator.ResultCommandHandler[mediacommand.PublishAssets,
+	mediacommand.PublishAssetsResult]) *mediaPublisher {
+	return &mediaPublisher{publish: publish}
+}
+
+// Publish publishes the assets texts reference and returns the rewritten texts.
+func (p *mediaPublisher) Publish(ctx context.Context, tenantID string, texts ...string) ([]string, error) {
+	res, err := p.publish.Handle(ctx, mediacommand.PublishAssets{TenantID: tenantID, Texts: texts})
+	if err != nil {
+		return nil, err
+	}
+	return res.Texts, nil
 }

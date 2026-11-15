@@ -895,14 +895,17 @@ export default interface Resources {
     },
     "deleteDialog": {
       "confirm": "Delete",
-      "description": "It will be removed from the library. Campaigns that reference its URL will lose the asset.",
-      "title": "Delete this asset?"
+      "description": "It will be removed from the library. Sent emails and the archive keep their published copy; drafts that use it will need a new file.",
+      "title": "Delete this asset?",
+      "unpublishLabel": "Also remove the published copy",
+      "unpublishWarning": "The file disappears from emails already sent and from the archive. Use this for takedown requests."
     },
     "detail": {
       "notFoundDescription": "This asset may have been deleted, or the URL may be wrong.",
       "notFoundTitle": "Asset not found",
       "previewTitle": "Preview",
-      "stableUrlTitle": "Stable URL",
+      "published": "Published",
+      "stableUrlTitle": "Library URL",
       "uploadedMeta": "{{type}} · {{size}} · uploaded {{date}}"
     },
     "forbidden": {

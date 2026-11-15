@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { validateBlock, validateStyle } from "./blocks"
+import { mediaLibraryPrefix, validateBlock, validateStyle } from "./blocks"
 import { ValidatorError } from "./errors"
 import type { BlockStyle } from "../render/types"
 
 const ctx = () => ({
   knownSlugs: new Set(["first_name", "email", "country"]),
-  mediaUrlPrefix: "https://media.test/tenants/abc/",
+  mediaUrlPrefix: "https://app.test/t/abc/api/media/",
   unknownPlaceholders: undefined as Array<string> | undefined,
 })
 
@@ -79,37 +79,49 @@ describe("validateBlock — columns", () => {
   })
 })
 
+const ASSET = "0b9f3c3e-6a7d-4c1e-9a55-2f1d7e4b8c90"
+const image = (attrs: Partial<{ mediaRef: string; width: number | null }>) => ({
+  type: "image" as const,
+  attrs: {
+    mediaRef: `https://app.test/t/abc/api/media/${ASSET}/content`,
+    alt: "x",
+    href: "",
+    ...attrs,
+  },
+})
+
 describe("validateBlock — image", () => {
-  it("rejects mediaRef outside the tenant media prefix", () => {
-    expect(() =>
-      validateBlock(
-        {
-          type: "image",
-          attrs: {
-            mediaRef: "https://evil.test/x.png",
-            alt: "x",
-            href: "",
-          },
-        },
-        ctx(),
-      ),
-    ).toThrow(ValidatorError)
+  it("accepts the tenant's own library URL", () => {
+    expect(() => validateBlock(image({}), ctx())).not.toThrow()
   })
 
-  it("accepts mediaRef under the tenant prefix", () => {
-    expect(() =>
-      validateBlock(
-        {
-          type: "image",
-          attrs: {
-            mediaRef: "https://media.test/tenants/abc/banner.png",
-            alt: "x",
-            href: "",
-          },
-        },
-        ctx(),
-      ),
-    ).not.toThrow()
+  it.each([
+    "https://evil.test/x.png",
+    `https://app.test/t/other/api/media/${ASSET}/content`,
+    "https://app.test/t/abc/api/media/not-a-uuid/content",
+    `https://nvelope-media.storage.yandexcloud.net/media/t1/${ASSET}/a.png`,
+  ])("rejects %s", (mediaRef) => {
+    expect(() => validateBlock(image({ mediaRef }), ctx())).toThrow(ValidatorError)
+  })
+
+  it("accepts a width from 1 to 600 or none", () => {
+    for (const width of [1, 600, null, undefined]) {
+      expect(() => validateBlock(image({ width }), ctx())).not.toThrow()
+    }
+  })
+
+  it.each([0, 601, 1.5])("rejects width %s", (width) => {
+    expect(() => validateBlock(image({ width }), ctx())).toThrow(ValidatorError)
+  })
+})
+
+describe("mediaLibraryPrefix", () => {
+  it("builds the tenant's library URL prefix", () => {
+    expect(mediaLibraryPrefix("https://app.test/", "acme")).toBe("https://app.test/t/acme/api/media/")
+  })
+
+  it("is empty when the base URL is unset", () => {
+    expect(mediaLibraryPrefix(undefined, "acme")).toBe("")
   })
 })
 
