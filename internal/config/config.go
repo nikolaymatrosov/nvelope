@@ -19,6 +19,18 @@ import (
 
 const envPrefix = "NVELOPE_"
 
+// The deployments NVELOPE_RUNTIME selects. An unset value is RuntimeSaaS.
+// RuntimeServerless is the on-prem install on Yandex Cloud serverless, which
+// is always single-tenant.
+const (
+	RuntimeSaaS       = "saas"
+	RuntimeServerless = "serverless"
+)
+
+// minSetupTokenLen bounds NVELOPE_SETUP_TOKEN from below. Signup is public and
+// not throttled, so the token must resist online guessing.
+const minSetupTokenLen = 32
+
 var validLogLevels = map[string]bool{
 	"debug": true,
 	"info":  true,
@@ -183,6 +195,17 @@ type Config struct {
 	// VerificationCleanupInterval is how often the scheduler enqueues a sweep
 	// that prunes expired email-verification tokens.
 	VerificationCleanupInterval time.Duration
+
+	// Runtime selects the deployment: RuntimeSaaS (also the empty value) or
+	// RuntimeServerless.
+	Runtime string
+	// TenantSlug is the slug of a single-tenant install's one workspace,
+	// created at first-run setup. Required when Runtime is RuntimeServerless.
+	TenantSlug string
+	// SetupToken authorises the first-run signup of a single-tenant install.
+	// Required (at least 32 characters) when Runtime is RuntimeServerless.
+	// Secret — never log this value.
+	SetupToken string
 }
 
 // Load reads configuration from the environment, optionally layered over the
@@ -249,6 +272,10 @@ func Load(envFilePath string) (Config, error) {
 		VerificationSenderName:     k.String(envPrefix + "VERIFICATION_SENDER_NAME"),
 		RegistrationAllowedDomains: splitCSV(k.String(envPrefix + "REGISTRATION_ALLOWED_DOMAINS")),
 		VerificationResendLimit:    k.Int(envPrefix + "VERIFICATION_RESEND_LIMIT"),
+
+		Runtime:    k.String(envPrefix + "RUNTIME"),
+		TenantSlug: k.String(envPrefix + "TENANT_SLUG"),
+		SetupToken: k.String(envPrefix + "SETUP_TOKEN"),
 	}
 
 	for _, d := range []struct {
@@ -528,5 +555,23 @@ func (c Config) Validate() error {
 	if c.VerificationCleanupInterval <= 0 {
 		errs = append(errs, errors.New("NVELOPE_VERIFICATION_CLEANUP_INTERVAL must be a positive duration"))
 	}
+	switch c.Runtime {
+	case "", RuntimeSaaS:
+	case RuntimeServerless:
+		if c.TenantSlug == "" {
+			errs = append(errs, errors.New("NVELOPE_TENANT_SLUG is required when NVELOPE_RUNTIME is serverless"))
+		}
+		if len(c.SetupToken) < minSetupTokenLen {
+			errs = append(errs, fmt.Errorf(
+				"NVELOPE_SETUP_TOKEN must be at least %d characters when NVELOPE_RUNTIME is serverless",
+				minSetupTokenLen))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("NVELOPE_RUNTIME %q is invalid (want saas or serverless)", c.Runtime))
+	}
 	return errors.Join(errs...)
 }
+
+// SingleTenant reports whether this is a single-tenant install: one workspace,
+// created at first-run setup, which everyone else joins by invitation.
+func (c Config) SingleTenant() bool { return c.Runtime == RuntimeServerless }
