@@ -1,6 +1,8 @@
 // Package adapters implements the audience domain's repository interfaces
 // against PostgreSQL. Every tenant-plane operation runs inside the shared
-// RLS-bound transaction (internal/platform/tenantdb).
+// RLS-bound transaction (internal/platform/tenantdb). The *_ydb.go files are
+// the YDB implementations of the repositories for the serverless runtime;
+// they filter by tenant_id explicitly instead.
 package adapters
 
 import (
