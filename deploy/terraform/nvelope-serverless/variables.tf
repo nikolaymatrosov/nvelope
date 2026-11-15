@@ -35,8 +35,9 @@ variable "tenant_slug" {
   type        = string
   description = "The URL slug of the install's single organization (/t/<slug>/...)."
   validation {
-    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$", var.tenant_slug))
-    error_message = "tenant_slug must be 3-63 lowercase letters, digits or hyphens, starting and ending with a letter or digit."
+    # The reserved list mirrors reservedSlugs in internal/tenant/domain/tenant.go.
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$", var.tenant_slug)) && !contains(["api", "t", "admin", "login", "signup", "invite", "static", "assets", "healthz"], var.tenant_slug)
+    error_message = "tenant_slug must be 3-63 lowercase letters, digits or hyphens, starting and ending with a letter or digit, and not a reserved word (api, t, admin, login, signup, invite, static, assets, healthz)."
   }
 }
 
@@ -46,8 +47,12 @@ variable "system_sender_domain" {
 }
 
 variable "send_rate_per_sec" {
-  type        = number
-  default     = 50
+  type    = number
+  default = 50
+  validation {
+    condition     = var.send_rate_per_sec > 0 && var.send_rate_per_sec == floor(var.send_rate_per_sec)
+    error_message = "send_rate_per_sec must be a positive whole number."
+  }
   description = "The campaign send rate cap, in emails per second."
 }
 
@@ -66,5 +71,5 @@ variable "ydb_throttling_rcu_limit" {
 variable "deletion_protection" {
   type        = bool
   default     = true
-  description = "Protects the database, the secret and the media bucket from terraform destroy. Set false only for throwaway installs (the smoke test)."
+  description = "Protects the database and the secret from terraform destroy, and stops terraform destroy from deleting a media bucket that still holds objects (force_destroy = false). Set false only for throwaway installs (the smoke test)."
 }

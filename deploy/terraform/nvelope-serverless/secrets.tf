@@ -8,8 +8,8 @@ resource "random_password" "setup_token" {
 # ponytail: the TOTP key lives only here and in Terraform state. Losing the state
 # replaces it on the next apply, and every enrolled TOTP secret becomes
 # unreadable. Upgrade path: a lifecycle ignore_changes plus a documented rotation.
-resource "random_id" "totp_key" {
-  byte_length = 32
+resource "random_bytes" "totp_key" {
+  length = 32
 }
 
 resource "yandex_lockbox_secret" "app" {
@@ -25,7 +25,7 @@ resource "yandex_lockbox_secret_version" "app" {
   }
   entries {
     key        = "totp_encryption_key"
-    text_value = random_id.totp_key.hex
+    text_value = random_bytes.totp_key.hex
   }
   entries {
     key        = "access_key_id"

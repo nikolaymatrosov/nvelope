@@ -25,6 +25,15 @@ override_resource {
 }
 
 override_resource {
+  target          = yandex_serverless_container.worker
+  override_during = plan
+  values = {
+    id  = "bbaworker"
+    url = "https://bbaworker.containers.yandexcloud.net/"
+  }
+}
+
+override_resource {
   target          = yandex_message_queue.dlq["feedback"]
   override_during = plan
   values          = { arn = "arn:fb-dlq" }
@@ -123,6 +132,27 @@ run "gateways" {
     condition     = length(yandex_serverless_container.frontend.secrets) == 0 && yandex_serverless_container.frontend.service_account_id == null
     error_message = "the frontend gets no secrets and no cloud identity"
   }
+}
+
+run "worker_isolation" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for b in yandex_serverless_container_iam_member.invoker : (b.container_id == "bbaworker") == (b.member == "serviceAccount:ajetrigger")])
+    error_message = "only the trigger account may invoke worker, and it may invoke nothing else"
+  }
+  assert {
+    condition     = keys(yamldecode(yandex_api_gateway.bff.spec).paths) == ["/t/{slug}/api/{path+}"]
+    error_message = "the bff gateway exposes exactly the tenant API path"
+  }
+}
+
+run "reserved_tenant_slug" {
+  command = plan
+  variables {
+    tenant_slug = "admin"
+  }
+  expect_failures = [var.tenant_slug]
 }
 
 run "exactly_one_certificate_source" {

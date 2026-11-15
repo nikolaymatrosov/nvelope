@@ -33,5 +33,8 @@ jobs:
           for name in api worker frontend; do
             docker build --platform linux/amd64 --build-arg VERSION="$TAG" \
               -f "deploy/docker/$name.Dockerfile" -t "$REGISTRY/$name:$TAG" .
+          done
+          # Push only after all three built, so a failed build leaves nothing under the tag.
+          for name in api worker frontend; do
             docker push "$REGISTRY/$name:$TAG"
           done

@@ -85,7 +85,7 @@ resource "yandex_serverless_container" "worker" {
 resource "terraform_data" "migrate" {
   triggers_replace = [var.image_tag]
   provisioner "local-exec" {
-    command = "curl -fsS --max-time 900 --retry 3 --retry-all-errors -X POST -H \"Authorization: Bearer $(yc iam create-token)\" ${trimsuffix(yandex_serverless_container.worker.url, "/")}/admin/migrate"
+    command = "printf 'Authorization: Bearer %s\\n' \"$${YC_TOKEN:-$(yc iam create-token)}\" | curl -fsS --max-time 900 --retry 3 --retry-all-errors -X POST -H @- ${trimsuffix(yandex_serverless_container.worker.url, "/")}/admin/migrate"
   }
 }
 
