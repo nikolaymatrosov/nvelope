@@ -1,7 +1,7 @@
 # Visual editor shell (site-builder style) — Design
 
 Date: 2026-11-14
-Status: Approved (pending implementation plan)
+Status: Implemented
 
 ## Goal
 

@@ -1,7 +1,8 @@
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan at
-`specs/017-three-pane-visual-editor/plan.md`.
+For additional context about technologies, project structure and data model,
+read `docs/architecture.md`. Current designs and plans live in
+`docs/superpowers/specs/` and `docs/superpowers/plans/`; the newest date
+prefix is the active work.
 <!-- SPECKIT END -->
 
 ## Go code

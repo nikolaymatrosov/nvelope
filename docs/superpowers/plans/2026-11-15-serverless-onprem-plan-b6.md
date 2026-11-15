@@ -2813,6 +2813,7 @@ Expected: `No such file or directory`. Every audience suite is a pg+ydb contract
 - `golangci-lint run` reports `0 issues.`, and `make lint-arch` reports `[arch] clean`.
 - No `go.mod` or `go.sum` change.
 - No `*_pg_test.go` file is left in `internal/audience/adapters`.
+  - Update: one exception, `subscribers_pg_test.go`, added by the B8 fix `ec7c27e` as a deliberate pg-only test (delivery events outlive the deleted subscriber on Postgres).
 - These tests pass on both backends, so YDB reproduces the Postgres behaviour that has no YDB construct:
   - `TestSubscriptionPagesAddGetUpdate`: the unique slug on insert and on rename.
   - `TestPendingSubscriptionsUpsertGetRefreshDelete` and `TestPendingSubscriptionsUpsertIsRaceFree`: `ON CONFLICT DO UPDATE ... RETURNING id`, and its atomicity.

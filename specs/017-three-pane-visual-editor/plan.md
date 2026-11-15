@@ -1,3 +1,5 @@
+> Superseded: the layout was later replaced by the editor shell, see [editor-shell design](../../docs/superpowers/specs/2026-11-14-editor-shell-design.md).
+
 # Implementation Plan: Three-Pane Visual Editor — Structure Outline & Block Parameters
 
 **Branch**: `017-three-pane-visual-editor` | **Date**: 2026-05-31 | **Spec**: [spec.md](./spec.md)

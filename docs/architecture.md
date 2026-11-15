@@ -145,7 +145,7 @@ New tenant-plane tables:
 | `subscription_pages` | tenant_id, slug, title, target_list_ids, fields JSONB, sending_domain_id, from_name/local_part, active — per-tenant public subscription page config (Phase 6 US1) |
 | `pending_subscriptions` | tenant_id, subscription_page_id, email, attributes, target_list_ids, confirmation_token_hash, expires_at — promoted to subscriber+membership on confirm, then deleted (Phase 6 US1) |
 | `tenant_branding` | tenant_id, logo_url, primary_color, custom_css (sanitised), updated_at — applied to every public page (Phase 6 US3) |
-| `media_assets` | tenant_id, filename, content_type, size_bytes, storage_key, public_url, uploaded_by — metadata for the tenant media library; bytes live in S3-compatible object storage at `media/{tenant_id}/{asset_id}/{filename}` (Phase 6 US4) |
+| `media_assets` | tenant_id, filename, content_type, size_bytes, storage_key, uploaded_by, width, height, published_at (set once the public copy exists) — metadata for the tenant media library; bytes live in S3-compatible object storage at `media/{tenant_id}/{asset_id}/{filename}` (Phase 6 US4) |
 
 `subscribers.preference_token_hash` (Phase 6 US2) stores the hash of each subscriber's
 long-lived preference / one-click-unsubscribe token, unique per tenant.
@@ -279,10 +279,16 @@ own migrations.
   - Admin: `GET/POST /t/{slug}/api/media` and `DELETE /t/{slug}/api/media/{id}` —
     `media:get` / `media:manage` permissions; listing is served from the RLS-protected
     `media_assets` table, **never** by enumerating the bucket.
-  - Bytes are served by S3-compatible object storage at unguessable, tenant-prefixed
-    keys (`media/{tenant_id}/{asset_id}/{filename}`); the bucket is not publicly
-    listable and the per-asset UUID carries ~122 bits of entropy, satisfying FR-024
-    and FR-028. The bytes are written to the BlobStore **before** the metadata row is
+  - The library is private. Bytes live in S3-compatible object storage at
+    tenant-prefixed keys (`media/{tenant_id}/{asset_id}/{filename}`) in a bucket with
+    no public read. `GET /t/{slug}/api/media/{id}/content` (`media:get`) answers 302 to
+    a short-lived presigned URL; drafts reference that app-origin URL.
+  - Publish-on-send: when content goes live (campaign start, transactional template
+    save, branding logo save) the referenced assets are copied to
+    `published/{tenant_id}/{asset_id}/{filename}` with a public-read ACL and the
+    content is rewritten to those URLs. `DELETE /media/{id}` removes the row and the
+    private object but keeps the published copy (so sent emails keep their images)
+    unless `?unpublish=true`, which also removes it (audited). The bytes are written to the BlobStore **before** the metadata row is
     inserted (FR-029), so an interrupted upload leaves no listed-but-missing asset.
 - API client is a typed REST layer; tenant slug is part of every admin route.
 - **TanStack Start + Nitro BFF (Phase 7)** — `frontend/` is also a Node tier
