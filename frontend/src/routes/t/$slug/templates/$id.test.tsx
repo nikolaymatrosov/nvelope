@@ -188,7 +188,7 @@ describe("TemplateDetail — transactional templates (T084)", () => {
     )
     renderWithClient(<TemplateDetail />)
 
-    expect(await screen.findByText(/html body/i)).toBeTruthy()
+    expect(await screen.findByText("HTML body")).toBeTruthy()
     expect(screen.queryByTestId("open-visual-editor")).toBeNull()
   })
 
@@ -200,7 +200,26 @@ describe("TemplateDetail — transactional templates (T084)", () => {
       ok(template({ kind: "transactional", body_doc: visualDoc })),
     )
     renderWithClient(<TemplateDetail />)
-    expect(await screen.findByText(/html body/i)).toBeTruthy()
+    expect(await screen.findByText("HTML body")).toBeTruthy()
     expect(screen.queryByTestId("open-visual-editor")).toBeNull()
+  })
+
+  it("documents the raw {{{key}}} variable form next to the HTML body", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockResolvedValue(
+      ok(template({ kind: "transactional" })),
+    )
+    renderWithClient(<TemplateDetail />)
+    expect(await screen.findByText("{{{key}}}")).toBeTruthy()
+  })
+
+  it("does not show the transactional variable hint on campaign templates", async () => {
+    setupOwner()
+    vi.mocked(api.getTemplate).mockResolvedValue(
+      ok(template({ kind: "campaign", body_doc: null })),
+    )
+    renderWithClient(<TemplateDetail />)
+    expect(await screen.findByText("HTML body")).toBeTruthy()
+    expect(screen.queryByText("{{{key}}}")).toBeNull()
   })
 })
