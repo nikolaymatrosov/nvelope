@@ -40,7 +40,7 @@
 - This is the eighth Plan B plan. Media (B9) follows.
 - Not in scope:
   - Wiring the YDB adapters or the sweep into the composition root and the cron routes. That is Plan C4 (see "Done criteria").
-  - `ProcessFeedback`, `IngestNotificationHandler` and the workers: unchanged.
+  - `IngestNotificationHandler` and the workers: unchanged. `ProcessFeedback` was changed by one guard in the final review (see "Review follow-ups").
   - The Postgres adapters. The only change is the new `PendingInbound` method in `events_pg.go` (Task 2).
   - `suppression_list.source_event_id` always being NULL (see "Found, not fixed" in the spec's B8 section).
 
@@ -2741,4 +2741,12 @@ git commit -m "feat(deliverability): port campaign analytics to YDB"
 
 ## Review follow-ups
 
-(Filled in by the final review.)
+Findings of the final review:
+
+- **I1 (fixed, commit `fix(deliverability): apply suppression even when the delivery event was already recorded`).** `ProcessFeedback` skipped `Apply` when `RecordEvent` reported the event as already recorded, so a failure between the two was never retried and the sweep could not recover it. The `recorded &&` guard is dropped; a unit test covers it.
+- **I2 (spec corrected, found, not fixed).** On Postgres, deleting a subscriber with any campaign delivery event fails on the `delivery_events` CHECK (an existing SaaS bug); YDB leaves a dangling `campaign_recipient_id`. The spec's "Dangling ids" and "Found, not fixed" now say so.
+- **M1.** The spec's `Refresh` ceiling now says "no index on `campaign_id`" and that it scans every recipient of the tenant.
+- **M2.** The spec's C4 notes now list `SendTransactional` and `ConfirmSubscription` as `NewYDBSuppressionChecker` consumers, the `WorkerRoutes` widening for the sweep route, and the `OlderThan` latency bound.
+- **M3 (ceiling recorded).** `Refresh` as one read-write statement can be retried until the deadline during sends, and an `InboundFailed` that nothing sets can starve the sweep.
+- **Deferred minors.** A negative `PendingInbound` limit is unreachable; the dashboard has no tie-breaker on either backend; the Task 3 cap test now asserts which campaigns come back and their order.
+

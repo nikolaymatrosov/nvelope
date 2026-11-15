@@ -1220,14 +1220,18 @@ Decisions for Plan B8:
   covers the `analytics_pg.go` `dash.Recent` and `suppression_pg.go` `List`
   sites for the YDB runtime. The Postgres adapters do not change (River does not
   retry a pgx transaction).
-- **Dangling ids.** `delivery_events.campaign_recipient_id` and `campaign_id`
-  are written and never read back, so a recipient deleted with its subscriber
-  (B7), leaves a dangling id that nothing follows. The refresh groups the events
-  by `campaign_id` and joins them to `campaigns`, so an event of an unknown
+- **Dangling ids.** `delivery_events.campaign_recipient_id` is written and
+  never read back, so a recipient deleted with its subscriber (B7) leaves a
+  dangling id that nothing follows. `campaign_id` is read: the refresh groups
+  the events by it and joins them to `campaigns`, so an event of an unknown
   campaign counts nowhere. No campaign delete exists, so no `campaign_analytics`
   cascade is needed. A campaign's `sent_count` is the count of its `sent`
-  recipients, so it falls when a subscriber's deletion removes recipients (B7);
-  on Postgres the recipients cascade the same way.
+  recipients, so it falls when a subscriber's deletion removes recipients (B7).
+  Postgres does not behave the same way: deleting a subscriber cascades to
+  `campaign_recipients`, whose `delivery_events.campaign_recipient_id ON DELETE
+  SET NULL` then violates `CHECK ((campaign_recipient_id IS NOT NULL) <>
+  (transactional_message_id IS NOT NULL))`, so deleting a subscriber that has
+  any campaign delivery event fails (see "Found, not fixed").
 - **Feedback recovery (the C1 carry-over).** B8 owns the port, so it adds
   `EventRepository.PendingInbound(ctx, receivedBefore, limit)` on both backends
   (Postgres: the existing `status` and `received_at` indexes) and
@@ -1236,7 +1240,9 @@ Decisions for Plan B8:
   twice, which `ProcessFeedback` tolerates. C4 wires the cron route. This is
   small, and leaving the port to C4 would put a port change into the assembly
   plan.
-- **`ProcessFeedback` is unchanged**, and `cmd/consumer` stays a SaaS binary.
+- **`ProcessFeedback` changes by one line** (the final review found that a
+  failure inside `Apply` after `RecordEvent` committed was never retried; the
+  `recorded &&` guard is dropped), and `cmd/consumer` stays a SaaS binary.
   The `/feedback` route already stages through `IngestNotificationHandler`,
   which takes the `EventRepository` port.
 - **Tests.** The suppression, settings, checker, audit, events, feedback-worker
@@ -1244,11 +1250,15 @@ Decisions for Plan B8:
   harness (`backend_test.go`), as in campaign. `stageInbound` retires the
   notifications a test leaves pending, so the shared database does not pile
   them up for the `PendingInbound` test.
-- **Found, not fixed (both backends).** `SuppressionApplier.Apply` passes
-  `e.ID()` as the entry's source event id, but `RecordEvent` never sets the id
-  on the event it was given, so `suppression_list.source_event_id` is always
-  NULL. Fixing it means having `RecordEvent` return the new id, a port change
-  outside this plan.
+- **Found, not fixed.**
+  - Both backends: `SuppressionApplier.Apply` passes `e.ID()` as the entry's
+    source event id, but `RecordEvent` never sets the id on the event it was
+    given, so `suppression_list.source_event_id` is always NULL. Fixing it means
+    having `RecordEvent` return the new id, a port change outside this plan.
+  - Postgres only (an existing SaaS bug, reproduced on `postgres:17`): deleting
+    a subscriber that has any campaign delivery event fails on the CHECK above.
+    It diverges from YDB, which deletes the subscriber and leaves the event with
+    a dangling `campaign_recipient_id`.
 - **For B9 and C4.**
   - **B9.** Nothing: no deliverability table references media, and media owns
     no table deliverability reads. The next migration number is `000010`.
@@ -1256,15 +1266,22 @@ Decisions for Plan B8:
     - Wire `NewYDBEvents`, `NewYDBSuppressions`, `NewYDBSettings`,
       `NewYDBAnalytics`, `NewYDBSuppressionChecker` and `NewYDBAuditLog`, each
       over the `*ydb.Driver`. `NewYDBSuppressionChecker` is what the campaign
-      start and batch workers take as their `SuppressionChecker`;
+      start and batch workers take as their `SuppressionChecker`, and also
+      what `SendTransactional` (`internal/service/application.go` ~518) and
+      `ConfirmSubscription` (~716, ~758) take;
       `NewSuppressionApplier` takes the two YDB repositories unchanged;
       `NewProcessFeedbackHandler` and `NewIngestNotificationHandler` take
       `NewYDBEvents`.
     - Add `POST /cron/feedback-sweep` to `WorkerRoutes`: it runs
       `command.NewSweepPendingFeedbackHandler(events, enqueuer).Handle(ctx,
       SweepPendingFeedback{OlderThan: ...})`, where `enqueuer` is the `*ymq.Enqueuer`
-      (it implements `EnqueueFeedbackProcess`). Pick `OlderThan` above the
-      feedback job's visibility timeout plus its retry window, for example 15
+      (it implements `EnqueueFeedbackProcess`). `WorkerRoutes` needs widening for
+      it: `cronEnqueuer` (`internal/service/worker_routes.go` ~22) lacks
+      `EnqueueFeedbackProcess`, `WorkerRoutes` has no `EventRepository` or
+      sweep field, and the test `recordingEnqueuer` needs the method. Pick
+      `OlderThan` above the worst-case queue latency, not only the feedback
+      job's visibility timeout plus its retry window (otherwise a throttled
+      backlog makes every tick add up to 500 duplicate jobs), for example 15
       minutes, and fire the timer about as often. It needs no tenant: the
       staging table has none. Add the matching timer trigger to the Terraform
       module (C3), and extend the DLQ alert note: a pending notification older
@@ -1354,15 +1371,25 @@ These are known limits, marked in code with `ponytail:` comments.
   the index is global and every unsent, failed and skipped recipient of every
   campaign and tenant shares the NULL key; the primary key suffix of the index
   entry lets YDB split it.
-- `YDBAnalytics.Refresh` reads every `sent` recipient and every delivery event
-  of the tenant on each run, and `delivery_events` has no secondary index. Fine
-  for one organisation's history. The upgrade path is counters kept on the
-  campaign row, or a refresh that reads only events newer than the last one.
+- `YDBAnalytics.Refresh` scans every recipient of the tenant (filtering by
+  status, not only the `sent` ones) and every delivery event of the tenant on
+  each run, and `delivery_events` has no index on `campaign_id`. Fine for one
+  organisation's history. The upgrade path is counters kept on the campaign
+  row, or a refresh that reads only events newer than the last one.
+- `Refresh` is one read-write statement over the tenant's recipient and event
+  ranges, so while a campaign is sending, concurrent recipient updates and
+  event inserts may invalidate its locks and the SDK retries until the job
+  deadline (not measured; the dashboard goes stale during sends). The upgrade
+  path is to read the counts in a snapshot read-only transaction, then `UPSERT`
+  from a list parameter.
 - `SweepPendingFeedbackHandler` re-enqueues at most 500 notifications per
   sweep; the next tick takes the rest. `inbound_feedback_events` rows are never
   deleted (as on Postgres), and `idx_inbound_status` holds every row, so the
-  `pending` range is the short head of an index that grows with history. The
-  upgrade path is a retention job for processed rows.
+  `pending` range is a short range of an index that grows with history (status
+  `pending` sorts between `failed` and `unattributed`). The upgrade path is a
+  retention job for processed rows. No production code ever sets `InboundFailed`,
+  so a notification that fails on every attempt is re-enqueued on every tick,
+  and 500 of them would starve newer ones; the DLQ alert is the operator signal.
 
 ## Implementation phasing
 
