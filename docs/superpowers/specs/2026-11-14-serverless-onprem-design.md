@@ -228,7 +228,8 @@ SaaS keeps the Redis implementations.
     `audience.import`, `audience.export`, `campaign.start`, `campaign.batch`.
   - `jobs` (short visibility timeout): everything else that is wired in
     serverless mode.
-- Each queue has a DLQ through a redrive policy with `maxReceiveCount=5`.
+- Each queue has a DLQ through a redrive policy with `maxReceiveCount=5`. C3
+  revisits the value (see "Carried to C3 and C4").
 - Client: `aws-sdk-go-v2/service/sqs` against the YMQ endpoint, using static
   access keys from Lockbox. It is pinned to v1.42.27, the release built on the
   `aws-sdk-go-v2` core already in `go.mod` (v1.41.7); `@latest` would upgrade
@@ -251,8 +252,9 @@ SaaS keeps the Redis implementations.
   Plan C1 fixes this in the serverless sweep, not in the worker. The
   `/cron/domain-verify-sweep` handler re-arms a pending domain only when its
   last poll (or its creation, if it was never polled) is older than two poll
-  intervals. A live chain polls every interval, so the sweep never starts a
-  second chain beside it. `VerifyWorker` and SaaS are unchanged.
+  intervals. A chain that is on schedule polls every interval, so the sweep
+  never doubles it. If job delivery stalls for more than two intervals, the
+  sweep does start one (see Ceilings). `VerifyWorker` and SaaS are unchanged.
 
   The worker-side debounce planned earlier (`VerifyWorker.Work` returns `nil`
   when `now - LastCheckedAt <= interval/2`) was dropped in Plan C1 planning.
@@ -264,8 +266,14 @@ SaaS keeps the Redis implementations.
 ### `POST /jobs` (Message Queue trigger, batch size 1)
 
 The handler decodes the trigger payload and dispatches by `kind` through a
-`map[string]func(ctx, json.RawMessage) error` registry. The context deadline is
-the container timeout minus a safety margin.
+`map[string]func(ctx, json.RawMessage) error` registry. The context has one of
+two deadlines:
+
+- Short-queue kinds get a short timeout. It stays below the short queue's
+  visibility timeout.
+- Long kinds (import, export, campaign start and batch) get the container
+  timeout minus a safety margin. It stays below the long queue's visibility
+  timeout.
 
 | Outcome | Action | HTTP |
 |---------|--------|------|
@@ -739,6 +747,45 @@ Decisions for Plan C1:
   `dbtest.YDBDSN`. Tests build their client with the production
   `ymq.NewClient`.
 
+Carried to C3 and C4 (final review of Plan C1):
+
+- **Visibility timeouts.** The short queue's `visibility_timeout_seconds` is at
+  least the short job timeout plus a margin, and the long queue's is at least
+  the long job timeout plus a margin. Each Message Queue trigger's own
+  `visibility_timeout` is left unset or set equal to its queue's.
+- **Retry budget.** `maxReceiveCount=5` with a fixed visibility timeout gives a
+  few minutes of retries; River gives 25 attempts with exponential backoff. C3
+  decides the short queue's `maxReceiveCount`. C3 also checks in the YC docs
+  whether a throttled invocation (container instance limit, HTTP 429) consumes
+  a receive count. If it does, a campaign fan-out can dead-letter jobs that
+  never ran.
+- **DLQ alerts.** Alert on the depth of both job DLQs and of the Data Streams
+  trigger's DLQ.
+- **Feedback recovery.** A dead-lettered `feedback.process` leaves a staged
+  inbound event that is never processed, so a bounce or complaint never
+  suppresses the address. C4 (or the deliverability Plan B) adds a recovery
+  path: a cron sweep that re-enqueues `feedback.process` for staged events left
+  unprocessed past a threshold, like the domain sweep. This needs a
+  deliverability port method.
+- **Instance limits.** Size the worker container's instance limit against the
+  campaign fan-out, or give `jobs-long` its own container built from the same
+  image.
+- **IAM.** Bind `serverless.containers.invoker` per container, not
+  folder-wide. The API Gateway's service account has no binding on `worker`;
+  only the triggers' service account and the deploy step invoke it. Anyone who
+  can invoke `worker` can start campaigns, send verification and opt-in
+  emails, inject bounces that suppress addresses, and run migrations.
+- **Config.**
+  - The domain-sweep timer fires no more often than `VerifyInterval`, as
+    `cmd/scheduler` does today.
+  - `WorkerRoutes.VerifyInterval` is the same `cfg.SendingDomainVerifyInterval`
+    passed to `NewVerifyWorker`.
+  - `NVELOPE_TENANT_SLUG` is required config in serverless mode.
+- **Real-YMQ probe.** As soon as C3 can create a queue, run one SendMessage,
+  ReceiveMessage and DeleteMessage against real YMQ with the Go SDK, to confirm
+  the JSON protocol before C4. If it fails, the fallback is a query-protocol
+  `service/sqs` release built on the current core.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -777,6 +824,10 @@ These are known limits, marked in code with `ponytail:` comments.
   every interval until the domain verifies or the window (72 h) closes. The
   upgrade path is a worker-side debounce that exempts user-requested polls
   (see "YMQ enqueuer").
+- When job delivery stalls for more than two poll intervals (a trigger backlog
+  or outage), every sweep tick re-arms each pending domain. Those chains all
+  survive until the domain verifies or the 72 h window closes. The upgrade path
+  is the same worker-side debounce that exempts user-requested polls.
 - The `/jobs` dispatcher assumes the trigger's batch size 1. With a larger
   batch, one failed job redelivers the whole batch, including jobs that
   already succeeded.

@@ -659,6 +659,7 @@ git commit -m "feat(ymq): add the YMQ job enqueuer and the fakecloud SQS test he
   func AddWorker[T river.JobArgs](d *Dispatcher, w jobs.Worker[T])
   func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request)
   ```
+  Changed after the final review: `NewDispatcher` takes `timeout, longTimeout` (see Handover).
 - Behaviour (spec "`POST /jobs`" outcome table):
 
   | Outcome | Action | HTTP |
@@ -1555,8 +1556,9 @@ Expected:
 ## Handover to Plan C4
 
 - **Config.** C4 adds the config keys: the YMQ endpoint and keys, the two queue URLs, `NVELOPE_TENANT_SLUG` and the job timeout. The job timeout is the container's `execution_timeout` minus a margin.
-- **Building the worker.** C4 builds `ymq.New(ymq.NewClient(...), jobsURL, jobsLongURL)` and `ymq.NewDispatcher(enq, timeout, logger)`. Then it registers every worker `cmd/worker` registers today, except billing and `auth.verification_cleanup`: `ymq.AddWorker(d, audienceadapters.NewImportWorker(...))` and so on, with the YDB adapters and `nil` billing ports. Finally it serves `service.WorkerRoutes{Jobs: d, ...}.Handler()` on `$PORT`.
+- **Building the worker.** C4 builds `ymq.New(ymq.NewClient(...), jobsURL, jobsLongURL)` and `ymq.NewDispatcher(enq, timeout, longTimeout, logger)`. `timeout` bounds short-queue kinds and stays below the short queue's visibility timeout; `longTimeout` bounds import, export and campaign kinds and is the container's `execution_timeout` minus a margin. Then it registers every worker `cmd/worker` registers today, except billing and `auth.verification_cleanup`: `ymq.AddWorker(d, audienceadapters.NewImportWorker(...))` and so on, with the YDB adapters and `nil` billing ports. Finally it serves `service.WorkerRoutes{Jobs: d, ...}.Handler()` on `$PORT`.
 - **The enqueuer.** The same `*ymq.Enqueuer` replaces both `jobs.Enqueuer` and `jobs.SendEnqueuer` in the composition root. It is also `WorkerRoutes.Enqueuer`. `WorkerRoutes.Feedback` is `deliverabilitycommand.NewIngestNotificationHandler(deliverabilityadapters.NewNotificationParser(), <YDB events>, enq)`.
+- **Carried from the final review.** The spec's "Carried to C3 and C4" list (end of "Plan C1 planning spike") holds the visibility-timeout, retry-budget, DLQ-alert, feedback-recovery, instance-limit, IAM, config and real-YMQ-probe items for C3 and C4.
 - **For C3 (Terraform):**
   - each Message Queue trigger uses `batch_size = 1`;
   - the long queue's `visibility_timeout_seconds` is at least the worker's `execution_timeout`;
