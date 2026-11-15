@@ -9,6 +9,7 @@ import { SuspensionBanner } from "./suspension-banner"
 import type { ReactNode } from "react"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { useSyncAccountLocale } from "@/hooks/use-locale"
+import { usePlatformConfig } from "@/hooks/use-platform-config"
 
 // Routes opt out of the workspace chrome with `staticData: { fullscreen: true }`
 // (the visual email editor). Session/TOTP gating in /t/$slug still applies.
@@ -27,6 +28,7 @@ type AppShellProps = {
 export function AppShell({ slug, workspaceName, children }: AppShellProps) {
   // Apply the signed-in user's stored language preference (FR-004).
   useSyncAccountLocale()
+  const { billing } = usePlatformConfig()
   const fullscreen = useMatches({
     select: (matches) => matches.some((m) => m.staticData.fullscreen === true),
   })
@@ -39,7 +41,7 @@ export function AppShell({ slug, workspaceName, children }: AppShellProps) {
       <SidebarInset>
         <TopBar workspaceName={workspaceName} />
         <main className="flex flex-1 flex-col gap-4 overflow-auto p-6">
-          <SuspensionBanner slug={slug} />
+          {billing && <SuspensionBanner slug={slug} />}
           {children}
         </main>
       </SidebarInset>

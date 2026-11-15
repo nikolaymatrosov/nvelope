@@ -18,7 +18,14 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-vi.mock("@/lib/api", () => ({ api: { login: vi.fn() } }))
+vi.mock("@/lib/api", () => ({ api: {
+    login: vi.fn(),
+    config: vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      data: { features: { billing: true, multi_tenant: true }, setup_required: false },
+    }),
+  }, }))
 
 afterEach(() => {
   cleanup()

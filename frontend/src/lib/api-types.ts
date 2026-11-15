@@ -43,6 +43,28 @@ export type PlatformAccount = {
   tenants: Array<Membership>
 }
 
+// GET /api/platform/config — which runtime the SPA talks to. A single-tenant
+// (serverless) install has no billing and one workspace; setup_required is
+// true until first-run setup has created that workspace.
+export type PlatformConfig = {
+  features: { billing: boolean; multi_tenant: boolean }
+  setup_required: boolean
+}
+
+// The workspace object the platform plane returns (tenantPayload in Go).
+export type PlatformTenant = {
+  id: string
+  slug: string
+  name: string
+  status: string
+}
+
+// POST /api/platform/signup: SaaS asks the user to verify their email;
+// first-run setup signs the owner in and creates the workspace.
+export type SignupResult =
+  | { verification: { required: boolean; email: string } }
+  | { user: PlatformUser; tenant: PlatformTenant }
+
 export type InvitationLookup = {
   email: string
   status: string

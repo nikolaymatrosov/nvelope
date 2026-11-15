@@ -44,6 +44,7 @@ import type {
   Permission,
   PlanView,
   PlatformAccount,
+  PlatformConfig,
   PlatformUser,
   RawHTMLSanitization,
   RenderPreviewInput,
@@ -55,6 +56,7 @@ import type {
   SaveVisualTemplateInput,
   SegmentNode,
   SessionResult,
+  SignupResult,
   StartExportInput,
   SubscribeResult,
   SubscriptionPageView,
@@ -141,11 +143,14 @@ const tp = (slug: string, suffix: string) => `/t/${slug}/api${suffix}`
 
 export const api = {
   // ── Platform plane ─────────────────────────────────────────────────────────
-  signup: (email: string, password: string, name: string) =>
-    request<{ verification: { required: boolean; email: string } }>(
+  config: () => request<PlatformConfig>("GET", "/api/platform/config"),
+  signup: (email: string, password: string, name: string, setupToken?: string) =>
+    request<SignupResult>(
       "POST",
       "/api/platform/signup",
-      { email, password, name },
+      setupToken === undefined
+        ? { email, password, name }
+        : { email, password, name, setup_token: setupToken },
     ),
   login: (email: string, password: string) =>
     request("POST", "/api/platform/login", { email, password }),

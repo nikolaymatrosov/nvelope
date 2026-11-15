@@ -1,9 +1,11 @@
-import { Link, createFileRoute } from "@tanstack/react-router"
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { queryClient, queryKeys } from "@/lib/query"
+import { usePlatformConfig } from "@/hooks/use-platform-config"
 import { ApiError, errorMessage, isConflict } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,14 +23,25 @@ export const Route = createFileRoute("/signup")({ component: Signup })
 
 export function Signup() {
   const { t } = useTranslation("auth")
+  const navigate = useNavigate()
+  const { setupRequired } = usePlatformConfig()
   const [formError, setFormError] = useState("")
   const [emailTaken, setEmailTaken] = useState(false)
   const [sentTo, setSentTo] = useState("")
 
   const signup = useMutation({
-    mutationFn: (v: { name: string; email: string; password: string }) =>
-      api.signup(v.email.trim(), v.password, v.name.trim()),
-    onSuccess: (res) => {
+    mutationFn: (v: { name: string; email: string; password: string; setupToken: string }) =>
+      setupRequired
+        ? api.signup(v.email.trim(), v.password, v.name.trim(), v.setupToken.trim())
+        : api.signup(v.email.trim(), v.password, v.name.trim()),
+    onSuccess: async (res) => {
+      if ("tenant" in res.data) {
+        // First-run setup signs the owner in and creates the workspace.
+        await queryClient.invalidateQueries({ queryKey: queryKeys.me() })
+        await queryClient.invalidateQueries({ queryKey: queryKeys.platformConfig() })
+        await navigate({ to: "/t/$slug", params: { slug: res.data.tenant.slug } })
+        return
+      }
       // No session is issued — the account must verify its email first.
       setSentTo(res.data.verification.email)
     },
@@ -41,12 +54,20 @@ export function Signup() {
         setFormError(t("signup.emailDomainNotAllowed"))
         return
       }
+      if (e instanceof ApiError && e.slug === "setup_token_invalid") {
+        setFormError(t("signup.setupTokenInvalid"))
+        return
+      }
+      if (e instanceof ApiError && e.slug === "setup_complete") {
+        setFormError(t("signup.setupComplete"))
+        return
+      }
       setFormError(errorMessage(e))
     },
   })
 
   const form = useForm({
-    defaultValues: { name: "", email: "", password: "" },
+    defaultValues: { name: "", email: "", password: "", setupToken: "" },
     onSubmit: async ({ value }) => {
       setFormError("")
       setEmailTaken(false)
@@ -86,8 +107,10 @@ export function Signup() {
     <main className="grid min-h-svh place-items-center p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>{t("signup.title")}</CardTitle>
-          <CardDescription>{t("signup.description")}</CardDescription>
+          <CardTitle>{t(setupRequired ? "signup.setupTitle" : "signup.title")}</CardTitle>
+          <CardDescription>
+            {t(setupRequired ? "signup.setupDescription" : "signup.description")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -168,8 +191,30 @@ export function Signup() {
                 />
               )}
             </form.Field>
+            {setupRequired && (
+              <form.Field
+                name="setupToken"
+                validators={{
+                  onBlur: compose(rules.required(t("signup.setupTokenRequired"))),
+                }}
+              >
+                {(field) => (
+                  <FormField
+                    label={t("signup.setupToken")}
+                    type="password"
+                    required
+                    autoComplete="off"
+                    hint={t("signup.setupTokenHint")}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    error={fieldError(field.state.meta.errors)}
+                  />
+                )}
+              </form.Field>
+            )}
             <Button type="submit" disabled={signup.isPending}>
-              {signup.isPending ? t("signup.submitting") : t("signup.submit")}
+              {signup.isPending ? t("signup.submitting") : t(setupRequired ? "signup.setupSubmit" : "signup.submit")}
             </Button>
           </form>
         </CardContent>

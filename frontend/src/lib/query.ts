@@ -44,6 +44,7 @@ export const queryClient = new QueryClient({
 export const queryKeys = {
   me: () => ["me"] as const,
   tenants: () => ["tenants"] as const,
+  platformConfig: () => ["platform-config"] as const,
   invitationLookup: (token: string) => ["invitation", token] as const,
 
   workspace: (slug: string) => ["t", slug] as const,
