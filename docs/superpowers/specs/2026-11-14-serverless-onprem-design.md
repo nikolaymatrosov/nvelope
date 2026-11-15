@@ -171,7 +171,7 @@ Each container is built from an existing image. There are no new binaries.
 | Postgres | YQL |
 |----------|-----|
 | `INSERT ... ON CONFLICT DO UPDATE` (18 sites, together with DO NOTHING) | `UPSERT` |
-| `INSERT ... ON CONFLICT DO NOTHING` | An INSERT conflict aborts the whole interactive transaction ("Plan B2 planning spike"). Inside a transaction use `SELECT` then `INSERT` (as `AddYDBMembership` does, Plan B3). A standalone single-statement INSERT may treat `db.IsYDBConflict` as a no-op. `UPSERT` is wrong where it would overwrite existing data. Still open, for the campaign plan: whether `Recipients.BulkInsert` can continue after a conflict, or needs `SELECT` then `INSERT`/chunk-level `UPSERT`. |
+| `INSERT ... ON CONFLICT DO NOTHING` | An INSERT conflict aborts the whole interactive transaction ("Plan B2 planning spike"). Inside a transaction use `SELECT` then `INSERT` (as `AddYDBMembership` does, Plan B3). A standalone single-statement INSERT may treat `db.IsYDBConflict` as a no-op. `UPSERT` is wrong where it would overwrite existing data. `Recipients.BulkInsert` (Plan B7) reads the emails already present through the unique index, then inserts only the others, one transaction per chunk of 1000: the transaction cannot continue after a conflict, and a batch that repeats a key fails whole ("Plan B7 planning spike"). A write keyed by a unique index only (`links`) does the same. |
 | `SELECT ... FOR UPDATE` (7) | removed. A serializable conflict aborts the tx and the SDK retries it. |
 | `RETURNING` (26) | supported as is |
 | `now()` (28) | `CurrentUtcTimestamp()` |
@@ -181,6 +181,9 @@ Each container is built from an existing image. There are no new binaries.
 | `citext` (emails, slugs) | Where the domain already lower-cases the value (`tenants.slug`, iam `users.email`, audience `subscribers.email`), the column itself carries the unique index. A query that compares such a column with user input lower-cases the input in Go (the segment `email` condition, Plan B5). Otherwise the value is stored as entered, plus a lower-cased `email_key` column that carries the index (`platform_users`, `invitations`). |
 | foreign keys | YDB has none. Where a pg foreign key makes a write fail and the referenced table belongs to the same context, the YDB adapter reads the referenced row in the same `DoTx` (iam role assignments read `roles`, Plan B4). A stand-in read may also target another context's table already on YDB (iam per-list role assignments read audience `lists`, Plan B6). A cascade the port must keep becomes an explicit delete in the parent's delete transaction (the same `DoTx` as the parent's delete). The cascade may cross into another context's table when that table is already on YDB: `YDBLists.Delete` deletes iam `user_list_roles` rows (Plan B5). A cascade into a table that is not on YDB yet is the porting plan's job (see "Plan B5 planning spike"). |
 | `ORDER BY` on a text column | YDB orders `Utf8` by bytes, pg by the database collation, so mixed-case and non-ASCII values order differently. Acceptable for display lists (iam `roles` by `name`). If a later plan needs collation-equal order, sort in Go or store a sort key. |
+| `UPDATE ... WHERE id = $1` on a table whose key is not the id alone (`campaign_recipients`: `(tenant_id, campaign_id, id)`) | `UPDATE t ON SELECT <key columns>, <new values> AS col FROM t VIEW idx WHERE ...` through a `GLOBAL SYNC` index on the id. An id that matches no row updates nothing and is no error, as the Postgres `UPDATE` (Plan B7). |
+| a bulk `INSERT` of many rows | `INSERT INTO t (...) SELECT $const, id, ... FROM AS_TABLE($rows)` with `$rows` as `List<Struct<...>>`, bound with `types.ListValue(types.StructValue(...))` through `Param(...).Any(...)`. The ids are fixed in Go before the transaction (Plan B7). |
+| `SECURITY DEFINER` lookup of the tenant that owns an id (`tracking_tenant_for_link`, `..._for_campaign`) | a `GLOBAL UNIQUE SYNC` index on `(id)` alone, read with `VIEW`. The index entry carries the primary key, so `tenant_id` comes with it (Plan B7). It leaks what the function leaked: the tenant of a caller-supplied id. |
 | bound parameters (`$1`, `@name`) | `$name` parameters, each declared explicitly with `DECLARE $name AS <Type>;`. String literals that target a `Utf8` column take the `u` suffix (`"pending"u`); a bare `"..."` literal is `String`. Identifiers avoid YQL keywords (e.g. `throttle_key`, not `key`). |
 | segment SQL translator (`internal/audience/adapters/segment_sql.go`: jsonb `?`, `->>`, `::numeric`) | its own YQL port, `segment_yql.go` (Plan B5). The attribute key is bound, never part of the path: `JSON_VALUE(s.attributes, "$.keyvalue() ? (@.name == $k).value" PASSING $pN AS k)` for `->>`, the same path in `JSON_EXISTS` for `?`, and `CAST(JSON_VALUE(...) AS Double)` for `::numeric`. A list-membership condition is `s.id IN (SELECT subscriber_id FROM subscriber_lists VIEW ... WHERE ...)`, because YQL has no correlated `EXISTS`. |
 | `ILIKE` (3 sites: `deliverability/adapters/suppression_pg.go:91` email filter; `audience/adapters/segment_sql.go:68` `col::text ILIKE`; `segment_sql.go:87` `attributes->>key ILIKE`) | YQL `ILIKE`. Plan B5 verified it on `Utf8` columns, with a bound `%...%` pattern and with `"%"u || $v || "%"u`, against Cyrillic data (`ё` included). No lowercase column is needed. |
@@ -770,7 +773,7 @@ Decisions for Plan B5:
     subscriber delete into `campaign_recipients` and a list delete into
     `campaign_lists`. Those tables are not on YDB yet. The campaign plan must
     either extend `YDBSubscribers.Delete` and `YDBLists.Delete`, or make its
-    readers tolerate a dangling id.
+    readers tolerate a dangling id. Plan B7 extends both.
   - Still open, an iam follow-up: `YDBRoles.AssignListRole` does not read
     the list it assigns a role on. With `lists` now on YDB it should, as
     `YDBMemberships.Attach` does; otherwise an assignment to an unknown or
@@ -969,6 +972,154 @@ Decisions for Plan B6:
     `mediaadapters.NewS3BlobStore`'s options, including the `Region: "auto"`
     fallback when `cfg.ObjectStorageRegion` is empty.
 
+### Plan B7 planning spike
+
+Run on 2026-11-15 against `ydbplatform/local-ydb:26.3.1.23` while planning the
+campaign port, on throwaway tables shaped like the planned `000008_campaign`
+`campaign_recipients` and `campaign_lists`. A dry run of the whole plan then
+passed on the real migration, with `go test ./...`, `golangci-lint run` and
+`make lint-arch` clean.
+
+- **Bulk insert from a parameter.** `INSERT INTO t (...) SELECT $tenant_id,
+  $campaign_id, id, subscriber_id, email, "pending"u FROM AS_TABLE($rows)`, with
+  `$rows AS List<Struct<id: Utf8, subscriber_id: Utf8, email: Utf8>>` bound as
+  `types.ListValue(types.StructValue(types.StructFieldValue(...)...)...)`:
+  PASS. `ydb.ParamsBuilder()` has no list-of-struct form; `Param(name).Any(v)`
+  takes the `types` value.
+- **Conflicts in a bulk insert.**
+  - A batch that repeats a key fails whole: `PRECONDITION_FAILED`, issue 2012
+    `Duplicated keys found`. `db.IsYDBConflict` is true for it.
+  - A row whose key exists fails whole: `PRECONDITION_FAILED`, issue 2012
+    `Conflict with existing key`.
+  - **Continuing after a conflict (the open B2 item): FAIL.** In one `DoTx`, a
+    conflicting `INSERT` returns the conflict, and the next statement fails with
+    `NOT_FOUND`, `Transaction not found: <id>`. The conflict already rolled the
+    transaction back.
+- `SELECT ... FROM t VIEW idx_email WHERE tenant_id = $t AND campaign_id = $c
+  AND email IN $emails`, with `$emails AS List<Utf8>`, through a `GLOBAL UNIQUE
+  SYNC` index: PASS. `IN` takes a bound list.
+- `UPDATE t ON SELECT tenant_id, campaign_id, id, "sent"u AS status,
+  CurrentUtcTimestamp() AS sent_at FROM t VIEW idx_id WHERE tenant_id = $t AND
+  id = $id`, where the index is on `(tenant_id, id)` and the primary key is
+  `(tenant_id, campaign_id, id)`: PASS. An id that matches no row updates
+  nothing and returns no error.
+- `SELECT ... WHERE tenant_id = $t AND campaign_id = $c ORDER BY id LIMIT $l
+  OFFSET $o` over a primary-key prefix, and `SELECT status, COUNT(*) ... GROUP
+  BY status`: PASS.
+- A `GLOBAL UNIQUE SYNC` index on `(tenant_id, campaign_id, list_id)` with a
+  nullable `list_id`: two rows with a NULL `list_id` are accepted, and a
+  repeated non-NULL `list_id` conflicts. This is the Postgres `UNIQUE
+  (campaign_id, list_id)`, whose NULLs are distinct too.
+- `DELETE FROM t ON SELECT <key> FROM t VIEW idx WHERE tenant_id = $t AND
+  subscriber_id = $s`, and `UPDATE t SET col = NULL WHERE tenant_id = $t AND
+  other IS NULL`: PASS.
+
+The dry run added:
+
+- `BulkInsert` of 2300 recipients with repeats across the 1000-row chunk
+  boundary inserts 2300 rows, on both backends. Six concurrent `BulkInsert`s of
+  the same 40 emails insert each email once and none fails (three repeated
+  runs). Six concurrent `UpsertLinks` of the same URLs return identical ids.
+- Sabotage checks: with the existence read removed, the dedup test fails; with
+  the template unlink, the list-target delete or the recipient delete removed,
+  its test fails.
+
+Decisions for Plan B7:
+
+- **Scope.** `000008_campaign` creates the eight tables the campaign ports
+  own: `templates`, `campaigns`, `campaign_lists`, `campaign_recipients`,
+  `links`, `link_clicks`, `campaign_views`, `transactional_messages`.
+  `campaign_analytics` and `delivery_events` belong to deliverability (B8).
+- **No CHECK constraints, no defaults.** The domain keeps `status`, `kind` and
+  the one-of-list-or-segment rule valid. Every `INSERT` writes every `NOT NULL`
+  column. Counts and `max_send_errors` are `Int64` so a Go `int` binds without
+  a narrowing conversion. `body_doc` and `theme` are JSON stored and read back
+  whole, so plain nullable `Utf8` (Postgres `jsonb` normalizes key order and
+  spacing; the domain's `normalizeRawJSON` already normalizes on hydrate).
+- **Keys.**
+  - `templates`, `campaigns`, `links` and the two event tables: `(tenant_id,
+    id)`. `templates` has a unique `(tenant_id, name)` index, as Postgres has.
+  - `campaign_recipients`: `(tenant_id, campaign_id, id)`, so a campaign's
+    recipients are one key range in id order, which the batch window reads. The
+    send worker and the tracking endpoints know a recipient by id alone, so
+    `GLOBAL SYNC (tenant_id, id)` finds it; the writes go `UPDATE ON` through
+    it. A unique `(tenant_id, campaign_id, email)` index reproduces
+    `UNIQUE (campaign_id, email)`.
+  - `campaign_lists`: `(tenant_id, campaign_id, id)` with a generated id,
+    because a segment target has no natural key. Unique `(tenant_id,
+    campaign_id, list_id)` reproduces `UNIQUE (campaign_id, list_id)`.
+- **`Recipients.BulkInsert`** (the open B2/V5 item). Dedupe the input by email
+  in Go (the first wins), then per chunk of 1000: one `DoTx` that reads the
+  emails the campaign already has and inserts the rest with `AS_TABLE`. A
+  concurrent insert of the same email aborts one transaction and the SDK
+  retries it. The ids are generated before the `DoTx`, the count is assigned at
+  its end (V6). The returned count can fall short only when a first attempt
+  committed and its response was lost.
+- **`Recipients.Pending`** keeps the Postgres window: `ORDER BY id LIMIT
+  OFFSET` over every recipient of the campaign, then the pending rows of it,
+  read in chunks of 1000 inside the adapter. Pending is filtered in Go, so a
+  window never shifts as rows are sent.
+- **The Postgres foreign keys.**
+  - `YDBLists.Delete` also deletes the campaign's `campaign_lists` rows for the
+    list, through `idx_campaign_lists_list`. Without it a campaign would keep
+    a target that resolves nothing, or fails.
+  - `YDBSubscribers.Delete` also deletes the subscriber's `campaign_recipients`
+    rows, through `idx_campaign_recipients_subscriber`. The alternative, letting
+    readers tolerate a dangling id, was rejected: an erased subscriber's address
+    would stay in the campaign and a running campaign would still mail it. The
+    `link_clicks` and `campaign_views` rows of those recipients stay: no query
+    reads them, so they carry no index.
+  - `YDBTemplates.Delete` sets `campaigns.template_id` to NULL, by a scan of
+    the tenant's campaigns (a ceiling). `transactional_messages.template_id` is
+    only written, so it is left dangling.
+  - `campaigns.sending_domain_id` (`ON DELETE SET NULL`) needs nothing: no code
+    deletes a sending domain.
+  - `campaigns.Update` never writes `template_id`, as the Postgres `UPDATE`
+    does not.
+- **Tracking lookups without a tenant.** `ResolveTenantForLink` and
+  `ResolveTenantForCampaign` read `idx_links_id` and `idx_campaigns_id`,
+  `GLOBAL UNIQUE SYNC` indexes on `(id)`. They stand in for the two `SECURITY
+  DEFINER` functions. `UpsertLinks` reads the URLs the campaign has and inserts
+  the others, because an `INSERT` onto an existing key aborts the transaction.
+  `RecordClick` and `RecordView` read the recipient through the id index and
+  record nothing unless it belongs to the link's campaign.
+- **Indexes for B8, created here.** The recipients and transactional tables
+  are written by this plan's migration, so it also creates what delivery
+  feedback reads: `GLOBAL SYNC (provider_message_id)` on `campaign_recipients`
+  and `GLOBAL UNIQUE SYNC (provider_message_id)` on `transactional_messages`.
+  A later `ALTER TABLE ... ADD INDEX` would have to sit alone in its own file.
+- **Tests.** `templates`, `campaigns`, archive, `recipients`, `tracking` and
+  `transactional` tests become pg+ydb contract suites through an `eachBackend`
+  harness, as in audience. The send-pipeline and resumability tests (the start
+  and batch workers) run on both backends. The two start-worker quota tests
+  stay on Postgres: billing is not ported. The two cascades into audience's
+  adapters are tested in the audience package, on YDB only, with raw SQL, as
+  B5's `user_list_roles` test does.
+- **A V6 fix on Postgres.** `Recipients.BulkInsert`'s `inserted` counter is
+  reset at the start of its closure (the V6 table lists it). No other Postgres
+  adapter changes.
+- **For B8, B9 and C4.**
+  - **B8.** Attribution resolves a provider message id with no tenant bound:
+    read `campaign_recipients VIEW idx_campaign_recipients_provider` and
+    `transactional_messages VIEW idx_transactional_messages_provider`; each
+    entry carries `tenant_id`. With a tenant, add `AND tenant_id = $t` (the
+    index's second key component filters). Analytics reads `campaign_recipients`
+    by the `(tenant_id, campaign_id)` key range and `campaigns` by `(tenant_id,
+    id)`. `delivery_events` carries `campaign_id` and `campaign_recipient_id`
+    with `ON DELETE SET NULL` on Postgres; here a campaign's recipients now go
+    when their subscriber is deleted, so B8 must tolerate or null a dangling
+    `campaign_recipient_id`. `campaign_recipients.status` has four values
+    (`pending`, `sent`, `failed`, `skipped`).
+  - **B9.** Nothing: campaigns reference media by ref string only, validated in
+    the domain.
+  - **C4.** Wire `NewYDBTemplates`, `NewYDBCampaigns`, `NewYDBRecipients`,
+    `NewYDBTracking` and `NewYDBTransactionalMessages`, each over the
+    `*ydb.Driver`, and the already-ported `NewYDBRateLimiter` for the batch
+    worker. `BatchWorker.Work` and `StartWorker.Work` take them through their
+    ports, unchanged. The start worker's `recipients.BulkInsert` writes in
+    chunks of 1000 rows, each its own transaction: a campaign.start job that
+    dies halfway re-runs and inserts only the rest.
+
 ## Ceilings
 
 These are known limits, marked in code with `ponytail:` comments.
@@ -1033,6 +1184,24 @@ These are known limits, marked in code with `ponytail:` comments.
 - The `/jobs` dispatcher assumes the trigger's batch size 1. With a larger
   batch, one failed job redelivers the whole batch, including jobs that
   already succeeded.
+- `YDBRecipients.Pending` reads the campaign's recipients from the start of the
+  id order to the end of its window, so batch N of a campaign reads N windows
+  of rows, and `Counts` reads every recipient row of the campaign each time a
+  batch ends. Fine for one organisation's campaigns. The upgrade path is a
+  per-campaign ordinal column to seek on, and counters kept on the campaign row.
+- `YDBTemplates.Delete` scans the tenant's campaigns to clear `template_id`.
+  The upgrade path is a `GLOBAL SYNC` index on `(tenant_id, template_id)`.
+- `YDBCampaigns.All` and `Archived` scan the tenant's campaigns and sort them,
+  reading every campaign body of the tenant. The upgrade path is keyset
+  paging plus an index on `(tenant_id, created_at)` or `(tenant_id,
+  archive_visible, archived_at)`.
+- `YDBRecipients.BulkInsert` returns a count that falls short when a chunk
+  committed and its response was lost, because the retry finds its rows. No
+  caller uses the count.
+- Every `MarkSent` updates `campaign_recipients` and the provider-message-id
+  index. Until a recipient is sent, its `provider_message_id` is NULL, so all
+  of a campaign's unsent recipients share one index key; the primary key
+  suffix of the index entry lets YDB split it.
 
 ## Implementation phasing
 
@@ -1045,6 +1214,8 @@ The plan is split into three plans. Each one merges to `main` on its own.
   contract-test harness and the sending context as its pilot, the snooze
   reset from V6, and `ydbthrottle`) and one plan per remaining context, in
   this order: auth, tenant, iam, audience, campaign, deliverability, media.
+  Campaign (B7) also creates the two provider-message-id indexes that
+  deliverability (B8) reads; see "Plan B7 planning spike".
   Audience takes two plans: B5 (the core: lists, subscribers, memberships,
   fields) and B6 (import/export jobs, subscription pages, pending
   subscriptions); see "Plan B5 planning spike".
