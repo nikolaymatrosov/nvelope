@@ -71,14 +71,9 @@ func (r *Jobs) AddImport(ctx context.Context, tenantID string, j *domain.ImportJ
 
 // AddExport persists a new export job.
 func (r *Jobs) AddExport(ctx context.Context, tenantID string, j *domain.ExportJob) (string, error) {
-	p := exportParams{Selection: string(j.Selection()), ListID: j.ListID()}
-	if j.Segment() != nil {
-		root := j.Segment().Root()
-		p.Segment = &root
-	}
-	params, err := json.Marshal(p)
+	params, err := exportParamsJSON(j)
 	if err != nil {
-		return "", fmt.Errorf("encoding export params: %w", err)
+		return "", err
 	}
 	var id string
 	err = tenantdb.WithTenant(ctx, r.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
@@ -99,7 +94,21 @@ func (r *Jobs) AddExport(ctx context.Context, tenantID string, j *domain.ExportJ
 	return id, nil
 }
 
-// importRow is the scanned shape of an import job row.
+// exportParamsJSON encodes the export job's selection as its params column.
+func exportParamsJSON(j *domain.ExportJob) ([]byte, error) {
+	p := exportParams{Selection: string(j.Selection()), ListID: j.ListID()}
+	if j.Segment() != nil {
+		root := j.Segment().Root()
+		p.Segment = &root
+	}
+	params, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("encoding export params: %w", err)
+	}
+	return params, nil
+}
+
+// jobRow is the scanned shape of an import or export job row.
 type jobRow struct {
 	id, kind, requestedBy, status, fileName string
 	params, failures                        []byte
@@ -152,6 +161,19 @@ func exportJobFromRow(tenantID string, j jobRow) (*domain.ExportJob, error) {
 	return domain.HydrateExportJob(j.id, tenantID, j.requestedBy,
 		domain.ExportSelection(p.Selection), p.ListID, segment,
 		domain.JobStatus(j.status), j.rowCount, j.createdAt, j.startedAt, j.finishedAt), nil
+}
+
+// jobSummaryFromRow builds the kind-agnostic status of a scanned row.
+func jobSummaryFromRow(j jobRow) domain.JobSummary {
+	var failures []domain.RowFailure
+	if len(j.failures) > 0 {
+		_ = json.Unmarshal(j.failures, &failures)
+	}
+	return domain.JobSummary{
+		ID: j.id, Kind: j.kind, Status: domain.JobStatus(j.status), FileName: j.fileName,
+		CreatedCount: j.created, UpdatedCount: j.updated, FailedCount: j.failed,
+		RowCount: j.rowCount, Failures: failures,
+	}
 }
 
 // GetImport returns the import job, or domain.ErrJobNotFound.
@@ -297,15 +319,7 @@ func (r *Jobs) Summary(ctx context.Context, tenantID, id string) (domain.JobSumm
 		if err != nil {
 			return fmt.Errorf("loading job: %w", err)
 		}
-		var failures []domain.RowFailure
-		if len(j.failures) > 0 {
-			_ = json.Unmarshal(j.failures, &failures)
-		}
-		out = domain.JobSummary{
-			ID: j.id, Kind: j.kind, Status: domain.JobStatus(j.status), FileName: j.fileName,
-			CreatedCount: j.created, UpdatedCount: j.updated, FailedCount: j.failed,
-			RowCount: j.rowCount, Failures: failures,
-		}
+		out = jobSummaryFromRow(j)
 		return nil
 	})
 	if err != nil {

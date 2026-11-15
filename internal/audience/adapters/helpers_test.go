@@ -28,6 +28,7 @@ type backend struct {
 	fields      func(t *testing.T) domain.FieldRepository
 	pages       func(t *testing.T) domain.SubscriptionPageRepository
 	pending     func(t *testing.T) domain.PendingSubscriptionRepository
+	jobs        func(t *testing.T) domain.JobRepository
 	// newTenant returns the id of a tenant row, which the tenant context
 	// owns. On Postgres the audience tables carry a foreign key to it, so the
 	// pg backend inserts a real row. YDB has no foreign keys and no audience
@@ -61,6 +62,9 @@ var backends = []backend{
 		pending: func(t *testing.T) domain.PendingSubscriptionRepository {
 			return adapters.NewPendingSubscriptions(dbtest.AppPool(t))
 		},
+		jobs: func(t *testing.T) domain.JobRepository {
+			return adapters.NewJobs(dbtest.AppPool(t))
+		},
 		newTenant: func(t *testing.T) string { return seedTenant(t, dbtest.AppPool(t)) },
 		newSendingDomain: func(t *testing.T, tenantID string) string {
 			return seedSendingDomain(t, dbtest.AppPool(t), tenantID)
@@ -85,6 +89,9 @@ var backends = []backend{
 		},
 		pending: func(t *testing.T) domain.PendingSubscriptionRepository {
 			return adapters.NewYDBPendingSubscriptions(dbtest.YDBMigrated(t))
+		},
+		jobs: func(t *testing.T) domain.JobRepository {
+			return adapters.NewYDBJobs(dbtest.YDBMigrated(t), dbtest.S3Client(t), dbtest.S3Bucket)
 		},
 		newTenant:        func(*testing.T) string { return uuid.NewString() },
 		newSendingDomain: func(*testing.T, string) string { return uuid.NewString() },
