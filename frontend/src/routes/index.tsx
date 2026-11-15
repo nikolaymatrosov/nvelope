@@ -7,6 +7,7 @@ import { isUnauthorized } from "@/lib/errors"
 import { queryClient } from "@/lib/query"
 import { useSession } from "@/hooks/use-session"
 import { useSyncAccountLocale } from "@/hooks/use-locale"
+import { usePlatformConfig } from "@/hooks/use-platform-config"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -32,6 +33,7 @@ function Home() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { account, user, tenants, isLoading, isError, error } = useSession()
+  const { multiTenant, setupRequired } = usePlatformConfig()
   // Apply the signed-in user's stored language preference (FR-004).
   useSyncAccountLocale()
 
@@ -65,12 +67,14 @@ function Home() {
             <Button onClick={() => navigate({ to: "/login" })}>
               {t("actions.logIn")}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate({ to: "/signup" })}
-            >
-              {t("actions.signUp")}
-            </Button>
+            {(multiTenant || setupRequired) && (
+              <Button
+                variant="outline"
+                onClick={() => navigate({ to: "/signup" })}
+              >
+                {t("actions.signUp")}
+              </Button>
+            )}
           </CardContent>
         </Card>
       </main>
@@ -137,14 +141,16 @@ function Home() {
               </Link>
             ))}
           </div>
-          <Button
-            variant="outline"
-            className="self-start"
-            onClick={() => navigate({ to: "/tenants/new" })}
-          >
-            <PlusIcon />
-            {t("landing.createWorkspace")}
-          </Button>
+          {multiTenant && (
+            <Button
+              variant="outline"
+              className="self-start"
+              onClick={() => navigate({ to: "/tenants/new" })}
+            >
+              <PlusIcon />
+              {t("landing.createWorkspace")}
+            </Button>
+          )}
         </>
       )}
     </main>

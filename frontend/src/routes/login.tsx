@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
 import { ApiError, errorMessage, isUnauthorized } from "@/lib/errors"
 import { queryClient } from "@/lib/query"
+import { usePlatformConfig } from "@/hooks/use-platform-config"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/login")({ component: Login })
 export function Login() {
   const navigate = useNavigate()
   const { t } = useTranslation("auth")
+  const { multiTenant, setupRequired } = usePlatformConfig()
   const [formError, setFormError] = useState("")
   const [unverifiedEmail, setUnverifiedEmail] = useState("")
 
@@ -141,17 +143,19 @@ export function Login() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter>
-          <p className="text-sm text-muted-foreground">
-            {t("login.needAccount")}{" "}
-            <Link
-              className="text-primary underline-offset-4 hover:underline"
-              to="/signup"
-            >
-              {t("login.signUpLink")}
-            </Link>
-          </p>
-        </CardFooter>
+        {(multiTenant || setupRequired) && (
+          <CardFooter>
+            <p className="text-sm text-muted-foreground">
+              {t("login.needAccount")}{" "}
+              <Link
+                className="text-primary underline-offset-4 hover:underline"
+                to="/signup"
+              >
+                {t("login.signUpLink")}
+              </Link>
+            </p>
+          </CardFooter>
+        )}
       </Card>
     </main>
   )

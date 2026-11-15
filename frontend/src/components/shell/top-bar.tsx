@@ -8,6 +8,7 @@ import { LogOutIcon, SettingsIcon } from "lucide-react"
 import { api } from "@/lib/api"
 import { queryClient } from "@/lib/query"
 import { useSession } from "@/hooks/use-session"
+import { usePlatformConfig } from "@/hooks/use-platform-config"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -34,6 +35,7 @@ function initials(name: string): string {
 export function TopBar({ workspaceName }: { workspaceName: string }) {
   const navigate = useNavigate()
   const { user } = useSession()
+  const { multiTenant } = usePlatformConfig()
   const { t } = useTranslation("common")
 
   const logout = useMutation({
@@ -75,9 +77,11 @@ export function TopBar({ workspaceName }: { workspaceName: string }) {
               <SettingsIcon />
               {t("account.settings")}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate({ to: "/" })}>
-              {t("account.switchWorkspace")}
-            </DropdownMenuItem>
+            {multiTenant && (
+              <DropdownMenuItem onClick={() => navigate({ to: "/" })}>
+                {t("account.switchWorkspace")}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               disabled={logout.isPending}
               onClick={() => logout.mutate()}

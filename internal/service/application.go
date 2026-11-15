@@ -176,6 +176,9 @@ func NewApplication(pool *pgxpool.Pool, cfg config.Config, logger *slog.Logger,
 				authcommand.NewSignUpHandler(users, hasher, verificationEnqueuer,
 					registrationPolicy, cfg.EmailVerificationTTL),
 				"SignUp", logger),
+			SetUp: decorator.ApplyResultCommandDecorators(
+				authcommand.NewSetUpHandler(users, hasher, cfg.SetupToken, cfg.SessionTTL),
+				"SetUp", logger),
 			LogIn: decorator.ApplyResultCommandDecorators(
 				authcommand.NewLogInHandler(users, sessions, hasher, cfg.SessionTTL), "LogIn", logger),
 			LogOut: decorator.ApplyCommandDecorators(

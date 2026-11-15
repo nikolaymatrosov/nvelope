@@ -326,29 +326,38 @@ out of scope, and TTL replaces the cleanup.
   Existing `/t/:slug/...` URLs are unchanged.
 - Terraform generates a random `setup_token` and stores it in Lockbox. Terraform
   output prints the `yc lockbox payload get ...` command to read it.
-- While no user exists, `POST /api/platform/signup` requires the setup token. A
-  valid token:
+- While the workspace at `NVELOPE_TENANT_SLUG` does not exist, `POST /api/platform/signup`
+  requires the setup token (`setup_token` in the body, at least 32 characters by config
+  validation). A valid token:
   - creates the first user, **skipping email verification**, because nothing can
     send mail before the first login and holding the token already proves the
-    right to install;
+    right to install. The user is signed in at once (`UserRepository.CreateWithSession`);
   - creates the tenant through the existing `create_workspace` command, with the
-    user as owner.
+    user as owner. Its name starts as the slug; the owner renames it in Settings.
 
-  Without the token, or once any user exists, signup returns 403.
+  Without the token: 403 `setup_token_invalid`. Once the workspace exists: 403
+  `setup_complete`. Plan C2 keyed "setup is open" on the workspace, not on "no user
+  exists": it reuses the `LocateWorkspace` query, it is testable on a shared database,
+  and the cron sweeps and invitations need the workspace anyway.
+- If the account is created but the workspace is not, the owner is already signed in:
+  the landing page offers "Create workspace", and `POST /api/platform/tenants` always
+  uses `NVELOPE_TENANT_SLUG` in single-tenant mode.
 - After that, people join only by invitation (`invite_teammate` /
   `accept_invitation`).
-- `POST /api/platform/tenants` returns 409 once the tenant exists.
-- The setup-token comparison is constant-time.
+- `POST /api/platform/tenants` pins the slug to `NVELOPE_TENANT_SLUG`, so it returns 409 `slug_taken` once the tenant exists.
+- The setup-token comparison is constant-time: both sides are hashed with SHA-256 first, so the length does not leak either.
 
 ### UI feature flags
 
 - A public `GET /api/platform/config` returns
-  `{"features": {"billing": bool, "multiTenant": bool}, "setupRequired": bool}`.
-  It is added to the OpenAPI spec (spec-first API).
+  `{"features": {"billing": bool, "multi_tenant": bool}, "setup_required": bool}`
+  (snake_case, like the rest of the platform plane). It is a hand-written route:
+  only the tenant plane is spec-first so far, and the route moves into
+  `api/openapi/platform.yaml` when the platform plane migrates (Plan C2).
 - The frontend hides billing screens and the tenant switcher when the flags are
   false. It shows the setup-token field on the signup page when
-  `setupRequired` is true.
-- No other frontend changes.
+  `setup_required` is true.
+- The signup links on the landing and login pages are hidden once a single-tenant install is set up. No other frontend changes.
 
 ### Terraform module: `deploy/terraform/nvelope-serverless/`
 
@@ -980,6 +989,10 @@ These are known limits, marked in code with `ponytail:` comments.
   is `provisioned_instances > 0`, which costs money.
 - The fixed-window throttle allows up to 2× the limit at a window boundary.
   This is acceptable for anti-abuse and Postbox pacing.
+- Two concurrent first-run setups with the right token both pass the "workspace does
+  not exist" check; the second then fails on the slug and leaves a verified account
+  with no workspace. Only the token holder can race. The upgrade path is one
+  transaction across auth and tenant, as invitation onboarding does.
 - The default serverless YDB throttle of 10 RU/s (V5) throttles bulk jobs
   (imports, sends). The upgrade path is raising or removing the limit through
   the `ydb_throttling_rcu_limit` Terraform input.

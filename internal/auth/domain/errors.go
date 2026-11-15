@@ -35,6 +35,12 @@ var (
 	ErrEmailNotVerified = apperr.NewForbidden(
 		"email_not_verified", "verify your email address before signing in")
 
+	// ErrSetupTokenInvalid is returned by first-run setup of a single-tenant
+	// install when the setup token is missing or wrong, and on any deployment
+	// without a setup token.
+	ErrSetupTokenInvalid = apperr.NewForbidden(
+		"setup_token_invalid", "the setup token is missing or wrong")
+
 	// ErrVerificationLinkInvalid is returned when an email-verification link is
 	// unknown or expired. It deliberately does not distinguish the two, so a
 	// verification response cannot be used to probe for accounts.

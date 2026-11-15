@@ -11,7 +11,11 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/hooks/use-locale", () => ({ useSyncAccountLocale: vi.fn() }))
 vi.mock("./sidebar", () => ({ WorkspaceSidebar: () => <nav data-testid="sidebar" /> }))
 vi.mock("./top-bar", () => ({ TopBar: () => <header data-testid="top-bar" /> }))
-vi.mock("./suspension-banner", () => ({ SuspensionBanner: () => null }))
+vi.mock("./suspension-banner", () => ({ SuspensionBanner: () => <div data-testid="suspension-banner" /> }))
+const flags = vi.hoisted(() => ({ billing: true }))
+vi.mock("@/hooks/use-platform-config", () => ({
+  usePlatformConfig: () => ({ billing: flags.billing, multiTenant: true, setupRequired: false }),
+}))
 
 afterEach(() => cleanup())
 
@@ -37,5 +41,17 @@ describe("AppShell", () => {
     )
     expect(screen.getByTestId("sidebar")).toBeTruthy()
     expect(screen.getByTestId("top-bar")).toBeTruthy()
+  })
+
+  it("drops the billing banner when billing is off", () => {
+    state.fullscreen = false
+    flags.billing = false
+    render(
+      <AppShell slug="acme" workspaceName="Acme">
+        <div data-testid="page" />
+      </AppShell>,
+    )
+    expect(screen.queryByTestId("suspension-banner")).toBeNull()
+    flags.billing = true
   })
 })

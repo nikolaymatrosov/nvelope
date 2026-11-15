@@ -54,10 +54,10 @@ func (r *Users) CreateWithSession(ctx context.Context, u *domain.User, passwordH
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		var id, email, name string
 		err := tx.QueryRow(ctx,
-			`INSERT INTO platform_users (email, password_hash, name)
-			 VALUES ($1, $2, $3)
+			`INSERT INTO platform_users (email, password_hash, name, email_verified_at)
+			 VALUES ($1, $2, $3, $4)
 			 RETURNING id, email, name`,
-			u.Email().String(), passwordHash, u.Name()).Scan(&id, &email, &name)
+			u.Email().String(), passwordHash, u.Name(), u.EmailVerifiedAt()).Scan(&id, &email, &name)
 		if err != nil {
 			if db.IsUniqueViolation(err) {
 				return domain.ErrEmailTaken
@@ -73,7 +73,7 @@ func (r *Users) CreateWithSession(ctx context.Context, u *domain.User, passwordH
 			return err
 		}
 
-		created = domain.HydrateUser(id, email, name, "", nil)
+		created = domain.HydrateUser(id, email, name, "", u.EmailVerifiedAt())
 		return nil
 	})
 	if err != nil {
